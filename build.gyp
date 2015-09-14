@@ -5,7 +5,7 @@
       'target_name': 'aurora',
       'type': 'executable',
       'sources': [
-        'WebServer.cpp', 'Controller.cpp', 'Aurora.cpp'
+        'src/WebServer.cpp', 'src/Controller.cpp', 'src/Aurora.cpp'
       ],
       'dependencies': [
         './deps/libuv/uv.gyp:libuv',
