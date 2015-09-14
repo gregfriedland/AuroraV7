@@ -13,7 +13,7 @@
     'defines': [ 'HTTP_PARSER_STRICT=0' ],
     'conditions': [
       ['OS == "mac"', {
-        'defines': [ 'DARWIN' ]
+        'defines': [ 'MACOSX' ]
       }, {
         'defines': [ 'LINUX' ]
       }],
@@ -28,14 +28,17 @@
         'cflags': [ '-g', '-O0' ],
         'defines': [ 'DEBUG' ],
         'xcode_settings': {
-          'OTHER_CFLAGS': [ '-g', '-O0' ]
+          'OTHER_CFLAGS': [ '-g', '-O0' ],
+          'OTHER_CPLUSPLUSFLAGS' : [ '-g', '-O0', '-std=c++11' ],
+
         }
       },
       'Release': {
         'cflags': [ '-O3' ],
         'defines': [ 'NDEBUG' ],
         'xcode_settings': {
-          'OTHER_CFLAGS': [ '-O3' ]
+          'OTHER_CFLAGS': [ '-O3' ],
+          'OTHER_CPLUSPLUSFLAGS' : [ '-g', '-O0', '-std=c++11' ],
         }
       }
     }
