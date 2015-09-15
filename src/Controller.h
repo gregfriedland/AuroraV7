@@ -29,7 +29,7 @@ public:
         m_colIndicesSize = width * height;
         m_colIndices = new int[m_colIndicesSize];
         m_serialWriteBufferSize = width * height * 3;
-        m_serialWriteBuffer = new char[m_serialWriteBufferSize];
+        m_serialWriteBuffer = new unsigned char[m_serialWriteBufferSize];
         init();
     }
 
@@ -42,7 +42,7 @@ public:
         delete m_serialWriteBuffer;
     }
 
-    const char* getRawData(int& size) {
+    const unsigned char* rawData(int& size) {
         size = m_serialWriteBufferSize;
         return m_serialWriteBuffer;
     }
@@ -81,7 +81,7 @@ private:
     int m_colIndicesSize;
     int* m_colIndices;
     int m_serialWriteBufferSize;
-    char* m_serialWriteBuffer;
+    unsigned char* m_serialWriteBuffer;
 
     uv_timer_t m_timer;
 };

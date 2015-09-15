@@ -49,7 +49,7 @@
 
 // function prototypes
 static PORTTYPE open_port_and_set_baud_or_die(const char *name, long baud);
-static int transmit_bytes(PORTTYPE port, const char *data, int len);
+static int transmit_bytes(PORTTYPE port, const unsigned char *data, int len);
 static void close_port(PORTTYPE port);
 static void die(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 
@@ -66,12 +66,12 @@ public:
         close_port(m_port);
     }
 
-    void write(const char* buffer, int size) {
+    void write(const unsigned char* buffer, int size) {
         int n = transmit_bytes(m_port, buffer, size);
         if (n != size) die("errors transmitting data\n");
     }
 
-    int read(int size, char* buffer) {
+    int read(int size, unsigned char* buffer) {
        return ::read(m_port, buffer, size);
     }
 
@@ -158,7 +158,7 @@ PORTTYPE open_port_and_set_baud_or_die(const char *name, long baud)
 }
 
 
-int transmit_bytes(PORTTYPE port, const char *data, int len) {
+int transmit_bytes(PORTTYPE port, const unsigned char *data, int len) {
 #if defined(MACOSX) || defined(LINUX)
     return write(port, data, len);
 #elif defined(WINDOWS)

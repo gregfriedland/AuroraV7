@@ -67,7 +67,6 @@ public:
         m_colorIndex += m_settings["colorSpeed"];
     }
 
-
     virtual ~AlienBlobDrawer() {}
 
  private:

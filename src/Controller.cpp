@@ -10,15 +10,11 @@ void Controller::init()
 	// create drawers and set start drawer
 	//m_drawers.emplace("Bzr", BzrDrawer());
 
-	cout << "gothere9\n";
 	m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer()));
-	cout << "gothere10\n";
 	m_currDrawer = m_drawers[m_startDrawerName];
-	cout << "gothere11\n";
 
 	// create serial connection
 	m_serial.connect();
-	cout << "gothere12\n";
 
 	// start camera
 
@@ -27,8 +23,6 @@ void Controller::init()
 
 
 void Controller::start() {
-	cout << "gothere12a\n";
-
 	uv_timer_init(uv_default_loop(), &m_timer);
 	m_timer.data = this;
 	uv_timer_start(&m_timer, timer_cb, 0, 1000 / m_fps);
@@ -39,6 +33,8 @@ void Controller::stop() {
 }
 
 void Controller::loop() {
+	//cout << "Controller::loop\n";
+
 	// update camera if appropriate
 
 	// update facedetection if appropriate
@@ -46,9 +42,7 @@ void Controller::loop() {
 	// change drawer if appropriate
 
 	// update drawer
-	cout << "gothere13\n";
 	m_currDrawer->draw(m_width, m_height, m_palSize, m_colIndices);
-	cout << "gothere14\n";
 
 	// pack data for serial transmission
 	int i = 0;
