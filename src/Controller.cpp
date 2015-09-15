@@ -51,6 +51,8 @@ void Controller::loop() {
 	for (int x = 0; x < m_width; x++) {
 		for (int y = 0; y < m_height; y++) {
 			Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_width]);
+			if (x == 0 && y == 0)
+				cout << "00 index=" << m_colIndices[x + y * m_width] << " rgb=" << (int)col.r << " " << (int)col.g << " " << (int)col.b << endl;
 			m_serialWriteBuffer[i++] = min((unsigned char)254, col.r);
 			m_serialWriteBuffer[i++] = min((unsigned char)254, col.g);
 			m_serialWriteBuffer[i++] = min((unsigned char)254, col.b);

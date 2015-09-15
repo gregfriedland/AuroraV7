@@ -24,6 +24,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <iostream>
 
 // One of these must be defined, usually via the Makefile
 //#define MACOSX
@@ -67,6 +68,7 @@ public:
     }
 
     void write(const unsigned char* buffer, int size) {
+        cout << "Serial writing: " << size << " bytes\n";
         int n = transmit_bytes(m_port, buffer, size);
         if (n != size) die("errors transmitting data\n");
     }
