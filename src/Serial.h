@@ -68,9 +68,17 @@ public:
     }
 
     void write(const unsigned char* buffer, int size) {
-        cout << "Serial writing: " << size << " bytes\n";
-        int n = transmit_bytes(m_port, buffer, size);
-        if (n != size) die("errors transmitting data\n");
+        errno = 0;
+        int written = 0;
+        do {
+            int result = transmit_bytes(m_port, buffer, size);
+            cout << "Serial writing: " << size << " bytes; wrote: " << result << " bytes\n";
+            if (errno != 0 || result == -1) {
+                cout << "Serial error while writing: " << errno << endl;
+                return;
+            }
+            written += result;
+        } while (written < size);
     }
 
     int read(int size, unsigned char* buffer) {
@@ -100,20 +108,35 @@ PORTTYPE open_port_and_set_baud_or_die(const char *name, long baud)
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
 #elif defined(LINUX)
     struct termios tinfo;
+    memset (&tinfo, 0, sizeof tinfo);
     struct serial_struct kernel_serial_settings;
     int r;
-    fd = open(name, O_RDWR);
+    fd = open(name, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (fd < 0) die("unable to open port %s\n", name);
     if (tcgetattr(fd, &tinfo) < 0) die("unable to get serial parms\n");
+
+    tinfo.c_cflag     &=  ~PARENB;            // Make 8n1
+    tinfo.c_cflag     &=  ~CSTOPB;
+    tinfo.c_cflag     &=  ~CSIZE;
+    tinfo.c_cflag     |=  CS8;
+
+    tinfo.c_cflag     &=  ~CRTSCTS;           // no flow control
+    tinfo.c_cc[VMIN]   =  1;                  // read doesn't block
+    tinfo.c_cc[VTIME]  =  5;                  // 0.5 seconds read timeout
+    tinfo.c_cflag     |=  CREAD | CLOCAL;     // turn on READ & ignore ctrl lines
+
     cfmakeraw(&tinfo);
+
+    tcflush( fd, TCIFLUSH );
+
     if (cfsetspeed(&tinfo, baud) < 0) die("error in cfsetspeed\n");
     if (tcsetattr(fd, TCSANOW, &tinfo) < 0) die("unable to set baud rate\n");
-    r = ioctl(fd, TIOCGSERIAL, &kernel_serial_settings);
-    if (r >= 0) {
-        kernel_serial_settings.flags |= ASYNC_LOW_LATENCY;
-        r = ioctl(fd, TIOCSSERIAL, &kernel_serial_settings);
-        if (r >= 0) printf("set linux low latency mode\n");
-    }
+    /* r = ioctl(fd, TIOCGSERIAL, &kernel_serial_settings); */
+    /* if (r >= 0) { */
+    /*     kernel_serial_settings.flags |= ASYNC_LOW_LATENCY; */
+    /*     r = ioctl(fd, TIOCSSERIAL, &kernel_serial_settings); */
+    /*     if (r >= 0) printf("set linux low latency mode\n"); */
+    /* } */
 #elif defined(WINDOWS)
     COMMCONFIG cfg;
     COMMTIMEOUTS timeout;

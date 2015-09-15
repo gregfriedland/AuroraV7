@@ -62,6 +62,10 @@ void Controller::loop() {
 
 	// send serial data
 	m_serial.write(m_serialWriteBuffer, m_serialWriteBufferSize);
+
+	unsigned char buffer[256];
+	if (m_serial.read(256, buffer) > 0)
+        cout << "read: " << (int) buffer[0] << endl;
 }
 
 
