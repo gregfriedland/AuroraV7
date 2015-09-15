@@ -26,6 +26,7 @@
     'configurations': {
       'Debug': {
         'cflags': [ '-g', '-O0' ],
+        'cflags_cc': [ '-g', '-O3', '-std=c++11' ],
         'defines': [ 'DEBUG' ],
         'xcode_settings': {
           'OTHER_CFLAGS': [ '-g', '-O0' ],
@@ -35,6 +36,7 @@
       },
       'Release': {
         'cflags': [ '-O3' ],
+        'cflags_cc': [ '-g', '-O3', '-std=c++11' ],
         'defines': [ 'NDEBUG' ],
         'xcode_settings': {
           'OTHER_CFLAGS': [ '-O3' ],
