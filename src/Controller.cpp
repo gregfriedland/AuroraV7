@@ -32,6 +32,7 @@ void Controller::start() {
 
 void Controller::stop() {
 	uv_timer_stop(&m_timer);
+	m_serial.close();
 }
 
 void Controller::loop() {
