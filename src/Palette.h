@@ -25,6 +25,10 @@ public:
       m_baseColorsPerPalette(baseColorsPerPalette)
     {}
 
+    int size() {
+        return m_numBaseColors / m_baseColorsPerPalette;
+    }
+
     Color24 get(int paletteIndex, int gradientIndex) {
         assert(paletteIndex < m_numBaseColors);
 

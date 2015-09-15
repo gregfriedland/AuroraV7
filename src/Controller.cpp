@@ -4,6 +4,8 @@
 #include "Util.h"
 #include <iostream>
 #include <uv.h>
+#include <stdlib.h>
+
 
 void Controller::init()
 {
@@ -11,7 +13,7 @@ void Controller::init()
 	//m_drawers.emplace("Bzr", BzrDrawer());
 
 	m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer()));
-	m_currDrawer = m_drawers[m_startDrawerName];
+	changeDrawer(m_startDrawerName);
 
 	// create serial connection
 	m_serial.connect();
@@ -48,7 +50,7 @@ void Controller::loop() {
 	int i = 0;
 	for (int x = 0; x < m_width; x++) {
 		for (int y = 0; y < m_height; y++) {
-			Color24 col = m_palettes.get(m_palIndex, m_colIndices[x + y * m_width]);
+			Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_width]);
 			m_serialWriteBuffer[i++] = col.r;
 			m_serialWriteBuffer[i++] = col.g;
 			m_serialWriteBuffer[i++] = col.b;
@@ -60,26 +62,52 @@ void Controller::loop() {
 }
 
 
-map<string,int>
-Controller::getSettings() {
+const map<string,int>& Controller::settings() {
+	return m_currDrawer->settings();
 }
 
-map< string,pair<int,int> >
-Controller::getSettingsRanges() {
+const map< string,pair<int,int> >& Controller::settingsRanges() {
+	return m_currDrawer->settingsRanges();
 }
 
 void Controller::setSettings(const map<string,int>& settings) {
+	m_currDrawer->setSettings(settings);
 }
 
-string Controller::getCurrDrawerName() {
-	m_currDrawer->name();
+string Controller::currDrawerName() {
+	return m_currDrawer->name();
 }
 
-vector<string> Controller::getDrawerNames() {
+vector<string> Controller::drawerNames() {
+	vector<string> names;
+	for (auto& d: m_drawers)
+		names.push_back(d.first);
+	return names;
 }
 
 void Controller::changeDrawer(string name) {
+    if (m_drawers.find(name) == m_drawers.end()) {
+    	cout << "Invalid drawer name: " << name << endl;
+    	return;
+    }
+
+    cout << "Changing to drawer: " << name << endl;
+    m_currDrawer = m_drawers[name];
+    randomizeSettings();
+    m_currDrawer->reset();
+
+    m_lastDrawerChange = millis();
 }
 
 void Controller::randomizeSettings() {
+	auto& settings = m_currDrawer->settings();
+	auto& settingsRanges = m_currDrawer->settingsRanges();
+
+    for (auto& setting: settings) {
+    	auto& range = settingsRanges.find(setting.first)->second;
+    	setting.second = rand() % (range.second - range.first + 1) + range.first;
+    } 
+
+    m_currPalIndex = random() % m_palettes.size();
+    m_currDrawer->reset();
 }

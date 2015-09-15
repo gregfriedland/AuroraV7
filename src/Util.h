@@ -1,16 +1,23 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include <chrono>
+// #include <chrono>
 #include <iostream>
+#include <sys/time.h>
 
 using namespace std;
-using namespace std::chrono;
+// using namespace std::chrono;
 
 
-inline unsigned int millis() {
-	return duration_cast< milliseconds >(
-    	system_clock::now().time_since_epoch()).count();
+inline unsigned long millis() {
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+
+	return (unsigned long)(tv.tv_sec) * 1000 +
+    	   (unsigned long)(tv.tv_usec) / 1000;
+	// return duration_cast< milliseconds >(
+ //    	system_clock::now().time_since_epoch()).count();
 }
 
 
@@ -31,7 +38,7 @@ public:
 	}
 
 private:
-	unsigned int m_lastTime;
+	unsigned long m_lastTime;
 	unsigned int m_interval;
 };
 
@@ -53,7 +60,7 @@ public:
 
 private:
 	unsigned int m_count;
-	unsigned int m_lastTime;
+	unsigned long m_lastTime;
 	unsigned int m_interval;
 	string m_name;
 };

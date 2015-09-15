@@ -24,7 +24,7 @@ public:
       m_palettes(palSize, baseColors, numBaseColors, baseColorsPerPalette),
       m_serial(device), m_currDrawer(NULL)
     {
-        m_palIndex = random() % (numBaseColors / baseColorsPerPalette);
+        m_currPalIndex = random() % m_palettes.size();
 
         m_colIndicesSize = width * height;
         m_colIndices = new int[m_colIndicesSize];
@@ -50,11 +50,11 @@ public:
     void start();
     void stop();
     
-    map<string,int> getSettings();
-    map< string,pair<int,int> > getSettingsRanges();
+    const map<string,int>& settings();
+    const map< string,pair<int,int> >& settingsRanges();
     void setSettings(const map<string,int>& settings);
-    string getCurrDrawerName();
-    vector<string> getDrawerNames();
+    string currDrawerName();
+    vector<string> drawerNames();
     void changeDrawer(string name);
     void randomizeSettings();
 
@@ -72,16 +72,17 @@ private:
     int m_fps;
     
     Palettes m_palettes;
-    int m_palIndex;
+    int m_currPalIndex; // index of current palette
     Serial m_serial;
 
     map<string,Drawer*> m_drawers;
     Drawer* m_currDrawer;
+    unsigned int m_lastDrawerChange;
 
-    int m_colIndicesSize;
-    int* m_colIndices;
+    int* m_colIndices; // stores current color indices before mapping to rgb
+    int m_colIndicesSize; // size of color indices array
+    unsigned char* m_serialWriteBuffer; // stores data in serial write order
     int m_serialWriteBufferSize;
-    unsigned char* m_serialWriteBuffer;
 
     uv_timer_t m_timer;
 };
