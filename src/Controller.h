@@ -28,7 +28,7 @@ public:
 
         m_colIndicesSize = width * height;
         m_colIndices = new int[m_colIndicesSize];
-        m_serialWriteBufferSize = width * height * 3;
+        m_serialWriteBufferSize = width * height * 3 + 1;
         m_serialWriteBuffer = new unsigned char[m_serialWriteBufferSize];
         init();
     }

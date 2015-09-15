@@ -51,11 +51,12 @@ void Controller::loop() {
 	for (int x = 0; x < m_width; x++) {
 		for (int y = 0; y < m_height; y++) {
 			Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_width]);
-			m_serialWriteBuffer[i++] = col.r;
-			m_serialWriteBuffer[i++] = col.g;
-			m_serialWriteBuffer[i++] = col.b;
+			m_serialWriteBuffer[i++] = min((unsigned char)254, col.r);
+			m_serialWriteBuffer[i++] = min((unsigned char)254, col.g);
+			m_serialWriteBuffer[i++] = min((unsigned char)254, col.b);
 		}
 	}
+	m_serialWriteBuffer[i++] = 255;
 
 	// send serial data
 	m_serial.write(m_serialWriteBuffer, m_serialWriteBufferSize);

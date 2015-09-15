@@ -10,11 +10,11 @@ struct Color24 {
     : r((col >> 16) & 255), g((col >> 8) & 255), b(col & 255)
     {}
 
-    Color24(char _r, char _g, char _b)
+    Color24(unsigned char _r, unsigned char _g, unsigned char _b)
     : r(_r), g(_g), b(_b)
     {}
 
-    char r, g, b;
+    unsigned char r, g, b;
 };
 
 
