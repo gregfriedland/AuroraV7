@@ -3,6 +3,7 @@
 #include "WebServer.h"
 #include "GenImage.h"
 #include <signal.h>
+#include <chrono>
 
 #define WIDTH 64
 #define HEIGHT 32
@@ -11,7 +12,7 @@
 #define START_DRAWER "AlienBlob"
 #define DRAWER_CHANGE_INTERVAL 10000
 #define LAYOUT_LEFT_TO_RIGHT false
-#define UPDATE_IMAGE_FPS 5
+#define UPDATE_IMAGE_FPS 0
 
 // #define CAMERA_FPS 10
 // var CAM_SIZE = [1280, 960];//[640, 480];
@@ -21,11 +22,14 @@ static Controller* controller;
 
 void sigHandler(int sig) {
 	controller->stop();
+	exit(0);
 }
 
 int main(int argc, char** argv) {
-	assert(argc == 2);
-	controller = new Controller(WIDTH, HEIGHT, PAL_SIZE, argv[1], 
+	unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+
+	string device = argc == 2 ? argv[1] : "";
+	controller = new Controller(WIDTH, HEIGHT, PAL_SIZE, device, 
 		baseColors, BASE_COLORS_SIZE, BASE_COLORS_PER_PALETTE,
 		LAYOUT_LEFT_TO_RIGHT, START_DRAWER, FPS);
 	controller->start();
@@ -34,10 +38,11 @@ int main(int argc, char** argv) {
     signal(SIGKILL, sigHandler);
 
 	// save images to disk at recurring interval
-	if (UPDATE_IMAGE_FPS > 0) {
+	int updateImageFps = device.size() != 0 ? UPDATE_IMAGE_FPS : 5;
+	if (updateImageFps > 0 ) {
 		int rawDataSize;
 		GenImage genImage(WIDTH, HEIGHT, "public/image.png", controller->rawData(rawDataSize));
-		genImage.start(1000 / UPDATE_IMAGE_FPS);
+		genImage.start(1000 / updateImageFps);
 	}
 
 	start_webserver();

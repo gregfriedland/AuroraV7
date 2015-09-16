@@ -1,6 +1,7 @@
 #include "Controller.h"
 #include "Palette.h"
 #include "AlienBlob.h"
+#include "Bzr.h"
 #include "Util.h"
 #include <iostream>
 #include <uv.h>
@@ -12,11 +13,13 @@ void Controller::init()
 	// create drawers and set start drawer
 	//m_drawers.emplace("Bzr", BzrDrawer());
 
-	m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer()));
+	m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer(m_width, m_height, m_palSize)));
+	m_drawers.insert(make_pair("Bzr", new BzrDrawer(m_width, m_height, m_palSize)));
 	changeDrawer(m_startDrawerName);
 
 	// create serial connection
-	m_serial.connect();
+	if (m_device.size() > 0)
+		m_serial.connect();
 
 	// start camera
 
@@ -32,7 +35,8 @@ void Controller::start() {
 
 void Controller::stop() {
 	uv_timer_stop(&m_timer);
-	m_serial.close();
+	if (m_device.size() > 0)
+		m_serial.close();
 }
 
 void Controller::loop() {
@@ -45,7 +49,7 @@ void Controller::loop() {
 	// change drawer if appropriate
 
 	// update drawer
-	m_currDrawer->draw(m_width, m_height, m_palSize, m_colIndices);
+	m_currDrawer->draw(m_colIndices);
 
 	// pack data for serial transmission
 	int i = 0;
@@ -62,11 +66,13 @@ void Controller::loop() {
 	m_serialWriteBuffer[i++] = 255;
 
 	// send serial data
-	m_serial.write(m_serialWriteBuffer, m_serialWriteBufferSize);
+	if (m_device.size() > 0) {
+		m_serial.write(m_serialWriteBuffer, m_serialWriteBufferSize);
 
-	unsigned char buffer[256];
-	if (m_serial.read(256, buffer) > 0)
-        cout << "read: " << (int) buffer[0] << endl;
+		unsigned char buffer[256];
+		if (m_serial.read(256, buffer) > 0)
+	        cout << "read: " << (int) buffer[0] << endl;
+	}
 }
 
 
@@ -113,9 +119,9 @@ void Controller::randomizeSettings() {
 
     for (auto& setting: settings) {
     	auto& range = settingsRanges.find(setting.first)->second;
-    	setting.second = rand() % (range.second - range.first + 1) + range.first;
+    	setting.second = random2() % (range.second - range.first + 1) + range.first;
     } 
 
-    m_currPalIndex = random() % m_palettes.size();
+    m_currPalIndex = random2() % m_palettes.size();
     m_currDrawer->reset();
 }

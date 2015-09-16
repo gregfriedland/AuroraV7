@@ -1,9 +1,10 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-// #include <chrono>
 #include <iostream>
 #include <sys/time.h>
+// #include <chrono>
+#include <random>
 
 using namespace std;
 // using namespace std::chrono;
@@ -18,6 +19,12 @@ inline unsigned long millis() {
     	   (unsigned long)(tv.tv_usec) / 1000;
 	// return duration_cast< milliseconds >(
  //    	system_clock::now().time_since_epoch()).count();
+}
+
+
+static minstd_rand0 randGen(millis());
+inline int random2() {
+	return randGen();
 }
 
 

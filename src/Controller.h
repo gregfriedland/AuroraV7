@@ -4,6 +4,8 @@
 #include "Drawer.h"
 #include "Palette.h"
 #include "Serial.h"
+#include "Util.h"
+
 #include <map>
 #include <vector>
 #include <iostream>
@@ -24,7 +26,7 @@ public:
       m_palettes(palSize, baseColors, numBaseColors, baseColorsPerPalette),
       m_serial(device), m_currDrawer(NULL)
     {
-        m_currPalIndex = random() % m_palettes.size();
+        m_currPalIndex = random2() % m_palettes.size();
 
         m_colIndicesSize = width * height;
         m_colIndices = new int[m_colIndicesSize];

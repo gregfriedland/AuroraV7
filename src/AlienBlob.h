@@ -1,26 +1,15 @@
 #ifndef ALIENBLOB_H
 #define ALIENBLOB_H
 
-#include <iostream>
-#include <iomanip>
-#include <stdio.h>
-#include <stdlib.h>
-
-#include <math.h>
-#include <stdint.h>
-#include <time.h>
-
-#include <dlfcn.h>
-#include <unistd.h>
-
 #include <map>
 #include <vector>
 
 #include "Drawer.h"
+#include "Util.h"
 
 
-#define DECAY 0.5
-#define SPEED_MULTIPLIER 0.07f
+#define DECAY 0.5f
+#define ALIENBLOB_SPEED_MULTIPLIER 0.07f
 
 
 static void init_noise(void);
@@ -33,7 +22,8 @@ static void alienblob(int width, int height, int numColors, float zoff, int perl
 
 class AlienBlobDrawer : public Drawer {
 public:
-    AlienBlobDrawer() : Drawer("AlienBlob"), m_colorIndex(0) {
+    AlienBlobDrawer(int width, int height, int palSize) 
+    : Drawer("AlienBlob", width, height, palSize), m_colorIndex(0) {
         m_settings.insert(make_pair("speed",3));
         m_settings.insert(make_pair("colorSpeed",0));
         m_settings.insert(make_pair("detail",3));
@@ -51,19 +41,19 @@ public:
     }
 
     virtual void reset() {
-        m_pos = random() % 1000;
+        m_pos = random2() % 1000;
     }
 
-    virtual void draw(int width, int height, int palSize, int* colIndices)
+    virtual void draw(int* colIndices)
     {
-        alienblob(width, height, palSize, m_pos, m_settings["detail"], DECAY,
+        alienblob(m_width, m_height, m_palSize, m_pos, m_settings["detail"], DECAY,
             m_settings["zoom"]/100.0, colIndices, m_sineTable);
 
-        for (int x = 0; x < width; x++)
-            for (int y = 0; y < height; y++)
-                colIndices[x + y * width] += m_colorIndex;
+        for (int x = 0; x < m_width; x++)
+            for (int y = 0; y < m_height; y++)
+                colIndices[x + y * m_width] += m_colorIndex;
 
-        m_pos += SPEED_MULTIPLIER * m_settings["speed"] / 100.0;
+        m_pos += ALIENBLOB_SPEED_MULTIPLIER * m_settings["speed"] / 100.0;
         m_colorIndex += m_settings["colorSpeed"];
     }
 
