@@ -3,9 +3,12 @@ UNAME_M := $(shell uname -m)
 ifeq ($(UNAME_M),armv7l)
 ./deps/raspicam:
 	git clone --depth 1 git://github.com/cedricve/raspicam ./deps/raspicam
-	(cd ./deps/raspicam; mkdir -p build; cd build; cmake ..; make)
+	(cd ./deps/raspicam; mkdir -p build; cd build; cmake -DOpenCV_FOUND=0 ..; make)
 DEPS=./deps/gyp ./deps/libuv ./deps/http-parser ./deps/lodepng ./deps/raspicam
-CFLAGS=-DRASPI
+CXXFLAGS=-DRASPI
+
+install: ./deps/raspicam
+	(cd ./deps/raspicam/build; make install; ldconfig)
 else
 DEPS=./deps/gyp ./deps/libuv ./deps/http-parser ./deps/lodepng
 endif
