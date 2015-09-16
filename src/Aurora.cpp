@@ -6,7 +6,7 @@
 
 #define WIDTH 64
 #define HEIGHT 32
-#define PAL_SIZE 1<<12 // colors in the gradient of each palette
+#define PAL_SIZE 1<<12 // #colors in the gradient of each palette
 #define FPS 40
 #define START_DRAWER "Off"
 #define DRAWER_CHANGE_INTERVAL 10000

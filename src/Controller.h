@@ -24,7 +24,7 @@ public:
       m_layoutLeftToRight(layoutLeftToRight),
       m_startDrawerName(startDrawerName), m_fps(fps),
       m_palettes(palSize, baseColors, numBaseColors, baseColorsPerPalette),
-      m_serial(device), m_currDrawer(NULL)
+      m_serial(device), m_currDrawer(NULL), m_fpsCounter(5000, "Controller")
     {
         m_currPalIndex = random2() % m_palettes.size();
 
@@ -86,6 +86,7 @@ private:
     unsigned char* m_serialWriteBuffer; // stores data in serial write order
     int m_serialWriteBufferSize;
 
+    FpsCounter m_fpsCounter;
     uv_timer_t m_timer;
 };
 

@@ -2,6 +2,7 @@
 #define UTIL_H
 
 #include <iostream>
+#include <iomanip>
 #include <sys/time.h>
 // #include <chrono>
 #include <random>
@@ -60,8 +61,10 @@ public:
 		m_count++;
 		unsigned int currTime = millis();
 		if (currTime - m_lastTime > m_interval) {
-	        cout << m_name << ": " << (1000 * m_count/(currTime - m_lastTime)) << "fps\n";
+			float fps = 1000. * m_count/(currTime - m_lastTime);
+	        cout << m_name << ": " << fixed << setprecision(1) << fps << "fps\n";
 			m_lastTime = currTime;
+			m_count = 0;
 		}
 	}
 
