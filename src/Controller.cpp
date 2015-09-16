@@ -42,8 +42,6 @@ void Controller::stop() {
 void Controller::loop() {
 	m_fpsCounter.tick();
 
-	//cout << "Controller::loop\n";
-
 	// update camera if appropriate
 
 	// update facedetection if appropriate
