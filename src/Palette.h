@@ -3,7 +3,7 @@
 
 #include <math.h>
 #include <assert.h>
-
+#include <iostream>
 
 struct Color24 {
     Color24(int col) 
@@ -33,10 +33,11 @@ public:
         assert(paletteIndex < m_numBaseColors);
 
         gradientIndex = gradientIndex % m_palSize;
-        int subGradientSize = floor(m_palSize / (m_baseColorsPerPalette-1));
+        int subGradientSize = ceil(m_palSize / (float)m_baseColorsPerPalette);
 
         int baseColIndex1 = floor(gradientIndex / subGradientSize);
         int baseColIndex2 = (baseColIndex1 + 1) % m_baseColorsPerPalette;
+        //cout << "gradInd=" << gradientIndex << " subGradSize=" << subGradientSize << " baseColIndex1=" << baseColIndex1 << " baseColIndex2=" << baseColIndex2 << endl;
 
         Color24 col1(m_baseColors[baseColIndex1 + paletteIndex * m_baseColorsPerPalette]);
         Color24 col2(m_baseColors[baseColIndex2 + paletteIndex * m_baseColorsPerPalette]);

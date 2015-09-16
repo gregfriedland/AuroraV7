@@ -72,7 +72,7 @@ public:
         int written = 0;
         do {
             int result = transmit_bytes(m_port, buffer, size);
-            cout << "Serial writing: " << size << " bytes; wrote: " << result << " bytes\n";
+            // cout << "Serial writing: " << size << " bytes; wrote: " << result << " bytes\n";
             if (errno != 0 || result == -1) {
                 cout << "Serial error while writing: " << errno << endl;
                 return;
