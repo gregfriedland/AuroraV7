@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
 	string device = argc == 2 ? argv[1] : "";
 	controller = new Controller(WIDTH, HEIGHT, PAL_SIZE, device, 
 		baseColors, BASE_COLORS_SIZE, BASE_COLORS_PER_PALETTE,
-		LAYOUT_LEFT_TO_RIGHT, START_DRAWER, FPS);
+		LAYOUT_LEFT_TO_RIGHT, START_DRAWER, FPS, DRAWER_CHANGE_INTERVAL);
 	controller->start();
 
     signal(SIGINT, sigHandler);

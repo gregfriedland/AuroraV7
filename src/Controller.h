@@ -19,12 +19,13 @@ class Controller {
 public:
     Controller(int width, int height, int palSize, string device, 
         int* baseColors, int numBaseColors, int baseColorsPerPalette,
-        bool layoutLeftToRight, string startDrawerName, int fps)
+        bool layoutLeftToRight, string startDrawerName, int fps, int drawerChangeInterval)
     : m_width(width), m_height(height), m_palSize(palSize), m_device(device),
       m_layoutLeftToRight(layoutLeftToRight),
       m_startDrawerName(startDrawerName), m_fps(fps),
       m_palettes(palSize, baseColors, numBaseColors, baseColorsPerPalette),
-      m_serial(device), m_currDrawer(NULL), m_fpsCounter(5000, "Controller")
+      m_serial(device), m_currDrawer(NULL), m_drawerChangeTimer(drawerChangeInterval),
+      m_fpsCounter(5000, "Controller")
     {
         m_currPalIndex = random2() % m_palettes.size();
 
@@ -51,21 +52,20 @@ public:
 
     void start();
     void stop();
+
+private:
+    friend void timer_cb(uv_timer_t* handle);
     
     const map<string,int>& settings();
     const map< string,pair<int,int> >& settingsRanges();
     void setSettings(const map<string,int>& settings);
     string currDrawerName();
     vector<string> drawerNames();
-    void changeDrawer(string name);
     void randomizeSettings();
 
-    friend void timer_cb(uv_timer_t* handle);
-
-private:
     void loop();
     void init();
-    void changeDrawers(string name);
+    void changeDrawer(vector<string> names);
 
     int m_width, m_height, m_palSize;
     string m_device;
@@ -79,7 +79,7 @@ private:
 
     map<string,Drawer*> m_drawers;
     Drawer* m_currDrawer;
-    unsigned int m_lastDrawerChange;
+    IntervalTimer m_drawerChangeTimer;
 
     int* m_colIndices; // stores current color indices before mapping to rgb
     int m_colIndicesSize; // size of color indices array

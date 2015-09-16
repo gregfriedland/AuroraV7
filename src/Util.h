@@ -35,9 +35,15 @@ public:
 	: m_lastTime(millis()), m_interval(interval) 
 	{}
 
-	bool tick(unsigned int& timeLeft) {
-		unsigned int currTime = millis();
-		timeLeft = std::max(0, (int)currTime - (int)(m_lastTime + m_interval));
+	void reset() {
+		m_lastTime = millis();
+	}
+
+	bool tick(unsigned int* timeLeft) {
+		unsigned long currTime = millis();
+		if (timeLeft != NULL)
+			*timeLeft = std::max(0, (int)currTime - (int)(m_lastTime + m_interval));
+		//cout << "currTime:" << currTime << " lastTime:" << m_lastTime << endl;
 		if (currTime - m_lastTime > m_interval) {
 			m_lastTime = currTime;
 			return true;

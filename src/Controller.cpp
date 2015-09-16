@@ -15,7 +15,7 @@ void Controller::init()
 	m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer(m_width, m_height, m_palSize)));
 	m_drawers.insert(make_pair("Bzr", new BzrDrawer(m_width, m_height, m_palSize)));
 	m_drawers.insert(make_pair("Off", new OffDrawer(m_width, m_height, m_palSize)));
-	changeDrawer(m_startDrawerName);
+	changeDrawer({m_startDrawerName});
 
 	// create serial connection
 	if (m_device.size() > 0)
@@ -48,7 +48,9 @@ void Controller::loop() {
 
 	// update facedetection if appropriate
 
-	// change drawer if appropriate
+	// change drawer every so often
+	if (m_drawerChangeTimer.tick(NULL))
+		changeDrawer({"Bzr", "AlienBlob"});
 
 	// update drawer
 	m_currDrawer->draw(m_colIndices);
@@ -88,6 +90,7 @@ const map< string,pair<int,int> >& Controller::settingsRanges() {
 
 void Controller::setSettings(const map<string,int>& settings) {
 	m_currDrawer->setSettings(settings);
+    m_drawerChangeTimer.reset();
 }
 
 string Controller::currDrawerName() {
@@ -101,7 +104,14 @@ vector<string> Controller::drawerNames() {
 	return names;
 }
 
-void Controller::changeDrawer(string name) {
+void Controller::changeDrawer(vector<string> names) {
+	string name;
+	assert(names.size() > 0);
+	if (names.size() == 1)
+		name = names[0];
+	else
+		name = names[random2() % names.size()];
+
     if (m_drawers.find(name) == m_drawers.end()) {
     	cout << "Invalid drawer name: " << name << endl;
     	return;
@@ -112,7 +122,7 @@ void Controller::changeDrawer(string name) {
     randomizeSettings();
     m_currDrawer->reset();
 
-    m_lastDrawerChange = millis();
+    m_drawerChangeTimer.reset();
 }
 
 void Controller::randomizeSettings() {
@@ -126,4 +136,5 @@ void Controller::randomizeSettings() {
 
     m_currPalIndex = random2() % m_palettes.size();
     m_currDrawer->reset();
+    m_drawerChangeTimer.reset();
 }

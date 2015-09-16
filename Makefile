@@ -35,6 +35,8 @@ distclean:
 clean:
 	rm -rf ./build/out/Release/obj.target/aurora/
 	rm -f ./build/out/Release/aurora
+	rm -rf ./build/out/Debug/obj.target/aurora/
+	rm -f ./build/out/Debug/aurora
 	rm -f ./aurora
 
 .PHONY: test
