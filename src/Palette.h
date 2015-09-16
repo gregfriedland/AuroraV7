@@ -4,19 +4,7 @@
 #include <math.h>
 #include <assert.h>
 #include <iostream>
-
-struct Color24 {
-    Color24(int col) 
-    : r((col >> 16) & 255), g((col >> 8) & 255), b(col & 255)
-    {}
-
-    Color24(unsigned char _r, unsigned char _g, unsigned char _b)
-    : r(_r), g(_g), b(_b)
-    {}
-
-    unsigned char r, g, b;
-};
-
+#include "Util.h"
 
 class Palettes {
 public:

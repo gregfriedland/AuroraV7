@@ -1,3 +1,14 @@
+# only make raspicam c++ lib if we're on a raspi
+UNAME_M := $(shell uname -m)
+ifeq ($(UNAME_M),armv7l)
+./deps/raspicam:
+	git clone --depth 1 git://github.com/cedricve/raspicam ./deps/raspicam
+	(cd ./deps/raspicam; mkdir -p build; cd build; cmake ..; make)
+DEPS=./deps/gyp ./deps/libuv ./deps/http-parser ./deps/lodepng ./deps/raspicam
+CFLAGS=-DRASPI
+else
+DEPS=./deps/gyp ./deps/libuv ./deps/http-parser ./deps/lodepng
+endif
 
 all: ./build ./aurora
 
@@ -13,7 +24,7 @@ all: ./build ./aurora
 ./deps/gyp:
 	git clone --depth 1 https://chromium.googlesource.com/external/gyp.git ./deps/gyp
 
-./build: ./deps/gyp ./deps/libuv ./deps/http-parser ./deps/lodepng
+./build: $(DEPS)
 	deps/gyp/gyp --depth=. -Goutput_dir=./out -Icommon.gypi --generator-output=./build -Dlibrary=static_library -Duv_library=static_library -f make -Dclang=1
 
 
@@ -27,10 +38,6 @@ HEADERS=src/*.h
 distclean:
 	make clean
 	rm -rf ./build
-
-#test:
-	#./build/out/Release/webserver & ./build/out/Release/webclient && killall webserver
-	#./build/out/Release/webserver & wrk -d10 -t24 -c24 --latency http://127.0.0.1:8000
 
 clean:
 	rm -rf ./build/out/Release/obj.target/aurora/

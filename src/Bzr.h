@@ -1,3 +1,6 @@
+#ifndef BZR_H
+#define BZR_H
+
 #include <map>
 #include <vector>
 
@@ -120,5 +123,4 @@ void bzr(int width, int height, int numColors, int width2, int height2, int& sta
   state++;  
 }
 
-
-
+#endif

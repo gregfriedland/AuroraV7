@@ -1,3 +1,6 @@
+#ifndef OFF_H
+#define OFF_H
+
 #include "Drawer.h"
 #include <iostream>
 
@@ -27,3 +30,5 @@ public:
     int m_pos;
     int m_colorIndex;
 };
+
+#endif
