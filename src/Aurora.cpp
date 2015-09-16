@@ -25,8 +25,6 @@ void sigHandler(int sig) {
 }
 
 int main(int argc, char** argv) {
-	unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
-
 	string device = argc == 2 ? argv[1] : "";
 	controller = new Controller(WIDTH, HEIGHT, PAL_SIZE, device, 
 		baseColors, BASE_COLORS_SIZE, BASE_COLORS_PER_PALETTE,
