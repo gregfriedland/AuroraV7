@@ -16,7 +16,11 @@ all: ./build ./aurora
 ./build: ./deps/gyp ./deps/libuv ./deps/http-parser ./deps/lodepng
 	deps/gyp/gyp --depth=. -Goutput_dir=./out -Icommon.gypi --generator-output=./build -Dlibrary=static_library -Duv_library=static_library -f make -Dclang=1
 
-./aurora: ./src/WebServer.cpp ./src/Controller.cpp ./src/Aurora.cpp ./deps/lodepng/lodepng.cpp
+
+SOURCES=src/*.cpp deps/lodepng/lodepng.cpp
+HEADERS=src/*.h
+
+./aurora: $(SOURCES) $(HEADERS)
 	make -C ./build/ aurora
 	cp ./build/out/Release/aurora ./aurora
 

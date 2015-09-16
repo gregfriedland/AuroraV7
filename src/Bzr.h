@@ -19,7 +19,7 @@ public:
         m_settings.insert(make_pair("zoom",70));
         m_settingsRanges.insert(make_pair("speed", make_pair(0,100)));
         m_settingsRanges.insert(make_pair("colorSpeed", make_pair(0,50)));
-        m_settingsRanges.insert(make_pair("zoom", make_pair(0,100)));
+        m_settingsRanges.insert(make_pair("zoom", make_pair(30,100)));
 
         m_p = 0;
         m_q = 1;
@@ -72,7 +72,7 @@ void bzr(int width, int height, int numColors, int width2, int height2, int& sta
   if (state > numStates)
     state = 1;
 
-  if (state == 0) {
+  if (state == 1) {
     for (int x=0; x<width2; x++) {
       for (int y=0; y<height2; y++) {
         float c_a=0, c_b=0, c_c=0;
@@ -101,7 +101,6 @@ void bzr(int width, int height, int numColors, int width2, int height2, int& sta
     p = 1-p;
     q = 1-q;
   }
-  state++;
   
   for (int x=0; x<width; x++) {
     for (int y=0; y<height; y++) {
@@ -111,13 +110,14 @@ void bzr(int width, int height, int numColors, int width2, int height2, int& sta
       float a_q = a[x2 + y2*width2 + width2*height2*q];
       
       // interpolate
-      float a_val = a_p*state/numStates + a_q*(numStates-state)/numStates;
+      float a_val = state * (a_p - a_q) / numStates + a_q;
 //      if (x == 0 && y ==0) {
 //        printf("%d: %.2f -> (%.2f) -> %.2f", state, a_q, a_val, a_p);
 //      }
       indices[x + y * width] = a_val * (numColors-1);
     }
   }
+  state++;  
 }
 
 

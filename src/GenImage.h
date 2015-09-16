@@ -22,20 +22,21 @@ public:
 		uv_timer_stop(&m_timer);
 	}
 
-	const vector<unsigned char>& data() { return m_data; }
-
     friend void genimage_timer_cb(uv_timer_t* handle);
 
 private:
 	void loop() {
 		//std::cout << "writing image to: " << m_outFilename << std::endl;
 		lodepng_encode24_file(m_outFilename.c_str(), m_srcData, m_width, m_height);
+
+		static int count = 0;
+		if (count++ > 200)
+			exit(0);
 	}
 
 	int m_width, m_height;
 	string m_outFilename;
 	const unsigned char* m_srcData;
-	vector<unsigned char> m_data;
     uv_timer_t m_timer;
 };
 

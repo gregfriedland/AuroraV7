@@ -3,13 +3,12 @@
 #include "WebServer.h"
 #include "GenImage.h"
 #include <signal.h>
-#include <chrono>
 
 #define WIDTH 64
 #define HEIGHT 32
 #define PAL_SIZE 1<<12 // colors in the gradient of each palette
 #define FPS 40
-#define START_DRAWER "AlienBlob"
+#define START_DRAWER "Bzr"
 #define DRAWER_CHANGE_INTERVAL 10000
 #define LAYOUT_LEFT_TO_RIGHT false
 #define UPDATE_IMAGE_FPS 0
