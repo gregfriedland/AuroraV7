@@ -9,7 +9,9 @@
       'dependencies': [ './deps/libuv/uv.gyp:libuv',
                         './deps/http-parser/http_parser.gyp:http_parser' ],
       'include_dirs': [ './deps/lodepng', './deps/raspicam/src' ],
-      'libraries': [ '../deps/raspicam/build/src/libraspicam.so' ],
+      'libraries': [ '../deps/raspicam/build/src/libraspicam.so',
+                     '/usr/local/lib/libopencv_objdetect.so',
+                     '/usr/local/lib/libopencv_core.so' ],
     },
   ],
 }

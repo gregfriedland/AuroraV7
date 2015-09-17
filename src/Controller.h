@@ -6,6 +6,7 @@
 #include "Serial.h"
 #include "Util.h"
 #include "Camera.h"
+#include "FaceDetect.h"
 
 #include <map>
 #include <vector>
@@ -20,14 +21,14 @@ class Controller {
 public:
     Controller(int width, int height, int palSize, string device, 
         int* baseColors, int numBaseColors, int baseColorsPerPalette,
-        bool layoutLeftToRight, string startDrawerName, int fps, 
-        int drawerChangeInterval, Camera* camera)
+        bool layoutLeftToRight, string startDrawerName,
+        int drawerChangeInterval, Camera* camera, FaceDetect* faceDetect)
     : m_width(width), m_height(height), m_palSize(palSize), m_device(device),
       m_layoutLeftToRight(layoutLeftToRight),
-      m_startDrawerName(startDrawerName), m_fps(fps),
+      m_startDrawerName(startDrawerName), 
       m_palettes(palSize, baseColors, numBaseColors, baseColorsPerPalette),
-      m_serial(device), m_camera(camera), m_currDrawer(NULL), 
-      m_drawerChangeTimer(drawerChangeInterval),
+      m_serial(device), m_camera(camera), m_faceDetect(faceDetect),
+      m_currDrawer(NULL), m_drawerChangeTimer(drawerChangeInterval),
       m_fpsCounter(5000, "Controller")
     {
         m_currPalIndex = random2() % m_palettes.size();
@@ -53,7 +54,7 @@ public:
         return m_serialWriteBuffer;
     }
 
-    void start();
+    void start(int interval);
     void stop();
 
 private:
@@ -74,12 +75,12 @@ private:
     string m_device;
     bool m_layoutLeftToRight;
     string m_startDrawerName;
-    int m_fps;
     
     Palettes m_palettes;
     int m_currPalIndex; // index of current palette
     Serial m_serial;
     Camera* m_camera;
+    FaceDetect* m_faceDetect;
 
     map<string,Drawer*> m_drawers;
     Drawer* m_currDrawer;

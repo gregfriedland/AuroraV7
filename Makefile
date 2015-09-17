@@ -1,3 +1,5 @@
+all: ./build ./aurora
+
 # only make raspicam c++ lib if we're on a raspi
 UNAME_M := $(shell uname -m)
 ifeq ($(UNAME_M),armv7l)
@@ -12,8 +14,6 @@ install: ./deps/raspicam
 else
 DEPS=./deps/gyp ./deps/libuv ./deps/http-parser ./deps/lodepng
 endif
-
-all: ./build ./aurora
 
 ./deps/http-parser:
 	git clone --depth 1 git://github.com/joyent/http-parser.git ./deps/http-parser

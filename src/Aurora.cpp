@@ -3,6 +3,7 @@
 #include "WebServer.h"
 #include "GenImage.h"
 #include "Camera.h"
+#include "FaceDetect.h"
 #include <signal.h>
 
 #define WIDTH 64
@@ -16,6 +17,7 @@
 #define CAMERA_WIDTH 1280
 #define CAMERA_HEIGHT 960
 #define CAMERA_FPS 10
+#define FACEDETECT_FPS 0.5
 
 static Controller* controller;
 
@@ -27,17 +29,25 @@ void sigHandler(int sig) {
 int main(int argc, char** argv) {
 	string device = argc == 2 ? argv[1] : "";
     
+	// start camera
     Camera *camera = NULL;
     if (CAMERA_FPS > 0) {
         camera = new Camera(CAMERA_WIDTH, CAMERA_HEIGHT);
         camera->start(1000 / CAMERA_FPS);
     }
 
+	// start face detection
+    FaceDetect *faceDetect = NULL;
+    if (FACEDETECT_FPS > 0 && camera != NULL) {
+        faceDetect = new FaceDetect(camera);
+        faceDetect->start(1000 / FACEDETECT_FPS);
+    }
+
 	controller = new Controller(WIDTH, HEIGHT, PAL_SIZE, device, 
 		baseColors, BASE_COLORS_SIZE, BASE_COLORS_PER_PALETTE,
-        LAYOUT_LEFT_TO_RIGHT, START_DRAWER, FPS, DRAWER_CHANGE_INTERVAL,
-        camera);
-	controller->start();
+        LAYOUT_LEFT_TO_RIGHT, START_DRAWER, DRAWER_CHANGE_INTERVAL,
+        camera, faceDetect);
+	controller->start(1000 / FPS);
 
     signal(SIGINT, sigHandler);
     signal(SIGKILL, sigHandler);

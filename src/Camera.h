@@ -45,19 +45,21 @@ public:
 		uv_timer_stop(&m_timer);
 	}	
 
-	void loop() {
-		// TODO: make this async
-	    m_cam.grab();
-	    m_cam.retrieve(m_imgData);
-	}
-
 	Color24 pixel(int x, int y) const {
 		return Color24(m_imgData[x + y * m_width], 
 					m_imgData[x + y * m_width + 1],
 					m_imgData[x + y * m_width + 2]);
 	}
 
+    friend void camera_timer_cb(uv_timer_t* handle);
+
 private:
+	void loop() {
+		// TODO: make this async
+	    m_cam.grab();
+	    m_cam.retrieve(m_imgData);
+	}
+
 	int m_width, m_height;
 	raspicam::RaspiCam m_cam;
 	unsigned char *m_imgData;

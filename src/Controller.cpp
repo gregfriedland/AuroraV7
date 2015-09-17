@@ -23,17 +23,12 @@ void Controller::init()
 	// create serial connection
 	if (m_device.size() > 0)
 		m_serial.connect();
-
-	// start camera
-
-	// start face detection
 }
 
-
-void Controller::start() {
+void Controller::start(int interval) {
 	uv_timer_init(uv_default_loop(), &m_timer);
 	m_timer.data = this;
-	uv_timer_start(&m_timer, timer_cb, 0, 1000 / m_fps);
+	uv_timer_start(&m_timer, timer_cb, 0, interval);
 }
 
 void Controller::stop() {
