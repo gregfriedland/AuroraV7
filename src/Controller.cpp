@@ -3,6 +3,7 @@
 #include "AlienBlob.h"
 #include "Bzr.h"
 #include "Off.h"
+#include "Video.h"
 #include "Util.h"
 #include <iostream>
 #include <uv.h>
@@ -14,6 +15,8 @@ void Controller::init()
 	// create drawers and set start drawer
 	m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer(m_width, m_height, m_palSize)));
 	m_drawers.insert(make_pair("Bzr", new BzrDrawer(m_width, m_height, m_palSize)));
+    if (m_camera != NULL)
+        m_drawers.insert(make_pair("Video", new VideoDrawer(m_width, m_height, m_palSize, m_camera)));
 	m_drawers.insert(make_pair("Off", new OffDrawer(m_width, m_height, m_palSize)));
 	changeDrawer({m_startDrawerName});
 

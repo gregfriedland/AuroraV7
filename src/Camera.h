@@ -18,7 +18,7 @@ public:
 	Camera(int width, int height) : m_width(width), m_height(height) {
 		m_cam.setWidth(width);
 	  	m_cam.setHeight(height);
-		unsigned int n = Camera.getImageBufferSize();
+		unsigned int n = m_cam.getImageBufferSize();
 	  	m_imgData = new unsigned char[n];
 	}
 
@@ -26,8 +26,11 @@ public:
 		delete m_imgData;
 	}
 
+    int width() const { return m_width; }
+    int height() const { return m_height; }
+
 	void start(unsigned int interval) {
-		if ( !Camera.open() ) {
+		if ( !m_cam.open() ) {
 		    std::cerr << "Error opening camera" << std::endl;
 		} else {
 			uv_timer_init(uv_default_loop(), &m_timer);
@@ -44,11 +47,11 @@ public:
 
 	void loop() {
 		// TODO: make this async
-	    Camera.grab();
-	    Camera.retrieve(m_imgData);
+	    m_cam.grab();
+	    m_cam.retrieve(m_imgData);
 	}
 
-	Color24 pixel(int x, int y) {
+	Color24 pixel(int x, int y) const {
 		return Color24(m_imgData[x + y * m_width], 
 					m_imgData[x + y * m_width + 1],
 					m_imgData[x + y * m_width + 2]);
@@ -62,7 +65,7 @@ private:
     uv_timer_t m_timer;
 };
 
-inline static void genimage_timer_cb(uv_timer_t* handle) {
+inline static void camera_timer_cb(uv_timer_t* handle) {
     ((Camera*)handle->data)->loop();
 }
 
