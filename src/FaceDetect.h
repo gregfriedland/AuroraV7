@@ -10,6 +10,11 @@
 #include <iostream>
 #include <vector>
 
+#include "Camera.h"
+
+using namespace std;
+
+
 static void facedetect_timer_cb(uv_timer_t* handle);
 
 class FaceDetect {
