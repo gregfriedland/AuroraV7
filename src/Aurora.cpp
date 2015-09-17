@@ -17,7 +17,7 @@
 #define CAMERA_WIDTH 1280
 #define CAMERA_HEIGHT 960
 #define CAMERA_FPS 10
-#define FACEDETECT_FPS 0.5
+#define FACEDETECT_FPS 0.2
 
 static Controller* controller;
 

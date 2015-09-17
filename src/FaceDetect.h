@@ -16,6 +16,7 @@ using namespace std;
 
 
 static void facedetect_timer_cb(uv_timer_t* handle);
+static void facedetect_async(uv_work_t *work);
 
 class FaceDetect {
 public:
@@ -29,6 +30,7 @@ public:
     }
 
 	void start(unsigned int interval) {
+        m_work.data = this;
         uv_timer_init(uv_default_loop(), &m_timer);
         m_timer.data = this;
         uv_timer_start(&m_timer, facedetect_timer_cb, 0, interval);
@@ -43,6 +45,7 @@ public:
     bool status() { return m_status; }
 
     friend void facedetect_timer_cb(uv_timer_t* handle);
+    friend void facedetect_async(uv_work_t* work);
 
 private:
     void loop();
@@ -50,17 +53,18 @@ private:
     Camera* m_camera;
     cv::CascadeClassifier m_faceCascade;
     cv::Mat *m_image;
-    uv_timer_t m_timer;
+    uv_timer_t m_timer; // for scheduling callbacks at regulat intervals
+    uv_work_t m_work;   // for doing in a separate thread
     bool m_status;
 };
 
 inline static void facedetect_timer_cb(uv_timer_t* handle) {
-    ((FaceDetect*)handle->data)->loop();
+    uv_work_t *work = &((FaceDetect*)handle->data)->m_work;
+    uv_queue_work(uv_default_loop(), work, facedetect_async, NULL);
 }
 
-
-
-
- 
+inline static void facedetect_async(uv_work_t* work) {
+    ((FaceDetect*)work->data)->loop();
+}
 
 #endif
