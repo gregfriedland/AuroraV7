@@ -1,4 +1,5 @@
 #include "FaceDetect.h"
+#include "Util.h"
 
 void FaceDetect::loop() {
     for (int x = 0; x < m_camera->width(); x++)
@@ -10,9 +11,10 @@ void FaceDetect::loop() {
     // TODO: make this async
     std::vector<cv::Rect> faces;
     cout << "Detecting faces...\n";
-    m_faceCascade.detectMultiScale(*m_image, faces, 1.1, 2,
-                                   0|CV_HAAR_SCALE_IMAGE, cv::Size(30, 30));
-    cout << "done\n";
+    unsigned long startTime = millis();
+    m_faceCascade.detectMultiScale(*m_image, faces, 1.2, 2,
+                                   0|CV_HAAR_SCALE_IMAGE, cv::Size(50, 50), cv::Size(400,400));
+    cout << "done in " << millis() - startTime << "ms\n";
     m_status = faces.size() > 0;
     if (m_status)
         cout << "Detected " << faces.size() << " faces\n";
