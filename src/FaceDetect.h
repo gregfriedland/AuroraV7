@@ -15,7 +15,7 @@ static void facedetect_timer_cb(uv_timer_t* handle);
 class FaceDetect {
 public:
     FaceDetect(Camera* camera) : m_camera(camera), m_status(false) {
-        m_image = new cv::Mat(camera->height(), camera->width(), CV_8UC3);
+        m_image = new cv::Mat(camera->height(), camera->width(), CV_8UC1);
         m_faceCascade.load("src/haarcascade_frontalface_alt2.xml");
     }
 
@@ -40,23 +40,7 @@ public:
     friend void facedetect_timer_cb(uv_timer_t* handle);
 
 private:
-	void loop() {
-        for (int x = 0; x < m_camera->width(); x++)
-            for (int y = 0; y < m_camera->height(); y++) {
-                Color24 col = m_camera->pixel(x, y);
-                m_image->at<cv::Vec3b>(y,x) = cv::Vec3b(col.r, col.g, col.b);
-            }
-
-		// TODO: make this async
-        std::vector<cv::Rect> faces;
-        cout << "Detecting faces...\n";
-        m_faceCascade.detectMultiScale(*m_image, faces, 1.2, 2,
-                                       0|CV_HAAR_SCALE_IMAGE, cv::Size(20, 20), cv::Size(200, 200)); 
-        cout << "done\n";
-        m_status = faces.size() > 0;
-        if (m_status)
-            cout << "Detected " << faces.size() << " faces\n";
-	}
+    void loop();
 
     Camera* m_camera;
     cv::CascadeClassifier m_faceCascade;
