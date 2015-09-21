@@ -18,7 +18,10 @@ void Controller::init()
     if (m_camera != NULL)
         m_drawers.insert(make_pair("Video", new VideoDrawer(m_width, m_height, m_palSize, m_camera)));
 	m_drawers.insert(make_pair("Off", new OffDrawer(m_width, m_height, m_palSize)));
-	changeDrawer({m_startDrawerName});
+    if (m_drawers.find(m_startDrawerName) != m_drawers.end())
+        changeDrawer({m_startDrawerName});
+    else
+        changeDrawer({"AlienBlob"});
 
 	// create serial connection
 	if (m_device.size() > 0)
@@ -71,7 +74,7 @@ void Controller::loop() {
 
 		unsigned char buffer[256];
 		if (m_serial.read(256, buffer) > 0)
-	        cout << "read: " << (int) buffer[0] << endl;
+	        cout << "read: " << (unsigned int) buffer[0] << endl;
 	}
 }
 

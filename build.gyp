@@ -12,7 +12,9 @@
       'conditions': [
         ['OS=="linux"', {
           'include_dirs': [ './deps/raspicam/src' ],
-          'libraries': [ '../deps/raspicam/build/src/libraspicam.so',
+          'libraries': [ '../deps/raspicam/build/src/libraspicam.a',
+                         '/opt/vc/lib/libmmal.so', '/opt/vc/lib/libmmal_core.so',
+                         '/opt/vc/lib/libmmal_util.so',
                          '/usr/local/lib/libopencv_objdetect.so',
                          '/usr/local/lib/libopencv_core.so' ],
           }],

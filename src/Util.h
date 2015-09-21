@@ -3,12 +3,12 @@
 
 #include <iostream>
 #include <iomanip>
-#include <sys/time.h>
-// #include <chrono>
+//#include <sys/time.h>
+#include <chrono>
 #include <random>
 
 using namespace std;
-// using namespace std::chrono;
+using namespace std::chrono;
 
 
 struct Color24 {
@@ -25,14 +25,14 @@ struct Color24 {
 
 
 inline unsigned long millis() {
-	struct timeval tv;
+	/* struct timeval tv; */
 
-	gettimeofday(&tv, NULL);
+	/* gettimeofday(&tv, NULL); */
 
-	return (unsigned long)(tv.tv_sec) * 1000 +
-    	   (unsigned long)(tv.tv_usec) / 1000;
-	// return duration_cast< milliseconds >(
- //    	system_clock::now().time_since_epoch()).count();
+	/* return (unsigned long)(tv.tv_sec) * 1000 + */
+    /* 	   (unsigned long)(tv.tv_usec) / 1000; */
+	return duration_cast< milliseconds >(
+    	system_clock::now().time_since_epoch()).count();
 }
 
 
