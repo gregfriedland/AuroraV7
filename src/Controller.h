@@ -22,37 +22,11 @@ public:
     Controller(int width, int height, int palSize, string device, 
         int* baseColors, int numBaseColors, int baseColorsPerPalette,
         bool layoutLeftToRight, string startDrawerName,
-        int drawerChangeInterval, Camera* camera, FaceDetect* faceDetect)
-    : m_width(width), m_height(height), m_palSize(palSize), m_device(device),
-      m_layoutLeftToRight(layoutLeftToRight),
-      m_startDrawerName(startDrawerName), 
-      m_palettes(palSize, baseColors, numBaseColors, baseColorsPerPalette),
-      m_serial(device), m_camera(camera), m_faceDetect(faceDetect),
-      m_currDrawer(NULL), m_drawerChangeTimer(drawerChangeInterval),
-      m_fpsCounter(5000, "Controller")
-    {
-        m_currPalIndex = random2() % m_palettes.size();
+        int drawerChangeInterval, Camera* camera, FaceDetect* faceDetect);
 
-        m_colIndicesSize = width * height;
-        m_colIndices = new int[m_colIndicesSize];
-        m_serialWriteBufferSize = width * height * 3 + 1;
-        m_serialWriteBuffer = new unsigned char[m_serialWriteBufferSize];
-        init();
-    }
+    ~Controller();
 
-    ~Controller() {
-        cout << "Freeing Controller memory\n";
-
-        for (auto elem: m_drawers)
-            delete elem.second;
-        delete m_colIndices;
-        delete m_serialWriteBuffer;
-    }
-
-    const unsigned char* rawData(int& size) {
-        size = m_serialWriteBufferSize;
-        return m_serialWriteBuffer;
-    }
+    const unsigned char* rawData(int& size);
 
     void start(int interval);
     void stop();
@@ -94,9 +68,5 @@ private:
     FpsCounter m_fpsCounter;
     uv_timer_t m_timer;
 };
-
-inline static void timer_cb(uv_timer_t* handle) {
-    ((Controller*)handle->data)->loop();
-}
 
 #endif
