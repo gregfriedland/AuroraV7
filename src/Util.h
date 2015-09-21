@@ -72,20 +72,9 @@ private:
 
 class FpsCounter {
 public:
-	FpsCounter(unsigned int outputInterval, string name)
-	: m_count(0), m_lastTime(millis()), m_interval(outputInterval), m_name(name)
-	{}
+	FpsCounter(unsigned int outputInterval, string name);
 
-	void tick() {
-		m_count++;
-		unsigned int currTime = millis();
-		if (currTime - m_lastTime > m_interval) {
-			float fps = 1000. * m_count/(currTime - m_lastTime);
-	        cout << m_name << ": " << fixed << setprecision(1) << fps << "fps\n";
-			m_lastTime = currTime;
-			m_count = 0;
-		}
-	}
+	void tick();
 
 private:
 	unsigned int m_count;
