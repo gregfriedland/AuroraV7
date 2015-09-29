@@ -11,13 +11,13 @@
 #define PAL_SIZE 1<<12 // #colors in the gradient of each palette
 #define FPS 50
 #define START_DRAWER "Video"
-#define DRAWER_CHANGE_INTERVAL 10000
+#define DRAWER_CHANGE_INTERVAL 60000
 #define LAYOUT_LEFT_TO_RIGHT false
 #define UPDATE_IMAGE_FPS 0
 #define CAMERA_WIDTH 640
 #define CAMERA_HEIGHT 480
-#define CAMERA_FPS 0
-#define FACEDETECT_FPS 0
+#define CAMERA_FPS 15
+#define FACEDETECT_FPS 0.2
 
 static Controller* controller;
 

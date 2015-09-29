@@ -31,6 +31,8 @@ public:
 
 	Color24 pixel(int x, int y) const;
 
+    void saveImage(string filename) const;
+
     friend void camera_timer_cb(uv_timer_t* handle);
 
 private:
