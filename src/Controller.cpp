@@ -82,9 +82,14 @@ void Controller::stop() {
 void Controller::loop() {
 	m_fpsCounter.tick();
 
-	// update camera if appropriate
-
-	// update facedetection if appropriate
+    // change to Video drawer if faces have been detected or change
+    // from video drawer is no faces detected
+    if (m_faceDetect->status() && m_currDrawer->name().compare("Off") != 0 &&
+        m_currDrawer->name().compare("Video") != 0) {
+        changeDrawer({"Video"});
+    } else if (!m_faceDetect->status() && m_currDrawer->name().compare("Video") == 0) {
+        changeDrawer({"Bzr", "AlienBlob"});
+    }
 
 	// change drawer every so often
 	if (m_drawerChangeTimer.tick(NULL))

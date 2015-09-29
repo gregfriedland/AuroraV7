@@ -56,7 +56,6 @@ void Camera::stop() {
 
 Color24 Camera::pixel(int x, int y) const {
 #ifdef RASPICAM
-    //cout << "getting x=" << x << " y=" << y << endl;
     int index = (x + y * m_width) * 3;
 	return Color24(m_imgData[index], 
 				   m_imgData[index + 1],

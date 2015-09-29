@@ -17,16 +17,13 @@ void VideoDrawer::draw(int* colIndices) {
 		int xx = x * m_camera->width() / m_width;
 		for (int y=0; y<m_height; y++) {
 		    int yy = y * m_camera->height() / m_height;
-            //cout << "xy=" << xx << " " << yy << endl;
 		    Color24 col = m_camera->pixel(xx, yy);
-		    int gray = (col.r + col.g + col.b) / 3;
-		    int index = gray * m_palSize / 256 + m_colorIndex;
+		    int val = col.r; //(col.r + col.g + col.b) / 3;
+		    int index = val * m_palSize / 256 + m_colorIndex;
         	colIndices[x + y * m_width] = index;
         }
     }
     m_colorIndex += m_settings["colorSpeed"];
-    // m_camera->saveImage("/home/pi/downloads/aurora.ppm");
-    // exit(1);
 }
 
 VideoDrawer::~VideoDrawer() {}
