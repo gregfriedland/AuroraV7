@@ -22,11 +22,18 @@
 static Controller* controller;
 
 void sigHandler(int sig) {
+    cout << "Caugt SIGINT\n";
 	controller->stop();
-	exit(0);
+	exit(1);
 }
 
 int main(int argc, char** argv) {
+    struct sigaction sigIntHandler;
+    sigIntHandler.sa_handler = sigHandler;
+    sigemptyset(&sigIntHandler.sa_mask);
+    sigIntHandler.sa_flags = 0;
+    sigaction(SIGINT, &sigIntHandler, NULL);
+
 	string device = argc >= 2 ? argv[1] : "";
     
     string startDrawer = argc >= 3 ? argv[2] : START_DRAWER;

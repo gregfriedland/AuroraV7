@@ -17,13 +17,13 @@
                          '/opt/vc/lib/libmmal_util.so',
                          '/usr/local/lib/libopencv_objdetect.so',
                          '/usr/local/lib/libopencv_core.so' ],
-          }],
+         }],
         ['OS=="mac"', {
           'libraries': [ '/usr/local/lib/libopencv_objdetect.dylib',
                          '/usr/local/lib/libopencv_core.dylib',
                          '/usr/local/lib/libopencv_highgui.dylib' ],
-          }],
-        ]
+        }],
+      ]
     },
   ],
 }

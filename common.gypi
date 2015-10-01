@@ -37,10 +37,12 @@
       'Profile': {
         'cflags': [ '-g', '-pg', '-O3' ],
         'cflags_cc': [ '-g', '-pg', '-O3', '-std=c++11' ],
+        'ldflags': [ '-pg' ],
         'defines': [ 'NDEBUG' ],
         'xcode_settings': {
           'OTHER_CFLAGS': [ '-g', '-pg', '-O3' ],
-          'OTHER_CPLUSPLUSFLAGS' : [ '-g', '-pg', '-O0', '-std=c++11' ],
+          'OTHER_CPLUSPLUSFLAGS' : [ '-g', '-pg', '-O3', '-std=c++11' ],
+          'OTHER_LDFLAGS': [ '-pg' ],
         }
       },
       'Release': {
@@ -49,7 +51,7 @@
         'defines': [ 'NDEBUG' ],
         'xcode_settings': {
           'OTHER_CFLAGS': [ '-O3' ],
-          'OTHER_CPLUSPLUSFLAGS' : [ '-g', '-O0', '-std=c++11' ],
+          'OTHER_CPLUSPLUSFLAGS' : [ '-g', '-O3', '-std=c++11' ],
         }
       }
     }

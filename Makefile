@@ -1,4 +1,4 @@
-all: ./build ./aurora
+all: ./build release
 
 # only make raspicam c++ lib if we're on a raspi
 UNAME_M := $(shell uname -m)
@@ -32,9 +32,17 @@ endif
 SOURCES=src/*.cpp deps/lodepng/lodepng.cpp
 HEADERS=src/*.h
 
-./aurora: $(SOURCES) $(HEADERS)
-	make -C ./build/ aurora
+release: $(SOURCES) $(HEADERS)
+	make BUILDTYPE=Release -C ./build/ aurora
 	cp ./build/out/Release/aurora ./aurora
+
+debug: $(SOURCES) $(HEADERS)
+	make BUILDTYPE=Debug -C ./build/ aurora
+	cp ./build/out/Debug/aurora ./aurora
+
+profile: $(SOURCES) $(HEADERS)
+	make BUILDTYPE=Profile -C ./build/ aurora
+	cp ./build/out/Profile/aurora ./aurora
 
 distclean:
 	make clean
@@ -45,6 +53,8 @@ clean:
 	rm -f ./build/out/Release/aurora
 	rm -rf ./build/out/Debug/obj.target/aurora/
 	rm -f ./build/out/Debug/aurora
+	rm -rf ./build/out/Profile/obj.target/aurora/
+	rm -f ./build/out/Profile/aurora
 	rm -f ./aurora
 
 .PHONY: test

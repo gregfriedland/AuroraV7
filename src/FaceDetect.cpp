@@ -45,11 +45,11 @@ void FaceDetect::stop() {
 bool FaceDetect::status() { return m_status; }
 
 
-inline static void facedetect_timer_cb(uv_timer_t* handle) {
+static void facedetect_timer_cb(uv_timer_t* handle) {
     uv_work_t *work = &((FaceDetect*)handle->data)->m_work;
     uv_queue_work(uv_default_loop(), work, facedetect_async, NULL);
 }
 
-inline static void facedetect_async(uv_work_t* work) {
+static void facedetect_async(uv_work_t* work) {
     ((FaceDetect*)work->data)->loop();
 }

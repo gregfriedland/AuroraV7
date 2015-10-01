@@ -62,15 +62,17 @@ Color24 Camera::pixel(int x, int y) const {
 				   m_imgData[index + 2]);
 #else
 	cv::Vec3b pix = m_imgData->at<cv::Vec3b>(y,x);
-	return Color24(pix[0], pix[1], pix[2]);
+z	return Color24(pix[0], pix[1], pix[2]);
 #endif
 }
 
 void Camera::loop() {
+    cout << "camera::loop()\n";
     m_lastMean = m_currMean;
 
 #ifdef RASPICAM		
     m_cam.grab();
+    //m_imgData = m_cam.getImageBufferData();
     m_cam.retrieve(m_imgData);
 #else
     m_vc.grab();
@@ -100,5 +102,10 @@ double Camera::diff() const {
 }
 
 static void camera_timer_cb(uv_timer_t* handle) {
-    ((Camera*)handle->data)->loop();
+    uv_work_t *work = &((Camera*)handle->data)->m_work;
+    uv_queue_work(uv_default_loop(), work, camera_async, NULL);
 }
+
+ static void camera_async(uv_work_t* work) {
+     ((Camera*)work->data)->loop();
+ }

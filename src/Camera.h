@@ -15,6 +15,7 @@
 
 
 static void camera_timer_cb(uv_timer_t* handle);
+static void camera_async(uv_work_t *work);
 
 class Camera {
 public:
@@ -38,6 +39,7 @@ public:
     double diff() const;
 
     friend void camera_timer_cb(uv_timer_t* handle);
+    friend void camera_async(uv_work_t* work);
 
 private:
 	void loop();
@@ -52,8 +54,8 @@ private:
 	cv::Mat *m_imgData;
 #endif
 
-
     uv_timer_t m_timer;
+    uv_work_t m_work;
 };
 
 #endif
