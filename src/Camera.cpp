@@ -5,7 +5,7 @@
 #include <fstream>
 #include <unistd.h>
 
-Camera::Camera(int width, int height) {
+Camera::Camera(int width, int height) : m_lastMean(0), m_currMean(0) {
 #ifdef RASPICAM
 	m_cam.setWidth(width);
   	m_cam.setHeight(height);
@@ -67,7 +67,8 @@ Color24 Camera::pixel(int x, int y) const {
 }
 
 void Camera::loop() {
-	// TODO: make this async
+    m_lastMean = m_currMean;
+
 #ifdef RASPICAM		
     m_cam.grab();
     m_cam.retrieve(m_imgData);
@@ -75,6 +76,9 @@ void Camera::loop() {
     m_vc.grab();
     m_vc.retrieve(*m_imgData);
 #endif
+
+    m_currMean = mean();
+    cout << "camera diff: " << diff() << endl;
 }
 
 void Camera::saveImage(string filename) const {
@@ -82,6 +86,17 @@ void Camera::saveImage(string filename) const {
     outFile<<"P6\n" << m_width << " " << m_height << " 255\n";
     outFile.write ( ( char* ) m_imgData, m_cam.getImageTypeSize ( raspicam::RASPICAM_FORMAT_RGB ) );
     cout<<"Image saved to: " << filename << endl;
+}
+
+double Camera::mean() const {
+    double total = 0;
+    for (int i = 0; i < m_width * m_height * 3; i++)
+        total += m_imgData[i];
+    return total / (m_width * m_height * 3);
+}
+
+double Camera::diff() const {
+    return m_currMean - m_lastMean;
 }
 
 static void camera_timer_cb(uv_timer_t* handle) {

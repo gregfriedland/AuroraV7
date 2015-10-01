@@ -26,7 +26,7 @@
     'configurations': {
       'Debug': {
         'cflags': [ '-g', '-O0' ],
-        'cflags_cc': [ '-g', '-O3', '-std=c++11' ],
+        'cflags_cc': [ '-g', '-O0', '-std=c++11' ],
         'defines': [ 'DEBUG' ],
         'xcode_settings': {
           'OTHER_CFLAGS': [ '-g', '-O0' ],
@@ -34,9 +34,18 @@
 
         }
       },
+      'Profile': {
+        'cflags': [ '-g', '-pg', '-O3' ],
+        'cflags_cc': [ '-g', '-pg', '-O3', '-std=c++11' ],
+        'defines': [ 'NDEBUG' ],
+        'xcode_settings': {
+          'OTHER_CFLAGS': [ '-g', '-pg', '-O3' ],
+          'OTHER_CPLUSPLUSFLAGS' : [ '-g', '-pg', '-O0', '-std=c++11' ],
+        }
+      },
       'Release': {
         'cflags': [ '-O3' ],
-        'cflags_cc': [ '-g', '-O3', '-std=c++11' ],
+        'cflags_cc': [ '-O3', '-std=c++11' ],
         'defines': [ 'NDEBUG' ],
         'xcode_settings': {
           'OTHER_CFLAGS': [ '-O3' ],

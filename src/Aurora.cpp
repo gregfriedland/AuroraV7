@@ -10,7 +10,7 @@
 #define HEIGHT 32
 #define PAL_SIZE 1<<12 // #colors in the gradient of each palette
 #define FPS 50
-#define START_DRAWER "Video"
+#define START_DRAWER "Bzr"
 #define DRAWER_CHANGE_INTERVAL 60000
 #define LAYOUT_LEFT_TO_RIGHT false
 #define UPDATE_IMAGE_FPS 0
@@ -27,25 +27,30 @@ void sigHandler(int sig) {
 }
 
 int main(int argc, char** argv) {
-	string device = argc == 2 ? argv[1] : "";
+	string device = argc >= 2 ? argv[1] : "";
     
+    string startDrawer = argc >= 3 ? argv[2] : START_DRAWER;
+    int drawerChangeInterval = argc >= 4 ? atoi(argv[3]) : DRAWER_CHANGE_INTERVAL;
+    int cameraFps = argc >= 5 ? atoi(argv[4]) : CAMERA_FPS;
+    int facedetectFps = argc >= 6 ? atoi(argv[5]) : FACEDETECT_FPS;
+
 	// start camera
     Camera *camera = NULL;
-    if (CAMERA_FPS > 0) {
+    if (cameraFps > 0) {
         camera = new Camera(CAMERA_WIDTH, CAMERA_HEIGHT);
-        camera->start(1000 / CAMERA_FPS);
+        camera->start(1000 / cameraFps);
     }
 
 	// start face detection
     FaceDetect *faceDetect = NULL;
-    if (FACEDETECT_FPS > 0 && camera != NULL) {
+    if (facedetectFps > 0 && camera != NULL) {
         faceDetect = new FaceDetect(camera);
-        faceDetect->start(1000 / FACEDETECT_FPS);
+        faceDetect->start(1000 / facedetectFps);
     }
 
 	controller = new Controller(WIDTH, HEIGHT, PAL_SIZE, device, 
 		baseColors, BASE_COLORS_SIZE, BASE_COLORS_PER_PALETTE,
-        LAYOUT_LEFT_TO_RIGHT, START_DRAWER, DRAWER_CHANGE_INTERVAL,
+        LAYOUT_LEFT_TO_RIGHT, startDrawer, drawerChangeInterval,
         camera, faceDetect);
 	controller->start(1000 / FPS);
 

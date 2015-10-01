@@ -84,16 +84,20 @@ void Controller::loop() {
 
     // change to Video drawer if faces have been detected or change
     // from video drawer is no faces detected
-    if (m_faceDetect->status() && m_currDrawer->name().compare("Off") != 0 &&
+    if (m_faceDetect != NULL && m_faceDetect->status() && m_currDrawer->name().compare("Off") != 0 &&
         m_currDrawer->name().compare("Video") != 0) {
         changeDrawer({"Video"});
-    } else if (!m_faceDetect->status() && m_currDrawer->name().compare("Video") == 0) {
+    } else if (m_faceDetect != NULL && !m_faceDetect->status() && m_currDrawer->name().compare("Video") == 0) {
         changeDrawer({"Bzr", "AlienBlob"});
     }
 
-	// change drawer every so often
-	if (m_drawerChangeTimer.tick(NULL))
-		changeDrawer({"Bzr", "AlienBlob"});
+	// Change drawer every so often
+	if (m_drawerChangeTimer.tick(NULL)) {
+        if (m_currDrawer->name().compare("Video") == 0)
+            randomizeSettings();
+        else
+            changeDrawer({"Bzr", "AlienBlob"});
+    }
 
 	// update drawer
 	m_currDrawer->draw(m_colIndices);

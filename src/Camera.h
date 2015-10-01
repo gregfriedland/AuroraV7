@@ -33,12 +33,17 @@ public:
 
     void saveImage(string filename) const;
 
+    double mean() const;
+
+    double diff() const;
+
     friend void camera_timer_cb(uv_timer_t* handle);
 
 private:
 	void loop();
 
 	int m_width, m_height;
+    double m_lastMean, m_currMean;
 #ifdef RASPICAM	
 	raspicam::RaspiCam m_cam;
 	unsigned char *m_imgData;
