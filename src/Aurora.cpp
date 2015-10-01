@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
     string startDrawer = argc >= 3 ? argv[2] : START_DRAWER;
     int drawerChangeInterval = argc >= 4 ? atoi(argv[3]) : DRAWER_CHANGE_INTERVAL;
     int cameraFps = argc >= 5 ? atoi(argv[4]) : CAMERA_FPS;
-    int facedetectFps = argc >= 6 ? atoi(argv[5]) : FACEDETECT_FPS;
+    float facedetectFps = argc >= 6 ? atoi(argv[5]) : FACEDETECT_FPS;
 
 	// start camera
     Camera *camera = NULL;

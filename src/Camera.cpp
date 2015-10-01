@@ -5,7 +5,8 @@
 #include <fstream>
 #include <unistd.h>
 
-Camera::Camera(int width, int height) : m_lastMean(0), m_currMean(0) {
+Camera::Camera(int width, int height)
+: m_grabbing(false), m_lastMean(0), m_currMean(0) {
 #ifdef RASPICAM
 	m_cam.setWidth(width);
   	m_cam.setHeight(height);
@@ -17,8 +18,8 @@ Camera::Camera(int width, int height) : m_lastMean(0), m_currMean(0) {
   	m_vc.set(CV_CAP_PROP_FRAME_WIDTH, width);
   	m_vc.set(CV_CAP_PROP_FRAME_HEIGHT, height);
   	m_imgData = new cv::Mat(height, width, CV_8UC3);
-    m_width = width;
-    m_height = height;
+    m_width = m_imgData->cols;
+    m_height = m_imgData->rows;
 #endif	  	
 }
 
@@ -27,21 +28,22 @@ Camera::~Camera() {
 }
 
 int Camera::width() const { 
-    return m_cam.getWidth();
+    return m_width;
 }
 
 int Camera::height() const { 
-    return m_cam.getHeight(); 
+    return m_height;
 }
 
 void Camera::start(unsigned int interval) {
 #ifdef RASPICAM
 	if (!m_cam.open()) {
 #else    
-	if (m_vc.open(0)) {
+	if (!m_vc.open(0)) {
 #endif			
 	    std::cerr << "Error opening camera" << std::endl;
 	} else {
+        m_work.data = this;
 		uv_timer_init(uv_default_loop(), &m_timer);
 		m_timer.data = this;
 		uv_timer_start(&m_timer, camera_timer_cb, 0, interval);
@@ -61,39 +63,57 @@ Color24 Camera::pixel(int x, int y) const {
 				   m_imgData[index + 1],
 				   m_imgData[index + 2]);
 #else
+    // cout << x << " " << y << endl;
 	cv::Vec3b pix = m_imgData->at<cv::Vec3b>(y,x);
-z	return Color24(pix[0], pix[1], pix[2]);
+    // cout << (int)pix[0] << " " << (int)pix[1] << " " << (int)pix[2] << endl; 
+	return Color24(pix[0], pix[1], pix[2]);
 #endif
 }
 
 void Camera::loop() {
-    cout << "camera::loop()\n";
+    if (m_grabbing)
+        return;
+    m_grabbing = true;
+
     m_lastMean = m_currMean;
 
+    // cout << "Camera grab begin...\n";
 #ifdef RASPICAM		
     m_cam.grab();
     //m_imgData = m_cam.getImageBufferData();
     m_cam.retrieve(m_imgData);
 #else
     m_vc.grab();
-    m_vc.retrieve(*m_imgData);
+    // m_vc.retrieve(*m_imgData);
 #endif
+    // cout << "Camera grab done.\n";
 
     m_currMean = mean();
-    cout << "camera diff: " << diff() << endl;
+    //cout << "camera diff: " << diff() << endl;
+    m_grabbing = false;
 }
 
 void Camera::saveImage(string filename) const {
     std::ofstream outFile(filename.c_str(), std::ios::binary);
     outFile<<"P6\n" << m_width << " " << m_height << " 255\n";
+#ifdef RASPICAM
     outFile.write ( ( char* ) m_imgData, m_cam.getImageTypeSize ( raspicam::RASPICAM_FORMAT_RGB ) );
     cout<<"Image saved to: " << filename << endl;
+#endif    
 }
 
 double Camera::mean() const {
+#ifdef RASPICAM
     double total = 0;
     for (int i = 0; i < m_width * m_height * 3; i++)
         total += m_imgData[i];
+#else
+    double total = 0;
+    for (int i = 0; i < m_width * m_height; i++) {
+        cv::Vec3b rgb = m_imgData->at<cv::Vec3b>(i); 
+        total += rgb[0] + rgb[1] + rgb[2];
+    }
+#endif    
     return total / (m_width * m_height * 3);
 }
 

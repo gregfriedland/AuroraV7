@@ -44,6 +44,7 @@ public:
 private:
 	void loop();
 
+	bool m_grabbing;
 	int m_width, m_height;
     double m_lastMean, m_currMean;
 #ifdef RASPICAM	
