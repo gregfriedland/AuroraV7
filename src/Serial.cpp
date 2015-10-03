@@ -53,7 +53,7 @@ void Serial::write(const unsigned char* buffer, int size) {
         // cout << "Serial writing: " << size << " bytes; wrote: " << result << " bytes\n";
         if (errno != 0 || result == -1) {
             cout << "Serial error while writing: " << errno << endl;
-            return;
+            exit(1);
         }
         written += result;
     } while (written < size);

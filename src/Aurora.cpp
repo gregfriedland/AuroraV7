@@ -9,7 +9,7 @@
 #define WIDTH 64
 #define HEIGHT 32
 #define PAL_SIZE 1<<12 // #colors in the gradient of each palette
-#define FPS 50
+#define FPS 30
 #define START_DRAWER "Bzr"
 #define DRAWER_CHANGE_INTERVAL 60000
 #define LAYOUT_LEFT_TO_RIGHT false
