@@ -36,6 +36,7 @@ public:
 
     double mean() const;
 
+    // diff between last and current frame from 0 -> 1
     double diff() const;
 
     friend void camera_timer_cb(uv_timer_t* handle);

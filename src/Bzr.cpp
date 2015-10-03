@@ -11,8 +11,8 @@ void bzr(int width, int height, int numColors, int width2, int height2, int& sta
          int& p, int& q, float zoom, float *a, float *b, float *c, int *indices);
 
 
-BzrDrawer::BzrDrawer(int width, int height, int palSize) 
-: Drawer("Bzr", width, height, palSize), m_colorIndex(0) {
+BzrDrawer::BzrDrawer(int width, int height, int palSize, Camera* camera)
+: Drawer("Bzr", width, height, palSize), m_colorIndex(0), m_camera(camera) {
     m_settings.insert(make_pair("speed",50));
     m_settings.insert(make_pair("colorSpeed",0));
     m_settings.insert(make_pair("zoom",70));
@@ -47,7 +47,10 @@ void BzrDrawer::reset() {
 }
 
 void BzrDrawer::draw(int* colIndices) {
-    int numStates = BZR_SPEED_MULTIPLIER - floor(pow(m_settings["speed"]/100.0, 0.25) * (BZR_SPEED_MULTIPLIER-1));
+    float speed = m_settings["speed"]/100.0;
+    //float speed = min(100.0, m_settings["speed"]/100.0 * (1 + m_camera->diff()));
+
+    int numStates = BZR_SPEED_MULTIPLIER - floor(pow(speed, 0.25) * (BZR_SPEED_MULTIPLIER-1));
 
     bzr(m_width, m_height, m_palSize, m_width, m_height, m_state, numStates, m_p, m_q, 
         m_settings["zoom"]/100.0, m_a, m_b, m_c, colIndices);

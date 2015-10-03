@@ -18,7 +18,7 @@ umask 022
 case "$1" in
   start)
   log_daemon_msg "Starting Aurora (serial)" "aurora-serial" || true
-  if start-stop-daemon --start --quiet --oknodo --background --exec /home/pi/AuroraV6/aurora /dev/ttyACM0 ; then
+  if start-stop-daemon --start --quiet --oknodo --background --exec /home/pi/AuroraV6/aurora.sh ; then
     log_end_msg 0 || true
   else
     log_end_msg 1 || true

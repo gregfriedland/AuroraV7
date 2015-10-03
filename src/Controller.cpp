@@ -52,8 +52,8 @@ const unsigned char* Controller::rawData(int& size) {
 void Controller::init()
 {
 	// create drawers and set start drawer
-	m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer(m_width, m_height, m_palSize)));
-	m_drawers.insert(make_pair("Bzr", new BzrDrawer(m_width, m_height, m_palSize)));
+	m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer(m_width, m_height, m_palSize, m_camera)));
+	m_drawers.insert(make_pair("Bzr", new BzrDrawer(m_width, m_height, m_palSize, m_camera)));
     if (m_camera != NULL)
         m_drawers.insert(make_pair("Video", new VideoDrawer(m_width, m_height, m_palSize, m_camera)));
 	m_drawers.insert(make_pair("Off", new OffDrawer(m_width, m_height, m_palSize)));
@@ -91,7 +91,7 @@ void Controller::loop() {
         changeDrawer({"Bzr", "AlienBlob"});
     }
 
-	// Change drawer every so often
+	// Change drawer every so often, but only to video if faces were detected
 	if (m_drawerChangeTimer.tick(NULL)) {
         if (m_currDrawer->name().compare("Video") == 0)
             randomizeSettings();

@@ -35,6 +35,11 @@ inline unsigned long millis() {
     	system_clock::now().time_since_epoch()).count();
 }
 
+static unsigned long int startTime = millis();
+inline void fail() {
+    cout << "Exit after " << ((millis() - startTime) / 1000) << "s\n";
+    exit(1);
+}
 
 static minstd_rand0 randGen(millis());
 inline int random2() {

@@ -27,6 +27,7 @@
 #include <iostream>
 
 #include "Serial.h"
+#include "Util.h"
 
  // function prototypes
 static PORTTYPE open_port_and_set_baud_or_die(const char *name, long baud);
@@ -53,7 +54,7 @@ void Serial::write(const unsigned char* buffer, int size) {
         // cout << "Serial writing: " << size << " bytes; wrote: " << result << " bytes\n";
         if (errno != 0 || result == -1) {
             cout << "Serial error while writing: " << errno << endl;
-            exit(1);
+            fail();
         }
         written += result;
     } while (written < size);

@@ -2,10 +2,11 @@
 #define ALIENBLOB_H
 
 #include "Drawer.h"
+#include "Camera.h"
 
 class AlienBlobDrawer : public Drawer {
 public:
-    AlienBlobDrawer(int width, int height, int palSize);
+    AlienBlobDrawer(int width, int height, int palSize, Camera* camera);
 
     virtual void reset();
 
@@ -17,6 +18,7 @@ public:
     float m_sineTable[360];
     int m_colorIndex;
     float m_pos;
+    Camera* m_camera;
 };
 
 #endif

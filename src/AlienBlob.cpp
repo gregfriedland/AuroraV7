@@ -18,8 +18,8 @@ static void alienblob(int width, int height, int numColors, float zoff, int perl
 
 
 
-AlienBlobDrawer::AlienBlobDrawer(int width, int height, int palSize) 
-: Drawer("AlienBlob", width, height, palSize), m_colorIndex(0) {
+AlienBlobDrawer::AlienBlobDrawer(int width, int height, int palSize, Camera* camera)
+: Drawer("AlienBlob", width, height, palSize), m_colorIndex(0), m_camera(camera) {
     m_settings.insert(make_pair("speed",3));
     m_settings.insert(make_pair("colorSpeed",0));
     m_settings.insert(make_pair("detail",3));

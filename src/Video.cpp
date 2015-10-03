@@ -5,8 +5,8 @@ using namespace std;
 
 VideoDrawer::VideoDrawer(int width, int height, int palSize, const Camera* camera) 
 : Drawer("Video", width, height, palSize), m_camera(camera), m_colorIndex(0) {
-    m_settings.insert(make_pair("colorSpeed",0));
-    m_settingsRanges.insert(make_pair("colorSpeed", make_pair(0,50)));
+    m_settings.insert(make_pair("colorSpeed",20));
+    m_settingsRanges.insert(make_pair("colorSpeed", make_pair(10,50)));
 }
 
 void VideoDrawer::reset() {

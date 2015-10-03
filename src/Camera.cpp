@@ -118,7 +118,7 @@ double Camera::mean() const {
 }
 
 double Camera::diff() const {
-    return m_currMean - m_lastMean;
+    return max(min(abs(m_currMean - m_lastMean), 1.0), 0.0);
 }
 
 static void camera_timer_cb(uv_timer_t* handle) {
