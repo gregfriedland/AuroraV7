@@ -73,9 +73,13 @@ int main(int argc, char** argv) {
 		genImage.start(1000 / updateImageFps);
 	}
 
-	start_webserver();
+	//start_webserver();
 
 	// allow accepting websocket requests from client app
 
+    int r = uv_run(uv_default_loop(), UV_RUN_DEFAULT);
+    assert(r == 0);
+
 	delete controller;
+    return r;
 }

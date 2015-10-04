@@ -1,5 +1,22 @@
 #include "FaceDetect.h"
 #include "Util.h"
+#include <uv.h>
+
+
+static void facedetect_async_cleanup(uv_work_t* work, int status) {
+    delete work;
+}
+
+static void facedetect_async(uv_work_t* work) {
+    ((FaceDetect*)work->data)->loop();
+}
+
+static void facedetect_timer_cb(uv_timer_t* handle) {
+    uv_work_t* work = new uv_work_t;
+    work->data = handle->data;
+    uv_queue_work(uv_default_loop(), work, facedetect_async, facedetect_async_cleanup);
+}
+
 
 void FaceDetect::loop() {
     for (int x = 0; x < m_camera->width(); x++)
@@ -30,7 +47,6 @@ FaceDetect::~FaceDetect() {
 }
 
 void FaceDetect::start(unsigned int interval) {
-    m_work.data = this;
     uv_timer_init(uv_default_loop(), &m_timer);
     m_timer.data = this;
     uv_timer_start(&m_timer, facedetect_timer_cb, 0, interval);
@@ -43,13 +59,3 @@ void FaceDetect::stop() {
 }   
 
 bool FaceDetect::status() { return m_status; }
-
-
-static void facedetect_timer_cb(uv_timer_t* handle) {
-    uv_work_t *work = &((FaceDetect*)handle->data)->m_work;
-    uv_queue_work(uv_default_loop(), work, facedetect_async, NULL);
-}
-
-static void facedetect_async(uv_work_t* work) {
-    ((FaceDetect*)work->data)->loop();
-}

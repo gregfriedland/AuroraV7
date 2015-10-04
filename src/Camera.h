@@ -14,9 +14,6 @@
 #endif
 
 
-static void camera_timer_cb(uv_timer_t* handle);
-static void camera_async(uv_work_t *work);
-
 class Camera {
 public:
 	Camera(int width, int height);
@@ -39,12 +36,9 @@ public:
     // diff between last and current frame from 0 -> 1
     double diff() const;
 
-    friend void camera_timer_cb(uv_timer_t* handle);
-    friend void camera_async(uv_work_t* work);
-
-private:
 	void loop();
 
+private:
 	bool m_grabbing;
 	int m_width, m_height;
     double m_lastMean, m_currMean;
@@ -57,7 +51,6 @@ private:
 #endif
 
     uv_timer_t m_timer;
-    uv_work_t m_work;
 };
 
 #endif

@@ -5,6 +5,21 @@
 #include <fstream>
 #include <unistd.h>
 
+static void camera_async_cleanup(uv_work_t* work, int status) {
+    delete work;
+}
+
+static void camera_async(uv_work_t* work) {
+    ((Camera*)work->data)->loop();
+}
+
+static void camera_timer_cb(uv_timer_t* handle) {
+    uv_work_t* work = new uv_work_t;
+    work->data = handle->data;
+    uv_queue_work(uv_default_loop(), work, camera_async, camera_async_cleanup);
+}
+
+
 Camera::Camera(int width, int height)
 : m_grabbing(false), m_lastMean(0), m_currMean(0) {
 #ifdef RASPICAM
@@ -43,7 +58,6 @@ void Camera::start(unsigned int interval) {
 #endif			
 	    std::cerr << "Error opening camera" << std::endl;
 	} else {
-        m_work.data = this;
 		uv_timer_init(uv_default_loop(), &m_timer);
 		m_timer.data = this;
 		uv_timer_start(&m_timer, camera_timer_cb, 0, interval);
@@ -80,7 +94,6 @@ void Camera::loop() {
     // cout << "Camera grab begin...\n";
 #ifdef RASPICAM		
     m_cam.grab();
-    //m_imgData = m_cam.getImageBufferData();
     m_cam.retrieve(m_imgData);
 #else
     m_vc.grab();
@@ -120,12 +133,3 @@ double Camera::mean() const {
 double Camera::diff() const {
     return max(min(abs(m_currMean - m_lastMean), 1.0), 0.0);
 }
-
-static void camera_timer_cb(uv_timer_t* handle) {
-    uv_work_t *work = &((Camera*)handle->data)->m_work;
-    uv_queue_work(uv_default_loop(), work, camera_async, NULL);
-}
-
- static void camera_async(uv_work_t* work) {
-     ((Camera*)work->data)->loop();
- }
