@@ -5,6 +5,7 @@ if (APPLE)
 	add_definitions(-DMACOSX)
 elseif (UNIX)
 	add_definitions(-DLINUX)
+	add_subdirectory(modules/raspicam)
 elseif (WIN32)
 	add_definitions(-DWINDOWS)
 endif()
@@ -19,10 +20,6 @@ file(GLOB SRCS
 	${CMAKE_CURRENT_SOURCE_DIR}/modules/lodepng/lodepng.cpp
 )
 list(REMOVE_ITEM SRCS ${CMAKE_CURRENT_SOURCE_DIR}/src/WebServer.cpp)
-
-if (LINUX)
-	add_subdirectory(modules/raspicam)
-endif()
 
 add_executable(${PROJECT_NAME} ${SRCS})
 
