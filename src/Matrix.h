@@ -11,7 +11,7 @@ class Matrix {
 	virtual void update() = 0;
 	virtual const unsigned char* rawData(size_t& size) const = 0;
 
- private:
+ protected:
  	size_t m_width, m_height;
 };
 

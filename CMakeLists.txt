@@ -14,23 +14,20 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11 -O3 -g -fPIC")
 file(GLOB SRCS
 	${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/modules/rpi-rgb-led-matrix/lib/*.cc
-#	${CMAKE_CURRENT_SOURCE_DIR}/modules/libuv/src/*.c
-#	${CMAKE_CURRENT_SOURCE_DIR}/modules/libuv/src/unix/*.c
 	${CMAKE_CURRENT_SOURCE_DIR}/modules/rpi-rgb-led-matrix/lib/*.cc
 	${CMAKE_CURRENT_SOURCE_DIR}/modules/rpi-rgb-led-matrix/lib/*.c
 	${CMAKE_CURRENT_SOURCE_DIR}/modules/lodepng/lodepng.cpp
 )
 list(REMOVE_ITEM SRCS ${CMAKE_CURRENT_SOURCE_DIR}/src/WebServer.cpp)
-#message(SRCS=${SRCS})
 
-add_subdirectory(modules/raspicam)
+if (LINUX)
+	add_subdirectory(modules/raspicam)
+endif()
 
 add_executable(${PROJECT_NAME} ${SRCS})
 
 target_include_directories(${PROJECT_NAME} PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/modules/libuv/include
-#	${CMAKE_CURRENT_SOURCE_DIR}/modules/libuv/src/
-#	${CMAKE_CURRENT_SOURCE_DIR}/modules/libuv/src/unix
 	${CMAKE_CURRENT_SOURCE_DIR}/modules/rpi-rgb-led-matrix/include
 	${CMAKE_CURRENT_SOURCE_DIR}/modules/lodepng
 	${CMAKE_CURRENT_SOURCE_DIR}/modules/raspicam/src
