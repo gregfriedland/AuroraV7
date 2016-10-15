@@ -3,9 +3,9 @@
 
 #include "Drawer.h"
 #include "Palette.h"
-#include "Serial.h"
 #include "Util.h"
 #include "Camera.h"
+#include "Matrix.h"
 #include "FaceDetect.h"
 
 #include <map>
@@ -19,14 +19,14 @@ static void timer_cb(uv_timer_t* handle);
 
 class Controller {
 public:
-    Controller(int width, int height, int palSize, string device, 
+    Controller(Matrix* matrix, int width, int height, int palSize,
         int* baseColors, int numBaseColors, int baseColorsPerPalette,
         bool layoutLeftToRight, string startDrawerName,
         int drawerChangeInterval, Camera* camera, FaceDetect* faceDetect);
 
     ~Controller();
 
-    const unsigned char* rawData(int& size);
+    const unsigned char* rawData(size_t& size);
 
     void start(int interval);
     void stop();
@@ -45,14 +45,13 @@ private:
     void init();
     void changeDrawer(vector<string> names);
 
+    Matrix* m_matrix;
     int m_width, m_height, m_palSize;
-    string m_device;
     bool m_layoutLeftToRight;
     string m_startDrawerName;
     
     Palettes m_palettes;
     int m_currPalIndex; // index of current palette
-    Serial m_serial;
     Camera* m_camera;
     FaceDetect* m_faceDetect;
 
@@ -62,8 +61,6 @@ private:
 
     int* m_colIndices; // stores current color indices before mapping to rgb
     int m_colIndicesSize; // size of color indices array
-    unsigned char* m_serialWriteBuffer; // stores data in serial write order
-    int m_serialWriteBufferSize;
 
     FpsCounter m_fpsCounter;
     uv_timer_t m_timer;

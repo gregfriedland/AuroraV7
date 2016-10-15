@@ -1,29 +1,37 @@
 #include "Controller.h"
 #include "Colors.h"
-#include "WebServer.h"
+// #include "WebServer.h"
 #include "GenImage.h"
 #include "Camera.h"
 #include "FaceDetect.h"
 #include "Util.h"
 #include <signal.h>
+#include "Matrix.h"
+#include "HzellerRpiMatrix.h"
+
+typedef enum {
+    HZELLER_RPI_MATRX,
+    SERIAL_MATRIX
+} MatrixType;
 
 #define WIDTH 64
 #define HEIGHT 32
 #define PAL_SIZE 1<<12 // #colors in the gradient of each palette
 #define FPS 30
 #define START_DRAWER "Bzr"
-#define DRAWER_CHANGE_INTERVAL 60000
+#define DRAWER_CHANGE_INTERVAL 20000
 #define LAYOUT_LEFT_TO_RIGHT false
 #define UPDATE_IMAGE_FPS 0
 #define CAMERA_WIDTH 640
 #define CAMERA_HEIGHT 480
-#define CAMERA_FPS 15
-#define FACEDETECT_FPS 0.2
+#define CAMERA_FPS 0
+#define FACEDETECT_FPS 0
+#define MATRIX_TYPE HZELLER_RPI_MATRX
 
 static Controller* controller;
 
 void sigHandler(int sig) {
-    cout << "Caugt SIGINT\n";
+    cout << "Caught SIGINT\n";
 	controller->stop();
 	fail();
 }
@@ -56,7 +64,18 @@ int main(int argc, char** argv) {
         faceDetect->start(1000 / facedetectFps);
     }
 
-	controller = new Controller(WIDTH, HEIGHT, PAL_SIZE, device, 
+    Matrix* matrix = nullptr;
+    switch(MATRIX_TYPE) {
+        case HZELLER_RPI_MATRX:
+            matrix = new HzellerRpiMatrix(WIDTH, HEIGHT);
+            break;
+        default:
+            std::cout << "Not fully implemented\n";
+            fail();
+            break;
+    }
+
+	controller = new Controller(matrix, WIDTH, HEIGHT, PAL_SIZE, 
 		baseColors, BASE_COLORS_SIZE, BASE_COLORS_PER_PALETTE,
         LAYOUT_LEFT_TO_RIGHT, startDrawer, drawerChangeInterval,
         camera, faceDetect);
@@ -68,7 +87,7 @@ int main(int argc, char** argv) {
 	// save images to disk at recurring interval
 	int updateImageFps = device.size() != 0 ? UPDATE_IMAGE_FPS : 5;
 	if (updateImageFps > 0 ) {
-		int rawDataSize;
+		size_t rawDataSize;
 		GenImage genImage(WIDTH, HEIGHT, "public/image.png", controller->rawData(rawDataSize));
 		genImage.start(1000 / updateImageFps);
 	}
@@ -80,6 +99,7 @@ int main(int argc, char** argv) {
     int r = uv_run(uv_default_loop(), UV_RUN_DEFAULT);
     assert(r == 0);
 
+    delete matrix;
 	delete controller;
     return r;
 }

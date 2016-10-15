@@ -14,15 +14,15 @@ static void timer_cb(uv_timer_t* handle) {
     ((Controller*)handle->data)->loop();
 }
 
-Controller::Controller(int width, int height, int palSize, string device, 
+Controller::Controller(Matrix* matrix, int width, int height, int palSize,
     int* baseColors, int numBaseColors, int baseColorsPerPalette,
     bool layoutLeftToRight, string startDrawerName,
     int drawerChangeInterval, Camera* camera, FaceDetect* faceDetect)
-: m_width(width), m_height(height), m_palSize(palSize), m_device(device),
+: m_matrix(matrix), m_width(width), m_height(height), m_palSize(palSize),
   m_layoutLeftToRight(layoutLeftToRight),
   m_startDrawerName(startDrawerName), 
   m_palettes(palSize, baseColors, numBaseColors, baseColorsPerPalette),
-  m_serial(device), m_camera(camera), m_faceDetect(faceDetect),
+  m_camera(camera), m_faceDetect(faceDetect),
   m_currDrawer(NULL), m_drawerChangeTimer(drawerChangeInterval),
   m_fpsCounter(5000, "Controller")
 {
@@ -30,8 +30,6 @@ Controller::Controller(int width, int height, int palSize, string device,
 
     m_colIndicesSize = width * height;
     m_colIndices = new int[m_colIndicesSize];
-    m_serialWriteBufferSize = width * height * 3 + 1;
-    m_serialWriteBuffer = new unsigned char[m_serialWriteBufferSize];
     init();
 }
 
@@ -41,12 +39,10 @@ Controller::~Controller() {
     for (auto elem: m_drawers)
         delete elem.second;
     delete m_colIndices;
-    delete m_serialWriteBuffer;
 }
 
-const unsigned char* Controller::rawData(int& size) {
-    size = m_serialWriteBufferSize;
-    return m_serialWriteBuffer;
+const unsigned char* Controller::rawData(size_t& size) {
+    return m_matrix->rawData(size);
 }
 
 void Controller::init()
@@ -61,10 +57,6 @@ void Controller::init()
         changeDrawer({m_startDrawerName});
     else
         changeDrawer({"AlienBlob"});
-
-	// create serial connection
-	if (m_device.size() > 0)
-		m_serial.connect();
 }
 
 void Controller::start(int interval) {
@@ -75,8 +67,6 @@ void Controller::start(int interval) {
 
 void Controller::stop() {
 	uv_timer_stop(&m_timer);
-	if (m_device.size() > 0)
-		m_serial.close();
 }
 
 void Controller::loop() {
@@ -102,28 +92,13 @@ void Controller::loop() {
 	// update drawer
 	m_currDrawer->draw(m_colIndices);
 
-	// pack data for serial transmission
-	int i = 0;
 	for (int y = 0; y < m_height; y++) {
 		for (int x = 0; x < m_width; x++) {
 			Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_width]);
-			// if (x == 0 && y == 0)
-			// 	cout << "00 index=" << m_colIndices[x + y * m_width] << " rgb=" << (int)col.r << " " << (int)col.g << " " << (int)col.b << endl;
-			m_serialWriteBuffer[i++] = min((unsigned char)254, col.r);
-			m_serialWriteBuffer[i++] = min((unsigned char)254, col.g);
-			m_serialWriteBuffer[i++] = min((unsigned char)254, col.b);
+            m_matrix->setPixel(x, y, col.r, col.g, col.b);
 		}
 	}
-	m_serialWriteBuffer[i++] = 255;
-
-	// send serial data
-	if (m_device.size() > 0) {
-		m_serial.write(m_serialWriteBuffer, m_serialWriteBufferSize);
-
-		unsigned char buffer[256];
-		if (m_serial.read(256, buffer) > 0)
-	        cout << "read: " << (unsigned int) buffer[0] << endl;
-	}
+    m_matrix->update();
 }
 
 
