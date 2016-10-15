@@ -14,8 +14,8 @@ typedef enum {
     SERIAL_MATRIX
 } MatrixType;
 
-#define WIDTH 64
-#define HEIGHT 32
+#define WIDTH 64*3
+#define HEIGHT 32*3
 #define PAL_SIZE 1<<12 // #colors in the gradient of each palette
 #define FPS 30
 #define START_DRAWER "Bzr"
@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
             matrix = new HzellerRpiMatrix(WIDTH, HEIGHT);
             break;
         default:
-            std::cout << "Not fully implemented\n";
+            std::cout << "Matrix type not implemented\n";
             fail();
             break;
     }
@@ -85,12 +85,11 @@ int main(int argc, char** argv) {
     signal(SIGKILL, sigHandler);
 
 	// save images to disk at recurring interval
-	int updateImageFps = device.size() != 0 ? UPDATE_IMAGE_FPS : 5;
-	if (updateImageFps > 0 ) {
-		size_t rawDataSize;
-		GenImage genImage(WIDTH, HEIGHT, "public/image.png", controller->rawData(rawDataSize));
-		genImage.start(1000 / updateImageFps);
-	}
+#if UPDATE_IMAGE_FPS > 0
+    size_t rawDataSize;
+    GenImage genImage(WIDTH, HEIGHT, "public/image.png", controller->rawData(rawDataSize));
+    genImage.start(1000 / updateImageFps);
+#endif
 
 	//start_webserver();
 

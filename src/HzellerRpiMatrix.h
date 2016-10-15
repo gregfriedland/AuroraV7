@@ -38,7 +38,7 @@ class HzellerRpiMatrix : public Matrix {
 	}
 
 	virtual const unsigned char* rawData(size_t& size) const {
-		std::cout << "Not implemented\n";
+		std::cout << "HzellerRpiMatrix rawData() not implemented\n";
 		exit(1);
 		return nullptr;
 	}

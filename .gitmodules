@@ -7,3 +7,6 @@
 [submodule "modules/lodepng"]
 	path = modules/lodepng
 	url = https://github.com/lvandeve/lodepng.git
+[submodule "modules/raspicam"]
+	path = modules/raspicam
+	url = https://github.com/cedricve/raspicam.git
