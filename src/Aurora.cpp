@@ -30,9 +30,12 @@ typedef enum {
 
 static Controller* controller;
 
+static bool interrupted = false;
+
 void sigHandler(int sig) {
     cout << "Caught SIGINT\n";
-	controller->stop();
+	// controller->stop();
+    interrupted = true;
 	fail();
 }
 
@@ -79,26 +82,37 @@ int main(int argc, char** argv) {
 		baseColors, BASE_COLORS_SIZE, BASE_COLORS_PER_PALETTE,
         LAYOUT_LEFT_TO_RIGHT, startDrawer, drawerChangeInterval,
         camera, faceDetect);
-	controller->start(1000 / FPS);
+	// controller->start(1000 / FPS);
 
     signal(SIGINT, sigHandler);
     signal(SIGKILL, sigHandler);
 
+    uint32_t lastUpdateTime = 0;
+    while(!interrupted) {
+        auto now = steady_clock::now().time_since_epoch().count();
+        if (now - lastUpdateTime > 1000 / FPS) {
+            controller->loop();
+            lastUpdateTime = now;
+        }
+    }
+
+    std::cout << "Interrupted by signal\n";
+
 	// save images to disk at recurring interval
-#if UPDATE_IMAGE_FPS > 0
-    size_t rawDataSize;
-    GenImage genImage(WIDTH, HEIGHT, "public/image.png", controller->rawData(rawDataSize));
-    genImage.start(1000 / updateImageFps);
-#endif
+// #if UPDATE_IMAGE_FPS > 0
+//     size_t rawDataSize;
+//     GenImage genImage(WIDTH, HEIGHT, "public/image.png", controller->rawData(rawDataSize));
+//     genImage.start(1000 / updateImageFps);
+// #endif
 
 	//start_webserver();
 
 	// allow accepting websocket requests from client app
 
-    int r = uv_run(uv_default_loop(), UV_RUN_DEFAULT);
-    assert(r == 0);
+    // int r = uv_run(uv_default_loop(), UV_RUN_DEFAULT);
+    // assert(r == 0);
 
     delete matrix;
 	delete controller;
-    return r;
+    return 0;
 }

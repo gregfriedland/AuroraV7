@@ -59,15 +59,15 @@ void Controller::init()
         changeDrawer({"AlienBlob"});
 }
 
-void Controller::start(int interval) {
-	uv_timer_init(uv_default_loop(), &m_timer);
-	m_timer.data = this;
-	uv_timer_start(&m_timer, timer_cb, 0, interval);
-}
+// void Controller::start(int interval) {
+// 	// uv_timer_init(uv_default_loop(), &m_timer);
+// 	// m_timer.data = this;
+// 	// uv_timer_start(&m_timer, timer_cb, 0, interval);
+// }
 
-void Controller::stop() {
-	uv_timer_stop(&m_timer);
-}
+// void Controller::stop() {
+// 	// uv_timer_stop(&m_timer);
+// }
 
 void Controller::loop() {
 	m_fpsCounter.tick();

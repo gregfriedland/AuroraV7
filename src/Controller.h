@@ -28,11 +28,13 @@ public:
 
     const unsigned char* rawData(size_t& size);
 
-    void start(int interval);
-    void stop();
+    // void start(int interval);
+    // void stop();
+
+    void loop();
 
 private:
-    friend void timer_cb(uv_timer_t* handle);
+    // friend void timer_cb(uv_timer_t* handle);
     
     const map<string,int>& settings();
     const map< string,pair<int,int> >& settingsRanges();
@@ -41,7 +43,6 @@ private:
     vector<string> drawerNames();
     void randomizeSettings();
 
-    void loop();
     void init();
     void changeDrawer(vector<string> names);
 
@@ -63,7 +64,7 @@ private:
     int m_colIndicesSize; // size of color indices array
 
     FpsCounter m_fpsCounter;
-    uv_timer_t m_timer;
+    // uv_timer_t m_timer;
 };
 
 #endif
