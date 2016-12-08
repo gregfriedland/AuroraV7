@@ -1,12 +1,11 @@
 #include "Controller.h"
 #include "Colors.h"
-#include "WebServer.h"
-#include "GenImage.h"
 #include "Camera.h"
 #include "FaceDetect.h"
 #include "Util.h"
 #include <signal.h>
 #include <unistd.h>
+#include <thread>
 
 #define WIDTH 64
 #define HEIGHT 32
@@ -15,11 +14,10 @@
 #define START_DRAWER "Bzr"
 #define DRAWER_CHANGE_INTERVAL 30000
 #define LAYOUT_LEFT_TO_RIGHT false
-#define UPDATE_IMAGE_FPS 0
 #define CAMERA_WIDTH 640
 #define CAMERA_HEIGHT 480
 #define CAMERA_FPS 15
-#define FACEDETECT_FPS 0.2
+#define FACEDETECT_FPS 1
 
 static Controller* controller;
 
@@ -64,26 +62,15 @@ int main(int argc, char** argv) {
 		baseColors, BASE_COLORS_SIZE, BASE_COLORS_PER_PALETTE,
         LAYOUT_LEFT_TO_RIGHT, startDrawer, drawerChangeInterval,
         camera, faceDetect);
-	controller->start(1000 / FPS);
 
     signal(SIGINT, sigHandler);
     signal(SIGKILL, sigHandler);
 
-	// save images to disk at recurring interval
-	int updateImageFps = device.size() != 0 ? UPDATE_IMAGE_FPS : 5;
-	if (updateImageFps > 0 ) {
-		int rawDataSize;
-		GenImage genImage(WIDTH, HEIGHT, "public/image.png", controller->rawData(rawDataSize));
-		genImage.start(1000 / updateImageFps);
-	}
-
-	//start_webserver();
-
-	// allow accepting websocket requests from client app
-
-    int r = uv_run(uv_default_loop(), UV_RUN_DEFAULT);
-    assert(r == 0);
+    controller->start(1000 / FPS);
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
 
 	delete controller;
-    return r;
+    return 0;
 }

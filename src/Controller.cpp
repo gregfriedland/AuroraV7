@@ -6,13 +6,9 @@
 #include "Video.h"
 #include "Util.h"
 #include <iostream>
-#include <uv.h>
 #include <stdlib.h>
+#include <thread>
 
-
-static void timer_cb(uv_timer_t* handle) {
-    ((Controller*)handle->data)->loop();
-}
 
 Controller::Controller(int width, int height, int palSize, string device, 
     int* baseColors, int numBaseColors, int baseColorsPerPalette,
@@ -68,13 +64,25 @@ void Controller::init()
 }
 
 void Controller::start(int interval) {
-	uv_timer_init(uv_default_loop(), &m_timer);
-	m_timer.data = this;
-	uv_timer_start(&m_timer, timer_cb, 0, interval);
+    std::cout << "Starting controller\n";
+    m_stop = false;
+    auto run = [=]() {
+        while (!m_stop) {
+            loop();
+            std::this_thread::sleep_for(std::chrono::milliseconds(interval));
+        }
+        m_stop = false;
+    };
+    std::thread(run).detach();
 }
 
 void Controller::stop() {
-	uv_timer_stop(&m_timer);
+    std::cout << "Stopping controller\n";
+    m_stop = true;
+    while (m_stop) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
 	if (m_device.size() > 0)
 		m_serial.close();
 }

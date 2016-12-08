@@ -1,31 +1,17 @@
 #include "FaceDetect.h"
 #include "Util.h"
-#include <uv.h>
-
-
-static void facedetect_async_cleanup(uv_work_t* work, int status) {
-    delete work;
-}
-
-static void facedetect_async(uv_work_t* work) {
-    ((FaceDetect*)work->data)->loop();
-}
-
-static void facedetect_timer_cb(uv_timer_t* handle) {
-    uv_work_t* work = new uv_work_t;
-    work->data = handle->data;
-    uv_queue_work(uv_default_loop(), work, facedetect_async, facedetect_async_cleanup);
-}
+#include <thread>
 
 
 void FaceDetect::loop() {
-    for (int x = 0; x < m_camera->width(); x++)
+    auto pixelData = m_camera->clonePixelData();
+    for (int x = 0; x < m_camera->width(); x++) {
         for (int y = 0; y < m_camera->height(); y++) {
-            Color24 col = m_camera->pixel(x, y);
+            Color24 col = pixelData.get(x, y);
             m_image->at<unsigned char>(y,x) = (col.r + col.g + col.b) / 3;
         }
+    }
 
-    // TODO: make this async
     std::vector<cv::Rect> faces;
     cout << "Detecting faces...\n";
     unsigned long startTime = millis();
@@ -47,15 +33,25 @@ FaceDetect::~FaceDetect() {
 }
 
 void FaceDetect::start(unsigned int interval) {
-    uv_timer_init(uv_default_loop(), &m_timer);
-    m_timer.data = this;
-    uv_timer_start(&m_timer, facedetect_timer_cb, 0, interval);
     std::cout << "Starting face detection\n";
+    m_stop = false;
+
+    auto run = [=]() {
+        while (!m_stop) {
+            loop();
+            std::this_thread::sleep_for(std::chrono::milliseconds(interval));
+        }
+        m_stop = false;
+    };
+    std::thread(run).detach();
 }
 
 void FaceDetect::stop() {
     std::cout << "Stopping face detection\n";
-    uv_timer_stop(&m_timer);
+    m_stop = true;
+    while (m_stop) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }    
 }   
 
 bool FaceDetect::status() { return m_status; }

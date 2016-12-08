@@ -6,7 +6,6 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
-#include <uv.h>
 #include <iostream>
 #include <vector>
 
@@ -33,8 +32,8 @@ private:
     Camera* m_camera;
     cv::CascadeClassifier m_faceCascade;
     cv::Mat *m_image;
-    uv_timer_t m_timer; // for scheduling callbacks at regulat intervals
     bool m_status;
+    bool m_stop;
 };
 
 

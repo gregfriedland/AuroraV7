@@ -6,6 +6,7 @@
 //#include <sys/time.h>
 #include <chrono>
 #include <random>
+#include <array>
 
 using namespace std;
 using namespace std::chrono;

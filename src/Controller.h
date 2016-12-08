@@ -11,11 +11,8 @@
 #include <map>
 #include <vector>
 #include <iostream>
-#include <uv.h>
 
 using namespace std;
-
-static void timer_cb(uv_timer_t* handle);
 
 class Controller {
 public:
@@ -31,9 +28,7 @@ public:
     void start(int interval);
     void stop();
 
-private:
-    friend void timer_cb(uv_timer_t* handle);
-    
+private:    
     const map<string,int>& settings();
     const map< string,pair<int,int> >& settingsRanges();
     void setSettings(const map<string,int>& settings);
@@ -66,7 +61,7 @@ private:
     int m_serialWriteBufferSize;
 
     FpsCounter m_fpsCounter;
-    uv_timer_t m_timer;
+    bool m_stop;
 };
 
 #endif

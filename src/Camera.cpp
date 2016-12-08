@@ -1,27 +1,12 @@
-#include <uv.h>
 #include <iostream>
 #include "Util.h"
 #include "Camera.h"
 #include <fstream>
 #include <unistd.h>
-
-static void camera_async_cleanup(uv_work_t* work, int status) {
-    delete work;
-}
-
-static void camera_async(uv_work_t* work) {
-    ((Camera*)work->data)->loop();
-}
-
-static void camera_timer_cb(uv_timer_t* handle) {
-    uv_work_t* work = new uv_work_t;
-    work->data = handle->data;
-    uv_queue_work(uv_default_loop(), work, camera_async, camera_async_cleanup);
-}
+#include <thread>
 
 
-Camera::Camera(int width, int height)
-: m_grabbing(false), m_lastMean(0), m_currMean(0) {
+Camera::Camera(int width, int height) {
 #ifdef RASPICAM
 	m_cam.setWidth(width);
   	m_cam.setHeight(height);
@@ -32,14 +17,16 @@ Camera::Camera(int width, int height)
 #else
   	m_vc.set(CV_CAP_PROP_FRAME_WIDTH, width);
   	m_vc.set(CV_CAP_PROP_FRAME_HEIGHT, height);
-  	m_imgData = new cv::Mat(height, width, CV_8UC3);
-    m_width = m_imgData->cols;
-    m_height = m_imgData->rows;
+  	m_imgData = cv::Mat(height, width, CV_8UC3);
+    m_width = m_imgData.cols;
+    m_height = m_imgData.rows;
 #endif	  	
 }
 
 Camera::~Camera() {
-	delete m_imgData;
+#ifdef LINUX
+    delete[] m_imgData;
+#endif
 }
 
 int Camera::width() const { 
@@ -57,41 +44,39 @@ void Camera::start(unsigned int interval) {
 	if (!m_vc.open(0)) {
 #endif			
 	    std::cerr << "Error opening camera" << std::endl;
-	} else {
-		uv_timer_init(uv_default_loop(), &m_timer);
-		m_timer.data = this;
-		uv_timer_start(&m_timer, camera_timer_cb, 0, interval);
-		std::cout << "Starting camera\n";
+        return;
 	}
+
+    std::cout << "Starting camera\n";
+    m_stop = false;
+    auto run = [=]() {
+        while (!m_stop) {
+            loop();
+            std::this_thread::sleep_for(std::chrono::milliseconds(interval));
+        }
+        m_stop = false;
+    };
+    std::thread(run).detach();
 }
 
 void Camera::stop() {
 	std::cout << "Stopping camera.\n";
-	uv_timer_stop(&m_timer);
+    m_stop = true;
+    while (m_stop) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 }	
 
-Color24 Camera::pixel(int x, int y) const {
-#ifdef RASPICAM
-    int index = (x + y * m_width) * 3;
-	return Color24(m_imgData[index], 
-				   m_imgData[index + 1],
-				   m_imgData[index + 2]);
-#else
-    // cout << x << " " << y << endl;
-	cv::Vec3b pix = m_imgData->at<cv::Vec3b>(y,x);
-    // cout << (int)pix[0] << " " << (int)pix[1] << " " << (int)pix[2] << endl; 
-	return Color24(pix[0], pix[1], pix[2]);
-#endif
+PixelData Camera::clonePixelData() {
+    m_mutex.lock();
+    auto pixelData = PixelData(m_width, m_height, m_imgData);
+    m_mutex.unlock();
+    return pixelData;
 }
 
 void Camera::loop() {
-    if (m_grabbing)
-        return;
-    m_grabbing = true;
-
-    m_lastMean = m_currMean;
-
     // cout << "Camera grab begin...\n";
+    m_mutex.lock();
 #ifdef RASPICAM		
     m_cam.grab();
     m_cam.retrieve(m_imgData);
@@ -99,37 +84,17 @@ void Camera::loop() {
     m_vc.grab();
     // m_vc.retrieve(*m_imgData);
 #endif
+    m_mutex.unlock();
     // cout << "Camera grab done.\n";
-
-    m_currMean = mean();
-    //cout << "camera diff: " << diff() << endl;
-    m_grabbing = false;
 }
 
-void Camera::saveImage(string filename) const {
+void Camera::saveImage(string filename) {
     std::ofstream outFile(filename.c_str(), std::ios::binary);
     outFile<<"P6\n" << m_width << " " << m_height << " 255\n";
+    m_mutex.lock();
 #ifdef RASPICAM
     outFile.write ( ( char* ) m_imgData, m_cam.getImageTypeSize ( raspicam::RASPICAM_FORMAT_RGB ) );
     cout<<"Image saved to: " << filename << endl;
 #endif    
-}
-
-double Camera::mean() const {
-#ifdef RASPICAM
-    double total = 0;
-    for (int i = 0; i < m_width * m_height * 3; i++)
-        total += m_imgData[i];
-#else
-    double total = 0;
-    for (int i = 0; i < m_width * m_height; i++) {
-        cv::Vec3b rgb = m_imgData->at<cv::Vec3b>(i); 
-        total += rgb[0] + rgb[1] + rgb[2];
-    }
-#endif    
-    return total / (m_width * m_height * 3);
-}
-
-double Camera::diff() const {
-    return max(min(abs(m_currMean - m_lastMean), 1.0), 0.0);
+    m_mutex.unlock();
 }

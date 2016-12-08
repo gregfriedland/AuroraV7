@@ -6,7 +6,7 @@
 
 class VideoDrawer : public Drawer {
 public:
-    VideoDrawer(int width, int height, int palSize, const Camera* camera);
+    VideoDrawer(int width, int height, int palSize, Camera* camera);
 
     virtual void reset();
 
@@ -15,7 +15,7 @@ public:
     virtual ~VideoDrawer();
 
  private:
- 	const Camera* m_camera;
+ 	Camera* m_camera;
     int m_colorIndex;
 };
 
