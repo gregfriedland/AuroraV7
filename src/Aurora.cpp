@@ -6,13 +6,14 @@
 #include "FaceDetect.h"
 #include "Util.h"
 #include <signal.h>
+#include <unistd.h>
 
 #define WIDTH 64
 #define HEIGHT 32
 #define PAL_SIZE 1<<12 // #colors in the gradient of each palette
 #define FPS 30
 #define START_DRAWER "Bzr"
-#define DRAWER_CHANGE_INTERVAL 60000
+#define DRAWER_CHANGE_INTERVAL 30000
 #define LAYOUT_LEFT_TO_RIGHT false
 #define UPDATE_IMAGE_FPS 0
 #define CAMERA_WIDTH 640
@@ -41,6 +42,9 @@ int main(int argc, char** argv) {
     int drawerChangeInterval = argc >= 4 ? atoi(argv[3]) : DRAWER_CHANGE_INTERVAL;
     int cameraFps = argc >= 5 ? atoi(argv[4]) : CAMERA_FPS;
     float facedetectFps = argc >= 6 ? atof(argv[5]) : FACEDETECT_FPS;
+
+    // wait a bit for things to settle
+    //sleep(30);
 
 	// start camera
     Camera *camera = NULL;

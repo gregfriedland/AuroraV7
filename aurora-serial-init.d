@@ -4,8 +4,8 @@
 # Provides:	aurora-serial
 # Default-Start:	2 3 4 5
 # Default-Stop:         0 1 6
-# Required-Start:	$network $local_fs
-# Required-Stop:	$network $local_fs
+# Required-Start:   $all
+# Required-Stop:    
 # Short-Description:	Aurora LED pattern generator (serial)
 ### END INIT INFO
 
@@ -18,6 +18,7 @@ umask 022
 case "$1" in
   start)
   log_daemon_msg "Starting Aurora (serial)" "aurora-serial" || true
+  cd /home/pi/AuroraV6
   if start-stop-daemon --start --quiet --oknodo --background --exec /home/pi/AuroraV6/aurora.sh ; then
     log_end_msg 0 || true
   else
