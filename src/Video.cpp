@@ -14,7 +14,11 @@ void VideoDrawer::reset() {
 
 void VideoDrawer::draw(int* colIndices) {
     auto img = m_camera->getGrayImage();
-	for (int x = 0; x < m_width; ++x) {
+    if (img.cols == 0 || img.rows == 0) {
+      std::cout << "Zero sized image from camera\n";
+      return;
+    }
+    for (int x = 0; x < m_width; ++x) {
 		int xx = x * m_camera->width() / m_width;
 		for (int y = 0; y < m_height; ++y) {
 		    int yy = y * m_camera->height() / m_height;

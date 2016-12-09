@@ -23,7 +23,7 @@ endif()
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/haarcascade_frontalface_alt2.xml
     DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-add_definitions(-DFACE_CASCADE_FILE="haarcascade_frontalface_alt2.xml")
+add_definitions(-DFACE_CASCADE_FILE="${CMAKE_CURRENT_BINARY_DIR}/haarcascade_frontalface_alt2.xml")
 
 add_executable(detect_faces_test detect_faces_test.cpp)
 target_link_libraries(detect_faces_test ${OpenCV_LIBS})
