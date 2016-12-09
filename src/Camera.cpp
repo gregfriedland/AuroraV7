@@ -5,11 +5,6 @@
 #include <unistd.h>
 #include <thread>
 
-#ifndef RAPICAM
-  #include <highgui.h>
-  #define WINDOW_NAME "Video"
-#endif
-
 Camera::Camera(int width, int height)
  : m_fpsCounter(5000, "Camera") {
 #ifdef RASPICAM
@@ -20,14 +15,18 @@ Camera::Camera(int width, int height)
     m_width = m_cam.getWidth();
     m_height = m_cam.getHeight();
 #else
-  	m_vc.set(CV_CAP_PROP_FRAME_WIDTH, width);
-  	m_vc.set(CV_CAP_PROP_FRAME_HEIGHT, height);
-  	m_imgData = cv::Mat(height, width, CV_8UC3);
-    m_width = m_imgData.cols;
-    m_height = m_imgData.rows;
-    cv::namedWindow(WINDOW_NAME, CV_WINDOW_AUTOSIZE);
-    cv::moveWindow(WINDOW_NAME, 0, 0);
-    std::cout << "Creating video window\n";
+    m_vc.set(CV_CAP_PROP_FRAME_WIDTH, width);
+    m_vc.set(CV_CAP_PROP_FRAME_HEIGHT, height);
+    // m_img = cv::Mat(height, width, CV_8UC3);
+
+    m_vc.read(m_img);
+    m_width = width;
+    m_height = height;
+    // m_width = m_vc.get(CV_CAP_PROP_FRAME_WIDTH);
+    // m_height = m_vc.get(CV_CAP_PROP_FRAME_HEIGHT);
+
+    std::cout << "Creating camera with dims " << m_width << "x" << m_height <<
+        " (desired " << width << "x" << height << ")\n";
 #endif	  	
 }
 
@@ -59,49 +58,52 @@ void Camera::init() {
 void Camera::start(unsigned int interval) {
     init();
 
-    std::cout << "Starting camera\n";
+    std::cout << "Starting camera with dims " << m_width << "x" << m_height << "\n";
     m_stop = false;
     auto run = [=]() {
         while (!m_stop) {
-            loop();
-            std::this_thread::sleep_for(std::chrono::milliseconds(interval));
+            loop(interval);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         m_stop = false;
     };
-    std::thread(run).detach();
+    m_thread = std::thread(run);
+    m_thread.detach();
 }
 
 void Camera::stop() {
 	std::cout << "Stopping camera\n";
     m_stop = true;
-    while (m_stop) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    if (m_thread.joinable()) {
+        m_thread.join();
     }
 }	
 
-PixelData Camera::clonePixelData() {
-    m_mutex.lock();
-    auto pixelData = PixelData(m_width, m_height, m_imgData);
-    m_mutex.unlock();
-    return pixelData;
+cv::Mat Camera::getGrayImage() {
+    // m_mutex.lock();
+    return m_grayImg;
+    // m_imgData
+    // auto pixelData = PixelData(m_width, m_height, m_imgData);
+    // m_mutex.unlock();
+    // return img;
 }
 
-void Camera::loop() {
-    m_fpsCounter.tick();
+void Camera::loop(unsigned int interval) {
+    m_frameTimer.tick(interval, [=]() {
+        m_fpsCounter.tick();
 
-    // cout << "Camera grab begin...\n";
-    m_mutex.lock();
 #ifdef RASPICAM		
-    m_cam.grab();
-    m_cam.retrieve(m_imgData);
+        m_mutex.lock();
+        m_cam.grab();
+        m_cam.retrieve(m_imgData);
+        m_mutex.unlock();
 #else
-    m_vc.grab();
-    m_vc.retrieve(m_imgData);
-    cv::imshow(WINDOW_NAME, m_imgData);
-    cv::waitKey(1);
+        // m_mutex.lock();
+        m_vc >> m_img; // get a new frame from camera
+        cvtColor(m_img, m_grayImg, CV_BGR2GRAY);
+        // m_vc.grab();
+        // m_vc.retrieve(m_img);
+        // // m_mutex.unlock();
 #endif
-    m_mutex.unlock();
-
-
-    // cout << "Camera grab done.\n";
+    });
 }

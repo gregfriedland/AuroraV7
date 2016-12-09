@@ -14,15 +14,16 @@
 #define START_DRAWER "Video"
 #define DRAWER_CHANGE_INTERVAL 30000
 #define LAYOUT_LEFT_TO_RIGHT false
-#define CAMERA_WIDTH 640
-#define CAMERA_HEIGHT 480
+#define CAMERA_WIDTH 1280
+#define CAMERA_HEIGHT 720
 #define CAMERA_FPS 15
 #define FACEDETECT_FPS 1
+#define FACE_VIDEO_DRAWER_TIMEOUT 10000
 
 static Controller* controller;
 
 void sigHandler(int sig) {
-    cout << "Caugt SIGINT\n";
+    cout << "Caught SIGINT\n";
 	controller->stop();
 	fail();
 }
@@ -34,20 +35,31 @@ int main(int argc, char** argv) {
     sigIntHandler.sa_flags = 0;
     sigaction(SIGINT, &sigIntHandler, NULL);
 
-	string device = argc >= 2 ? argv[1] : "";
+    ControllerSettings settings;
+
+	settings.m_device = argc >= 2 ? argv[1] : "";
     
-    string startDrawer = argc >= 3 ? argv[2] : START_DRAWER;
-    int drawerChangeInterval = argc >= 4 ? atoi(argv[3]) : DRAWER_CHANGE_INTERVAL;
+    settings.m_startDrawerName = argc >= 3 ? argv[2] : START_DRAWER;
+    settings.m_drawerChangeInterval = argc >= 4 ? atoi(argv[3]) : DRAWER_CHANGE_INTERVAL;
     int cameraFps = argc >= 5 ? atoi(argv[4]) : CAMERA_FPS;
     float facedetectFps = argc >= 6 ? atof(argv[5]) : FACEDETECT_FPS;
+    settings.m_showInWindowMultiplier = argc >= 7 ? atof(argv[6]) : false;
 
-    // wait a bit for things to settle
-    //sleep(30);
+    std::cout << "fps = " << FPS << std::endl;
+    std::cout << "drawerChangeInterval = " << settings.m_drawerChangeInterval << std::endl;
+    std::cout << "cameraFps = " << cameraFps << std::endl;
+    std::cout << "facedetectFps = " << facedetectFps << std::endl;
+    std::cout << "showInWindowMultiplier = " << settings.m_showInWindowMultiplier << std::endl;
+    std::cout << std::endl;
+
+    signal(SIGINT, sigHandler);
+    signal(SIGKILL, sigHandler);
 
 	// start camera
     Camera *camera = NULL;
     if (cameraFps > 0) {
         camera = new Camera(CAMERA_WIDTH, CAMERA_HEIGHT);
+        camera->start(1000 / cameraFps);
     }
 
 	// start face detection
@@ -57,23 +69,19 @@ int main(int argc, char** argv) {
         faceDetect->start(1000 / facedetectFps);
     }
 
-	controller = new Controller(WIDTH, HEIGHT, PAL_SIZE, device, 
-		baseColors, BASE_COLORS_SIZE, BASE_COLORS_PER_PALETTE,
-        LAYOUT_LEFT_TO_RIGHT, startDrawer, drawerChangeInterval,
-        camera, faceDetect);
-    controller->start(1000 / FPS);
+    settings.m_width = WIDTH;
+    settings.m_height = HEIGHT;
+    settings.m_palSize = PAL_SIZE;
+    settings.m_numBaseColors = BASE_COLORS_SIZE;
+    settings.m_baseColorsPerPalette = BASE_COLORS_PER_PALETTE;
+    settings.m_layoutLeftToRight = LAYOUT_LEFT_TO_RIGHT;
+    settings.m_faceVideoDrawerTimeout = FACE_VIDEO_DRAWER_TIMEOUT;
+	controller = new Controller(settings, baseColors, camera, faceDetect);
 
-    signal(SIGINT, sigHandler);
-    signal(SIGKILL, sigHandler);
-
-    // if we're going to run the camera do it in the main thread so we can 
-    // optionally display the opencv window on a non-raspi for testing
-    if (cameraFps > 0) {
-        camera->init();
-        while (true) {
-            camera->loop();
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000 / cameraFps));
-        }
+    // do it in the main thread so we can optionally display the opencv window
+    while (true) {
+        controller->loop(1000 / FPS);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     delete camera;

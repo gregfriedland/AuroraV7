@@ -11,15 +11,25 @@
 #include <map>
 #include <vector>
 #include <iostream>
+#include <thread>
+#include <string>
 
-using namespace std;
+struct ControllerSettings {
+    int m_width, m_height;
+    int m_palSize;
+    std::string m_device;
+    bool m_layoutLeftToRight;
+    std::string m_startDrawerName;
+    int m_drawerChangeInterval;
+    int m_showInWindowMultiplier;
+    int m_numBaseColors;
+    int m_baseColorsPerPalette;
+    int m_faceVideoDrawerTimeout;
+};
 
 class Controller {
 public:
-    Controller(int width, int height, int palSize, string device, 
-        int* baseColors, int numBaseColors, int baseColorsPerPalette,
-        bool layoutLeftToRight, string startDrawerName,
-        int drawerChangeInterval, Camera* camera, FaceDetect* faceDetect);
+    Controller(const ControllerSettings& settings, int* baseColors, Camera* camera, FaceDetect* faceDetect);
 
     ~Controller();
 
@@ -27,6 +37,7 @@ public:
 
     void start(int interval);
     void stop();
+    void loop(int interval);
 
 private:    
     const map<string,int>& settings();
@@ -36,18 +47,15 @@ private:
     vector<string> drawerNames();
     void randomizeSettings();
 
-    void loop();
-    void init();
     void changeDrawer(vector<string> names);
+    void init();
 
-    int m_width, m_height, m_palSize;
-    string m_device;
-    bool m_layoutLeftToRight;
-    string m_startDrawerName;
+    ControllerSettings m_settings;
     
     Palettes m_palettes;
     int m_currPalIndex; // index of current palette
     Serial m_serial;
+
     Camera* m_camera;
     FaceDetect* m_faceDetect;
 
@@ -61,7 +69,9 @@ private:
     int m_serialWriteBufferSize;
 
     FpsCounter m_fpsCounter;
+    FrameTimer m_frameTimer;
     bool m_stop;
+    std::thread m_thread;
 };
 
 #endif

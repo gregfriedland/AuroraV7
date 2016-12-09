@@ -8,25 +8,22 @@
 #include <iostream>
 #include <stdlib.h>
 #include <thread>
+#include <highgui.h>
+
+#define WINDOW_NAME "Aurora"
 
 
-Controller::Controller(int width, int height, int palSize, string device, 
-    int* baseColors, int numBaseColors, int baseColorsPerPalette,
-    bool layoutLeftToRight, string startDrawerName,
-    int drawerChangeInterval, Camera* camera, FaceDetect* faceDetect)
-: m_width(width), m_height(height), m_palSize(palSize), m_device(device),
-  m_layoutLeftToRight(layoutLeftToRight),
-  m_startDrawerName(startDrawerName), 
-  m_palettes(palSize, baseColors, numBaseColors, baseColorsPerPalette),
-  m_serial(device), m_camera(camera), m_faceDetect(faceDetect),
-  m_currDrawer(NULL), m_drawerChangeTimer(drawerChangeInterval),
-  m_fpsCounter(5000, "Controller")
-{
+Controller::Controller(const ControllerSettings& settings, int* baseColors,
+    Camera* camera, FaceDetect* faceDetect)
+: m_settings(settings), m_camera(camera), m_faceDetect(faceDetect),
+  m_palettes(m_settings.m_palSize, baseColors, m_settings.m_numBaseColors, m_settings.m_baseColorsPerPalette),
+  m_currDrawer(NULL), m_fpsCounter(5000, "Controller"), m_serial(m_settings.m_device),
+  m_drawerChangeTimer(m_settings.m_drawerChangeInterval) {
     m_currPalIndex = random2() % m_palettes.size();
 
-    m_colIndicesSize = width * height;
+    m_colIndicesSize = m_settings.m_width * m_settings.m_height;
     m_colIndices = new int[m_colIndicesSize];
-    m_serialWriteBufferSize = width * height * 3 + 1;
+    m_serialWriteBufferSize = m_settings.m_width * m_settings.m_height * 3 + 1;
     m_serialWriteBuffer = new unsigned char[m_serialWriteBufferSize];
     init();
 }
@@ -48,90 +45,131 @@ const unsigned char* Controller::rawData(int& size) {
 void Controller::init()
 {
 	// create drawers and set start drawer
-	m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer(m_width, m_height, m_palSize, m_camera)));
-	m_drawers.insert(make_pair("Bzr", new BzrDrawer(m_width, m_height, m_palSize, m_camera)));
+	m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+	m_drawers.insert(make_pair("Bzr", new BzrDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
     if (m_camera != NULL)
-        m_drawers.insert(make_pair("Video", new VideoDrawer(m_width, m_height, m_palSize, m_camera)));
-	m_drawers.insert(make_pair("Off", new OffDrawer(m_width, m_height, m_palSize)));
-    if (m_drawers.find(m_startDrawerName) != m_drawers.end())
-        changeDrawer({m_startDrawerName});
+        m_drawers.insert(make_pair("Video", new VideoDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+	m_drawers.insert(make_pair("Off", new OffDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
+    if (m_drawers.find(m_settings.m_startDrawerName) != m_drawers.end())
+        changeDrawer({m_settings.m_startDrawerName});
     else
         changeDrawer({"AlienBlob"});
 
 	// create serial connection
-	if (m_device.size() > 0)
+	if (m_settings.m_device.size() > 0) {
 		m_serial.connect();
+    }
+
+    if (m_settings.m_showInWindowMultiplier) {
+        cv::namedWindow(WINDOW_NAME, CV_WINDOW_AUTOSIZE);
+        cv::moveWindow(WINDOW_NAME, 0, 0);
+        std::cout << "Creating video window\n";
+    }
 }
 
 void Controller::start(int interval) {
-    std::cout << "Starting controller\n";
+    std::cout << "Controller started\n";
     m_stop = false;
     auto run = [=]() {
         while (!m_stop) {
-            loop();
-            std::this_thread::sleep_for(std::chrono::milliseconds(interval));
+            loop(interval);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         m_stop = false;
+        std::cout << "Controller done\n";
     };
-    std::thread(run).detach();
+    m_thread = std::thread(run);
+    m_thread.detach();
 }
 
 void Controller::stop() {
     std::cout << "Stopping controller\n";
     m_stop = true;
-    while (m_stop) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    if (m_thread.joinable()) {
+        m_thread.join();
     }
 
-	if (m_device.size() > 0)
+	if (m_settings.m_device.size() > 0) {
+        std::cout << "Closing serial port\n";
 		m_serial.close();
+    }
+    std::cout << "Stopped controller\n";
 }
 
-void Controller::loop() {
-	m_fpsCounter.tick();
+void Controller::loop(int interval) {
+    m_frameTimer.tick(interval, [=]() {
+    	m_fpsCounter.tick();
 
-    // change to Video drawer if faces have been detected or change
-    // from video drawer is no faces detected
-    // if (m_faceDetect != NULL && m_faceDetect->status() && m_currDrawer->name().compare("Off") != 0 &&
-    //     m_currDrawer->name().compare("Video") != 0) {
-    //     changeDrawer({"Video"});
-    // } else if (m_faceDetect != NULL && !m_faceDetect->status() && m_currDrawer->name().compare("Video") == 0) {
-    //     changeDrawer({"Bzr", "AlienBlob"});
-    // }
-
-	// Change drawer every so often, but only to video if faces were detected
-	if (m_drawerChangeTimer.tick(NULL)) {
-        if (m_currDrawer->name().compare("Video") == 0)
-            randomizeSettings();
-        else
+        // change to Video drawer if faces have been detected or change
+        // from video drawer is no faces detected
+        int faceTimeDiff = millis() - m_faceDetect->lastDetection();
+        if (m_faceDetect != NULL && faceTimeDiff < m_settings.m_faceVideoDrawerTimeout &&
+                    m_currDrawer->name().compare("Off") != 0 && m_currDrawer->name().compare("Video") != 0) {
+            changeDrawer({"Video"});
+        } else if (m_faceDetect != NULL && faceTimeDiff > m_settings.m_faceVideoDrawerTimeout &&
+                    m_currDrawer->name().compare("Video") == 0) {
             changeDrawer({"Bzr", "AlienBlob"});
-    }
+        }
 
-	// update drawer
-	m_currDrawer->draw(m_colIndices);
+    	// Change drawer every so often, but only to video if faces were detected
+    	if (m_drawerChangeTimer.tick(NULL)) {
+            if (m_currDrawer->name().compare("Video") == 0)
+                randomizeSettings();
+            else
+                changeDrawer({"Bzr", "AlienBlob"});
+        }
 
-	// pack data for serial transmission
-	int i = 0;
-	for (int y = 0; y < m_height; y++) {
-		for (int x = 0; x < m_width; x++) {
-			Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_width]);
-			// if (x == 0 && y == 0)
-			// 	cout << "00 index=" << m_colIndices[x + y * m_width] << " rgb=" << (int)col.r << " " << (int)col.g << " " << (int)col.b << endl;
-			m_serialWriteBuffer[i++] = min((unsigned char)254, col.r);
-			m_serialWriteBuffer[i++] = min((unsigned char)254, col.g);
-			m_serialWriteBuffer[i++] = min((unsigned char)254, col.b);
-		}
-	}
-	m_serialWriteBuffer[i++] = 255;
+    	// update drawer
+    	m_currDrawer->draw(m_colIndices);
 
-	// send serial data
-	if (m_device.size() > 0) {
-		m_serial.write(m_serialWriteBuffer, m_serialWriteBufferSize);
+        cv::Mat img;
+        if (m_settings.m_showInWindowMultiplier) {
+            img = cv::Mat(m_settings.m_height * m_settings.m_showInWindowMultiplier,
+                m_settings.m_width * m_settings.m_showInWindowMultiplier, CV_8UC3);
+        }
 
-		unsigned char buffer[256];
-		if (m_serial.read(256, buffer) > 0)
-	        cout << "read: " << (unsigned int) buffer[0] << endl;
-	}
+    	// pack data for serial transmission
+    	int i = 0;
+    	for (int y = 0; y < m_settings.m_height; y++) {
+    		for (int x = 0; x < m_settings.m_width; x++) {
+    			Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_settings.m_width]);
+    			// if (x == 0 && y == 0)
+    			// 	cout << "00 index=" << m_colIndices[x + y * m_width] << " rgb=" << (int)col.r << " " << (int)col.g << " " << (int)col.b << endl;
+    			m_serialWriteBuffer[i++] = min((unsigned char)254, col.r);
+    			m_serialWriteBuffer[i++] = min((unsigned char)254, col.g);
+    			m_serialWriteBuffer[i++] = min((unsigned char)254, col.b);
+
+                if (m_settings.m_showInWindowMultiplier) {
+                    int m = m_settings.m_showInWindowMultiplier;
+                    for (int xx = 0; xx < m; ++xx) {
+                        for (int yy = 0; yy < m; ++yy) {
+                            cv::Vec3b& pix = img.at<cv::Vec3b>(y * m + yy, x * m + xx);
+                            pix[0] = col.r;
+                            pix[1] = col.g;
+                            pix[2] = col.b;
+                        }
+                    }
+                }
+    		}
+    	}
+    	m_serialWriteBuffer[i++] = 255;
+
+        if (m_settings.m_showInWindowMultiplier) {
+            cv::imshow(WINDOW_NAME, img);
+            cv::waitKey(1);            
+        }
+
+    	// send serial data
+    	if (m_settings.m_device.size() > 0) {
+    		m_serial.write(m_serialWriteBuffer, m_serialWriteBufferSize);
+
+    		unsigned char buffer[256];
+    		if (m_serial.read(256, buffer) > 0)
+    	        cout << "read: " << (unsigned int) buffer[0] << endl;
+    	}
+
+
+    });
 }
 
 

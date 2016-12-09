@@ -8,7 +8,6 @@
 #include <random>
 #include <array>
 
-using namespace std;
 using namespace std::chrono;
 
 
@@ -38,11 +37,11 @@ inline unsigned long millis() {
 
 static unsigned long int startTime = millis();
 inline void fail() {
-    cout << "Exit after " << ((millis() - startTime) / 1000) << "s\n";
+    std::cout << "Exit after " << ((millis() - startTime) / 1000) << "s\n";
     exit(1);
 }
 
-static minstd_rand0 randGen(millis());
+static std::minstd_rand0 randGen(millis());
 inline int random2() {
 	return randGen();
 }
@@ -78,15 +77,23 @@ private:
 
 class FpsCounter {
 public:
-	FpsCounter(unsigned int outputInterval, string name);
-
+	FpsCounter(unsigned int outputInterval, const std::string& name);
 	void tick();
 
 private:
 	unsigned int m_count;
 	unsigned long m_lastTime;
 	unsigned int m_interval;
-	string m_name;
+	std::string m_name;
 };
 
+
+class FrameTimer {
+public:
+    FrameTimer();
+    void tick(unsigned int intervalMs, std::function<void()> func);
+
+private:
+    unsigned long m_lastTime;
+};
 #endif

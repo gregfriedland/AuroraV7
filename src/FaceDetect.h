@@ -8,6 +8,7 @@
 
 #include <iostream>
 #include <vector>
+#include <thread>
 
 #include "Camera.h"
 
@@ -24,16 +25,18 @@ public:
 
 	void stop();
 
-    bool status();
+    unsigned long lastDetection();
 
-    void loop();
+    void loop(unsigned int interval);
 
 private:
     Camera* m_camera;
     cv::CascadeClassifier m_faceCascade;
-    cv::Mat *m_image;
-    bool m_status;
+    unsigned long m_lastDetection;
     bool m_stop;
+    FpsCounter m_fpsCounter;
+    FrameTimer m_frameTimer;
+    std::thread m_thread;
 };
 
 
