@@ -48,7 +48,6 @@ int main(int argc, char** argv) {
     Camera *camera = NULL;
     if (cameraFps > 0) {
         camera = new Camera(CAMERA_WIDTH, CAMERA_HEIGHT);
-        camera->start(1000 / cameraFps);
     }
 
 	// start face detection
@@ -62,15 +61,23 @@ int main(int argc, char** argv) {
 		baseColors, BASE_COLORS_SIZE, BASE_COLORS_PER_PALETTE,
         LAYOUT_LEFT_TO_RIGHT, startDrawer, drawerChangeInterval,
         camera, faceDetect);
+    controller->start(1000 / FPS);
 
     signal(SIGINT, sigHandler);
     signal(SIGKILL, sigHandler);
 
-    controller->start(1000 / FPS);
-    while (true) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    // if we're going to run the camera do it in the main thread so we can 
+    // optionally display the opencv window on a non-raspi for testing
+    if (cameraFps > 0) {
+        camera->init();
+        while (true) {
+            camera->loop();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000 / cameraFps));
+        }
     }
 
+    delete camera;
+    delete faceDetect;
 	delete controller;
     return 0;
 }

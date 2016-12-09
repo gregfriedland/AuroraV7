@@ -5,6 +5,10 @@
 #include <unistd.h>
 #include <thread>
 
+#ifndef RAPICAM
+  #include <highgui.h>
+  #define WINDOW_NAME "Video"
+#endif
 
 Camera::Camera(int width, int height)
  : m_fpsCounter(5000, "Camera") {
@@ -21,6 +25,9 @@ Camera::Camera(int width, int height)
   	m_imgData = cv::Mat(height, width, CV_8UC3);
     m_width = m_imgData.cols;
     m_height = m_imgData.rows;
+    cv::namedWindow(WINDOW_NAME, CV_WINDOW_AUTOSIZE);
+    cv::moveWindow(WINDOW_NAME, 0, 0);
+    std::cout << "Creating video window\n";
 #endif	  	
 }
 
@@ -38,15 +45,19 @@ int Camera::height() const {
     return m_height;
 }
 
-void Camera::start(unsigned int interval) {
+void Camera::init() {
 #ifdef RASPICAM
-	if (!m_cam.open()) {
+    if (!m_cam.open()) {
 #else    
-	if (!m_vc.open(0)) {
-#endif			
-	    std::cerr << "Error opening camera" << std::endl;
+    if (!m_vc.open(0)) {
+#endif          
+        std::cerr << "Error opening camera" << std::endl;
         return;
-	}
+    }
+}
+
+void Camera::start(unsigned int interval) {
+    init();
 
     std::cout << "Starting camera\n";
     m_stop = false;
@@ -61,7 +72,7 @@ void Camera::start(unsigned int interval) {
 }
 
 void Camera::stop() {
-	std::cout << "Stopping camera.\n";
+	std::cout << "Stopping camera\n";
     m_stop = true;
     while (m_stop) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -85,19 +96,12 @@ void Camera::loop() {
     m_cam.retrieve(m_imgData);
 #else
     m_vc.grab();
-    // m_vc.retrieve(*m_imgData);
+    m_vc.retrieve(m_imgData);
+    cv::imshow(WINDOW_NAME, m_imgData);
+    cv::waitKey(1);
 #endif
     m_mutex.unlock();
-    // cout << "Camera grab done.\n";
-}
 
-void Camera::saveImage(string filename) {
-    std::ofstream outFile(filename.c_str(), std::ios::binary);
-    outFile<<"P6\n" << m_width << " " << m_height << " 255\n";
-    m_mutex.lock();
-#ifdef RASPICAM
-    outFile.write ( ( char* ) m_imgData, m_cam.getImageTypeSize ( raspicam::RASPICAM_FORMAT_RGB ) );
-    cout<<"Image saved to: " << filename << endl;
-#endif    
-    m_mutex.unlock();
+
+    // cout << "Camera grab done.\n";
 }

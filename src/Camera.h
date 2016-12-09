@@ -77,13 +77,13 @@ public:
     int width() const;
     int height() const;
 
+    void init();
+
 	void start(unsigned int interval);
 
 	void stop();
 
 	PixelData clonePixelData();
-
-    void saveImage(string filename);
 
 	void loop();
 
