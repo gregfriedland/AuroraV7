@@ -15,16 +15,23 @@
 #include <string>
 
 struct ControllerSettings {
+    ControllerSettings(const std::string& configFilename);
+
+    int m_fps;
     int m_width, m_height;
     int m_palSize;
     std::string m_device;
     bool m_layoutLeftToRight;
     std::string m_startDrawerName;
     int m_drawerChangeInterval;
-    int m_showInWindowMultiplier;
+    int m_screenShowMultiplier;
     int m_numBaseColors;
     int m_baseColorsPerPalette;
     int m_faceVideoDrawerTimeout;
+    int m_cameraFps;
+    int m_cameraWidth;
+    int m_cameraHeight;
+    int m_faceDetectFps;
 };
 
 class Controller {

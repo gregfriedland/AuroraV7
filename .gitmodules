@@ -1,0 +1,6 @@
+[submodule "json"]
+	path = json
+	url = https://github.com/nlohmann/json.git
+[submodule "raspicam"]
+	path = raspicam
+	url = https://github.com/cedricve/raspicam.git

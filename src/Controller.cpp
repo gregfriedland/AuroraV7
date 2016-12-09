@@ -9,9 +9,38 @@
 #include <stdlib.h>
 #include <thread>
 #include <highgui.h>
+#include "json.hpp"
+#include <fstream>
+
+using json = nlohmann::json;
 
 #define WINDOW_NAME "Aurora"
 
+
+ControllerSettings::ControllerSettings(const std::string& configFilename) {
+    try {
+        std::ifstream ifs(configFilename);
+        json j;
+        ifs >> j;
+
+        m_width = j["width"];
+        m_height = j["height"];
+        m_palSize = j["paletteSize"];
+        m_fps = j["fps"];
+        m_startDrawerName = j["startDrawer"];
+        m_drawerChangeInterval = j["drawerChangeInterval"];
+        m_cameraWidth = j["camera"]["width"];
+        m_cameraHeight = j["camera"]["height"];
+        m_cameraFps = j["camera"]["fps"];
+        m_faceDetectFps = j["faceDetection"]["fps"];
+        m_faceVideoDrawerTimeout = j["faceDetection"]["videoDrawerTimeout"];
+        m_screenShowMultiplier = j["screenShowMultiplier"];
+        m_device = j["serialDevice"];
+    } catch(std::exception e) {
+        std::cerr << "Error while parsing json config file: " << e.what() << std::endl;
+        exit(1);
+    }
+}
 
 Controller::Controller(const ControllerSettings& settings, int* baseColors,
     Camera* camera, FaceDetect* faceDetect)
@@ -60,7 +89,7 @@ void Controller::init()
 		m_serial.connect();
     }
 
-    if (m_settings.m_showInWindowMultiplier) {
+    if (m_settings.m_screenShowMultiplier) {
         cv::namedWindow(WINDOW_NAME, CV_WINDOW_AUTOSIZE);
         cv::moveWindow(WINDOW_NAME, 0, 0);
         std::cout << "Creating video window\n";
@@ -123,9 +152,9 @@ void Controller::loop(int interval) {
     	m_currDrawer->draw(m_colIndices);
 
         cv::Mat img;
-        if (m_settings.m_showInWindowMultiplier) {
-            img = cv::Mat(m_settings.m_height * m_settings.m_showInWindowMultiplier,
-                m_settings.m_width * m_settings.m_showInWindowMultiplier, CV_8UC3);
+        if (m_settings.m_screenShowMultiplier) {
+            img = cv::Mat(m_settings.m_height * m_settings.m_screenShowMultiplier,
+                m_settings.m_width * m_settings.m_screenShowMultiplier, CV_8UC3);
         }
 
     	// pack data for serial transmission
@@ -139,8 +168,8 @@ void Controller::loop(int interval) {
     			m_serialWriteBuffer[i++] = min((unsigned char)254, col.g);
     			m_serialWriteBuffer[i++] = min((unsigned char)254, col.b);
 
-                if (m_settings.m_showInWindowMultiplier) {
-                    int m = m_settings.m_showInWindowMultiplier;
+                if (m_settings.m_screenShowMultiplier) {
+                    int m = m_settings.m_screenShowMultiplier;
                     for (int xx = 0; xx < m; ++xx) {
                         for (int yy = 0; yy < m; ++yy) {
                             cv::Vec3b& pix = img.at<cv::Vec3b>(y * m + yy, x * m + xx);
@@ -154,7 +183,7 @@ void Controller::loop(int interval) {
     	}
     	m_serialWriteBuffer[i++] = 255;
 
-        if (m_settings.m_showInWindowMultiplier) {
+        if (m_settings.m_screenShowMultiplier) {
             cv::imshow(WINDOW_NAME, img);
             cv::waitKey(1);            
         }
