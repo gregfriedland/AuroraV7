@@ -1,0 +1,19 @@
+{
+    "width": 64,
+    "height": 32,
+    "paletteSize": 4096,
+    "fps": 35,
+    "startDrawer": "Bzr",
+    "drawerChangeInterval": 30000,
+    "camera": {
+        "width": 640,
+        "height": 480,
+        "fps": 15
+    },
+    "faceDetection": {
+        "fps": 1,
+        "videoDrawerTimeout": 10000
+    },
+    "screenShowMultiplier": 0,
+    "serialDevice": "/dev/ttyACM0"
+}
