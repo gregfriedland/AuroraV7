@@ -4,10 +4,11 @@
 #include <iostream>
 #include "Util.h"
 #include <mutex>
+#include <cstring>
 
 #ifdef LINUX
 	#define RASPICAM
-	#include <raspicam.h>
+	#include <raspicam/raspicam.h>
     typedef unsigned char* ImageData;
 #else
 	#include <opencv2/imgproc/imgproc.hpp>

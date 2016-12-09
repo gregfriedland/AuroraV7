@@ -78,6 +78,7 @@ PORTTYPE open_port_and_set_baud_or_die(const char *name, long baud)
     tinfo.c_cflag |= CLOCAL;
     if (tcsetattr(fd, TCSANOW, &tinfo) < 0) die("unable to set baud rate\n");
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
+    std::cout << "Configured serial port " << name << " on macosx\n";
 #elif defined(LINUX)
     struct termios tinfo;
     memset (&tinfo, 0, sizeof tinfo);
@@ -109,6 +110,7 @@ PORTTYPE open_port_and_set_baud_or_die(const char *name, long baud)
     /*     r = ioctl(fd, TIOCSSERIAL, &kernel_serial_settings); */
     /*     if (r >= 0) printf("set linux low latency mode\n"); */
     /* } */
+    std::cout << "Configured serial port " << name << " on linux\n";
 #elif defined(WINDOWS)
     COMMCONFIG cfg;
     COMMTIMEOUTS timeout;
@@ -149,6 +151,9 @@ PORTTYPE open_port_and_set_baud_or_die(const char *name, long baud)
     timeout.WriteTotalTimeoutConstant = 0;
     timeout.WriteTotalTimeoutMultiplier = 0;
     SetCommTimeouts(fd, &timeout);
+#else
+    std::cout << "Unspecified OS type\n";
+    exit(1);
 #endif
     return fd;
 
