@@ -21,7 +21,7 @@ void FaceDetect::loop(unsigned int interval) {
         unsigned long startTime = millis();
         m_faceCascade.detectMultiScale(gray, faces, 1.1, 3,
                                        0|CV_HAAR_SCALE_IMAGE,
-                                       cv::Size(100, 100));
+                                       cv::Size(50, 50));
         // cout << "done in " << millis() - startTime << "ms\n";
         if (faces.size() > 0) {
             cout << "Detected " << faces.size() << " faces\n";

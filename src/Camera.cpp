@@ -23,12 +23,6 @@ Camera::Camera(int width, int height)
         " (desired " << width << "x" << height << ")\n";
 }
 
-Camera::~Camera() {
-#ifdef LINUX
-    delete[] m_imgData;
-#endif
-}
-
 int Camera::width() const { 
     return m_width;
 }
@@ -38,7 +32,11 @@ int Camera::height() const {
 }
 
 void Camera::init() {
-    if (!m_cam.open(0)) {
+#ifdef RASPICAM
+  if (!m_cam.open()) {
+#else
+  if (!m_cam.open(0)) {
+#endif
         std::cerr << "Error opening camera" << std::endl;
         return;
     }
@@ -81,8 +79,8 @@ void Camera::loop(unsigned int interval) {
     m_frameTimer.tick(interval, [=]() {
         m_fpsCounter.tick();
 
-        m_cam >> m_img; // get a new frame from camera
-        // m_lastImg = m_img.clone();
-        cvtColor(m_img, m_lastImg, CV_BGR2GRAY);
+        m_cam.grab();
+	m_cam.retrieve(m_img); // get a new frame from camera
+	cv::cvtColor(m_img, m_lastImg, CV_BGR2GRAY);
     });
 }
