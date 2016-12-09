@@ -6,7 +6,8 @@
 #include <thread>
 
 
-Camera::Camera(int width, int height) {
+Camera::Camera(int width, int height)
+ : m_fpsCounter(5000, "Camera") {
 #ifdef RASPICAM
 	m_cam.setWidth(width);
   	m_cam.setHeight(height);
@@ -75,6 +76,8 @@ PixelData Camera::clonePixelData() {
 }
 
 void Camera::loop() {
+    m_fpsCounter.tick();
+
     // cout << "Camera grab begin...\n";
     m_mutex.lock();
 #ifdef RASPICAM		

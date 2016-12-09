@@ -10,8 +10,8 @@
 #define WIDTH 64
 #define HEIGHT 32
 #define PAL_SIZE 1<<12 // #colors in the gradient of each palette
-#define FPS 30
-#define START_DRAWER "Bzr"
+#define FPS 35
+#define START_DRAWER "Video"
 #define DRAWER_CHANGE_INTERVAL 30000
 #define LAYOUT_LEFT_TO_RIGHT false
 #define CAMERA_WIDTH 640

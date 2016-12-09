@@ -24,7 +24,8 @@ class PixelData {
 
 #ifdef LINUX
         m_imgData = new unsigned char[width * height * 3];
-        std::memcpy(m_imgData, imgData, sizeof(*imgData));
+        //        std::cout << "copying " << (width * height * 3) << " bytes of image data\n";
+        std::memcpy(m_imgData, imgData, width * height * 3);
 #else
         m_imgData = imgData.clone();
 #endif
@@ -96,6 +97,7 @@ private:
 #endif
     ImageData m_imgData;
     std::mutex m_mutex;
+    FpsCounter m_fpsCounter;
 };
 
 #endif

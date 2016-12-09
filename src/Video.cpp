@@ -18,7 +18,7 @@ void VideoDrawer::draw(int* colIndices) {
 		int xx = x * m_camera->width() / m_width;
 		for (int y = 0; y<m_height; y++) {
 		    int yy = y * m_camera->height() / m_height;
-		    Color24 col = pixelData.get(x, y);
+		    Color24 col = pixelData.get(xx, yy);
 		    int val = (col.r + col.g + col.b) / 3;
 		    int index = val * m_palSize / 256 + m_colorIndex;
         	colIndices[x + y * m_width] = index;
