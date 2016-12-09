@@ -7,19 +7,13 @@
 
 Camera::Camera(int width, int height)
  : m_fpsCounter(5000, "Camera") {
-#ifdef RASPICAM
-	m_cam.setWidth(width);
-  	m_cam.setHeight(height);
-	unsigned int n = m_cam.getImageBufferSize();
-  	m_imgData = new unsigned char[n];
-    m_width = m_cam.getWidth();
-    m_height = m_cam.getHeight();
-#else
-    m_vc.set(CV_CAP_PROP_FRAME_WIDTH, width);
-    m_vc.set(CV_CAP_PROP_FRAME_HEIGHT, height);
+    m_cam.set(CV_CAP_PROP_FORMAT, CV_8UC3);
+
+    m_cam.set(CV_CAP_PROP_FRAME_WIDTH, width);
+    m_cam.set(CV_CAP_PROP_FRAME_HEIGHT, height);
     // m_img = cv::Mat(height, width, CV_8UC3);
 
-    m_vc.read(m_img);
+    // m_cam.read(m_img);
     m_width = width;
     m_height = height;
     // m_width = m_vc.get(CV_CAP_PROP_FRAME_WIDTH);
@@ -27,7 +21,6 @@ Camera::Camera(int width, int height)
 
     std::cout << "Creating camera with dims " << m_width << "x" << m_height <<
         " (desired " << width << "x" << height << ")\n";
-#endif	  	
 }
 
 Camera::~Camera() {
@@ -45,11 +38,7 @@ int Camera::height() const {
 }
 
 void Camera::init() {
-#ifdef RASPICAM
-    if (!m_cam.open()) {
-#else    
-    if (!m_vc.open(0)) {
-#endif          
+    if (!m_cam.open(0)) {
         std::cerr << "Error opening camera" << std::endl;
         return;
     }
@@ -81,7 +70,7 @@ void Camera::stop() {
 
 cv::Mat Camera::getGrayImage() {
     // m_mutex.lock();
-    return m_grayImg;
+    return m_lastImg;
     // m_imgData
     // auto pixelData = PixelData(m_width, m_height, m_imgData);
     // m_mutex.unlock();
@@ -92,18 +81,8 @@ void Camera::loop(unsigned int interval) {
     m_frameTimer.tick(interval, [=]() {
         m_fpsCounter.tick();
 
-#ifdef RASPICAM		
-        m_mutex.lock();
-        m_cam.grab();
-        m_cam.retrieve(m_imgData);
-        m_mutex.unlock();
-#else
-        // m_mutex.lock();
-        m_vc >> m_img; // get a new frame from camera
-        cvtColor(m_img, m_grayImg, CV_BGR2GRAY);
-        // m_vc.grab();
-        // m_vc.retrieve(m_img);
-        // // m_mutex.unlock();
-#endif
+        m_cam >> m_img; // get a new frame from camera
+        // m_lastImg = m_img.clone();
+        cvtColor(m_img, m_lastImg, CV_BGR2GRAY);
     });
 }
