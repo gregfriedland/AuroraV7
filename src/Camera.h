@@ -9,7 +9,7 @@
 
 #ifdef LINUX
 	#define RASPICAM
-    #include <raspicam/raspicam_cv.h>
+    #include <raspicam_cv.h>
 #else
     #include <opencv2/imgproc/imgproc.hpp>
     #include <opencv2/highgui/highgui.hpp>

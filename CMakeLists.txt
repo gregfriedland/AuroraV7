@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 2.8.9)
+cmake_minimum_required (VERSION 3.0)
 project (AuroraV6)
 
 file(GLOB SRCS src/*.cpp)
@@ -9,14 +9,15 @@ find_package(OpenCV REQUIRED)
 add_executable(${PROJECT_NAME} ${SRCS})
 
 # add_subdirectory(json)
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/json/src)
 if(APPLE)
   add_definitions(-DMACOSX)
   target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+  target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/json/src)
 elseif(UNIX)
   add_definitions(-DLINUX)
-  target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} -lraspicam -lmmal -lmmal_core -lmmal_util -L/opt/vc/lib)
+  target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${REQUIRED_LIBRARIES})# -lraspicam -lmmal -lmmal_core -lmmal_util -L/opt/vc/lib)
   add_subdirectory(raspicam)
+  target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/json/src ${CMAKE_CURRENT_SOURCE_DIR}/raspicam/src)
 endif()
 
 
