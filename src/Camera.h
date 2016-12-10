@@ -7,6 +7,7 @@
 #include <thread>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <mutex>
 
 #ifdef LINUX
     #define RASPICAM
@@ -44,6 +45,7 @@ private:
     FpsCounter m_fpsCounter;
     FrameTimer m_frameTimer;
     std::thread m_thread;
+    std::mutex m_mutex;
 };
 
 #endif

@@ -17,7 +17,7 @@ void FaceDetect::loop(unsigned int interval) {
         auto gray = m_camera->getGrayImage();
 
         std::vector<cv::Rect> faces;
-        // cout << "Detecting faces...\n";
+        cout << "Detecting faces...\n";
         unsigned long startTime = millis();
         m_faceCascade.detectMultiScale(gray, faces, 1.1, 3,
                                        0|CV_HAAR_SCALE_IMAGE,

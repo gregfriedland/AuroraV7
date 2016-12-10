@@ -1,34 +1,13 @@
-# location: /etc/systemd/system/
 [Unit]
 Description = V6 Driver for Aurora led matrix pattern generator
 After       = syslog.target
 
-WorkingDirectory = /home/pi/AuroraV6/build
-
 [Service]
-# make sure the shell script is executable (chmod +x $1)
-# and it begins with a shebang (#!/bin/bash)
 ExecStart   = /home/pi/AuroraV6/build/AuroraV6 /home/pi/AuroraV6/machinations-64x32.json
-
-# Tell the service how to kill it / reload.
-ExecStop    = kill -INT `cat /run/aurorav6.pid`
-
-# In case if it gets stopped, restart it immediately
-Restart     = always
-
-# With notify Type, service manager will be notified
-# when the starting up has finished
-Type        = notify
-
-# Since Type is notify, notify only service updates
-# sent from the main process of the service
-NotifyAccess= main
-
-# systemd gets to read the PID of daemon's main process
-# see ExecStop and ExecReload
+Type        = simple
 PIDFile     = /run/aurorav6.pid
+WorkingDirectory = /home/pi/AuroraV6/build
+Nice = -20
 
 [Install]
-# multi-user.target corresponds to run level 3
-# roughtly meaning wanted by system start
 WantedBy    = multi-user.target

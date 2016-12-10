@@ -126,9 +126,16 @@ void Controller::stop() {
 }
 
 void Controller::loop(int interval) {
+    static unsigned long lastUpdate = 0;
     m_frameTimer.tick(interval, [=]() {
     	m_fpsCounter.tick();
 
+	// auto diff = millis() - lastUpdate;
+	// if (diff > 30) {
+	//     std::cout << diff << std::endl;
+	// }
+	// lastUpdate = millis();
+	
         // change to Video drawer if faces have been detected or change
         // from video drawer is no faces detected
         unsigned long faceTimeDiff = millis() - m_faceDetect->lastDetection();

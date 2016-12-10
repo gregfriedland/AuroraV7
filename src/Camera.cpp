@@ -67,20 +67,20 @@ void Camera::stop() {
 }	
 
 cv::Mat Camera::getGrayImage() {
-    // m_mutex.lock();
-    return m_lastImg;
-    // m_imgData
-    // auto pixelData = PixelData(m_width, m_height, m_imgData);
-    // m_mutex.unlock();
-    // return img;
+    m_mutex.lock();
+    auto img = m_lastImg.clone();
+    m_mutex.unlock();
+    return img;
 }
 
 void Camera::loop(unsigned int interval) {
     m_frameTimer.tick(interval, [=]() {
         m_fpsCounter.tick();
 
+	m_mutex.lock();
         m_cam.grab();
 	m_cam.retrieve(m_img); // get a new frame from camera
 	cv::cvtColor(m_img, m_lastImg, CV_BGR2GRAY);
+	m_mutex.unlock();
     });
 }
