@@ -46,7 +46,7 @@ Controller::Controller(const ControllerSettings& settings, int* baseColors,
     Camera* camera, FaceDetect* faceDetect)
 : m_settings(settings), m_camera(camera), m_faceDetect(faceDetect),
   m_palettes(m_settings.m_palSize, baseColors, m_settings.m_numBaseColors, m_settings.m_baseColorsPerPalette),
-  m_currDrawer(NULL), m_fpsCounter(5000, "Controller"), m_serial(m_settings.m_device),
+  m_currDrawer(NULL), m_fpsCounter(30000, "Controller"), m_serial(m_settings.m_device),
   m_drawerChangeTimer(m_settings.m_drawerChangeInterval) {
     m_currPalIndex = random2() % m_palettes.size();
 
@@ -131,12 +131,14 @@ void Controller::loop(int interval) {
 
         // change to Video drawer if faces have been detected or change
         // from video drawer is no faces detected
-        int faceTimeDiff = millis() - m_faceDetect->lastDetection();
+        unsigned long faceTimeDiff = millis() - m_faceDetect->lastDetection();
         if (m_faceDetect != NULL && faceTimeDiff < m_settings.m_faceVideoDrawerTimeout &&
                     m_currDrawer->name().compare("Off") != 0 && m_currDrawer->name().compare("Video") != 0) {
+            std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
             changeDrawer({"Video"});
         } else if (m_faceDetect != NULL && faceTimeDiff > m_settings.m_faceVideoDrawerTimeout &&
                     m_currDrawer->name().compare("Video") == 0) {
+            std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
             changeDrawer({"Bzr", "AlienBlob"});
         }
 

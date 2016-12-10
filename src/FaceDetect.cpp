@@ -31,7 +31,7 @@ void FaceDetect::loop(unsigned int interval) {
 }
 
 FaceDetect::FaceDetect(Camera* camera)
-: m_camera(camera), m_lastDetection(0), m_fpsCounter(5000, "FaceDetect") {
+: m_camera(camera), m_lastDetection(0), m_fpsCounter(30000, "FaceDetect") {
     // m_image = new cv::Mat(camera->height(), camera->width(), CV_8UC1);
     if (!m_faceCascade.load(FACE_CASCADE_FILE)) {
         std::cout << "Unable to load face cascade file\n";

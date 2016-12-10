@@ -6,7 +6,7 @@
 #include <thread>
 
 Camera::Camera(int width, int height)
- : m_fpsCounter(5000, "Camera") {
+ : m_fpsCounter(30000, "Camera") {
     m_cam.set(CV_CAP_PROP_FORMAT, CV_8UC3);
 
     m_cam.set(CV_CAP_PROP_FRAME_WIDTH, width);
