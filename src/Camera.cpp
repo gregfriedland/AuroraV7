@@ -81,6 +81,9 @@ void Camera::loop(unsigned int interval) {
 	m_mutex.lock();
 	cv::cvtColor(m_img, m_grayImg, CV_BGR2GRAY);
 	cv::resize(m_grayImg, m_screenImg, cv::Size(m_screenWidth, m_screenHeight));
+	//cv::GaussianBlur(m_screenImg, m_screenImg, cv::Size(3, 3), 0, 0);
+	m_screenImg.convertTo(m_screenImg, -1, 2.5, -50);
+	
 	m_mutex.unlock();
     });
 }
