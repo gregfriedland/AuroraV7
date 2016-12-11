@@ -8,6 +8,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <mutex>
+#include <sstream>
 
 #ifdef LINUX
     #define RASPICAM
@@ -17,12 +18,23 @@
 struct CameraSettings {
     int m_camWidth, m_camHeight, m_screenWidth, m_screenHeight;
     float m_fps;
+};
+
+struct ImageProcSettings {
     float m_contrastFactor;
     int m_intermediateResizeFactor;
     int m_medianBlurSize;
-    int m_morphOperationType;
-    int m_morphKernelType;
+    int m_morphOperation;
+    int m_morphKernel;
     int m_morphKernelSize;
+
+    std::string toString() const {
+        std::stringstream ss;
+        ss << "contrast=" << m_contrastFactor << " intResizeFactor=" << m_intermediateResizeFactor <<
+            " medianBlurSize=" << m_medianBlurSize << " morphOp=" << m_morphOperation <<
+            " morphKernel=" << m_morphKernel << "(size=" << m_morphKernelSize << ")";
+        return ss.str();
+    }
 };
 
 class Camera {
@@ -43,6 +55,8 @@ public:
 
     void loop(unsigned int interval);
 
+    void setImageProcSettings(const ImageProcSettings& settings);
+
 private:
     bool m_stop;
     CameraSettings m_settings;
@@ -56,6 +70,7 @@ private:
     FrameTimer m_frameTimer;
     std::thread m_thread;
     std::mutex m_mutex;
+    ImageProcSettings m_imageProcSettings;
 };
 
 #endif

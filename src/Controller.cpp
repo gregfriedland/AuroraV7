@@ -39,13 +39,6 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
         m_cameraSettings.m_screenWidth = j["width"];
         m_cameraSettings.m_screenHeight = j["height"];
         m_cameraSettings.m_fps = j["camera"]["fps"];
-        m_cameraSettings.m_contrastFactor = j["camera"]["contrastFactor"];
-        m_cameraSettings.m_intermediateResizeFactor = j["camera"]["intermediateResizeFactor"];
-        m_cameraSettings.m_medianBlurSize = j["camera"]["medianBlurSize"];
-        m_cameraSettings.m_morphOperationType = j["camera"]["morphOperationType"];
-        m_cameraSettings.m_morphKernelType = j["camera"]["morphKernelType"];
-        m_cameraSettings.m_morphKernelSize = j["camera"]["morphKernelSize"];
-
     } catch(std::exception e) {
         std::cerr << "Error while parsing json config file: " << e.what() << std::endl;
         exit(1);

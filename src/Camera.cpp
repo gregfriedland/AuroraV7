@@ -21,11 +21,16 @@ int Camera::camHeight() const {
     return m_settings.m_camHeight;
 }
 
+void Camera::setImageProcSettings(const ImageProcSettings& settings) {
+    std::cout << "Setting image proc settings: " << settings.toString() << std::endl;
+    m_imageProcSettings = settings;
+}
+
 void Camera::init() {
 #ifdef RASPICAM
-  if (!m_cam.open()) {
+    if (!m_cam.open()) {
 #else
-  if (!m_cam.open(0)) {
+    if (!m_cam.open(0)) {
 #endif
         std::cerr << "Error opening camera" << std::endl;
         return;
@@ -81,23 +86,23 @@ void Camera::loop(unsigned int interval) {
 
 	    cv::cvtColor(m_img, m_grayImg, CV_BGR2GRAY);
         cv::resize(m_grayImg, m_screenImg,
-            cv::Size(m_settings.m_intermediateResizeFactor * m_settings.m_screenWidth,
-                m_settings.m_intermediateResizeFactor * m_settings.m_screenHeight));
-        cv::medianBlur(m_screenImg, m_screenImg, m_settings.m_medianBlurSize); // blur without losing edges
+            cv::Size(m_imageProcSettings.m_intermediateResizeFactor * m_settings.m_screenWidth,
+                m_imageProcSettings.m_intermediateResizeFactor * m_settings.m_screenHeight));
+        cv::medianBlur(m_screenImg, m_screenImg, 2 * m_imageProcSettings.m_medianBlurSize + 1); // blur without losing edges
         // cv::GaussianBlur(m_screenImg, m_screenImg, cv::Size(3, 3), 0, 0); // blur
 
-        if (m_settings.m_morphOperationType >= 0) {
-            if (m_settings.m_morphOperationType > 4) {
-                std::cout << "Invalid morph operation type value\n";
+        if (m_imageProcSettings.m_morphOperation >= 0) {
+            if (m_imageProcSettings.m_morphOperation > 4) {
+                std::cout << "Invalid morph operation\n";
             } else {
-                cv::Mat element = cv::getStructuringElement(m_settings.m_morphKernelType,
-                    cv::Size(2 * m_settings.m_morphKernelSize + 1, 2 * m_settings.m_morphKernelSize + 1),
-                    cv::Size(m_settings.m_morphKernelSize, m_settings.m_morphKernelSize));
-                cv::morphologyEx(m_screenImg, m_screenImg, m_settings.m_morphOperationType + 2, element);
+                cv::Mat element = cv::getStructuringElement(m_imageProcSettings.m_morphKernel,
+                    cv::Size(2 * m_imageProcSettings.m_morphKernelSize + 1, 2 * m_imageProcSettings.m_morphKernelSize + 1),
+                    cv::Size(m_imageProcSettings.m_morphKernelSize, m_imageProcSettings.m_morphKernelSize));
+                cv::morphologyEx(m_screenImg, m_screenImg, m_imageProcSettings.m_morphOperation + 2, element);
             }
         }
-        m_screenImg.convertTo(m_screenImg, -1, m_settings.m_contrastFactor, 0); // increase contrast
-        cv::medianBlur(m_screenImg, m_screenImg, m_settings.m_medianBlurSize); // blur without losing edges
+        m_screenImg.convertTo(m_screenImg, -1, m_imageProcSettings.m_contrastFactor, 0); // increase contrast
+        cv::medianBlur(m_screenImg, m_screenImg, 2 * m_imageProcSettings.m_medianBlurSize + 1); // blur without losing edges
 
         cv::resize(m_screenImg, m_screenImg, cv::Size(m_settings.m_screenWidth, m_settings.m_screenHeight));
 	
