@@ -154,7 +154,7 @@ void Controller::loop(int interval) {
 	    // Change drawer every so often, but only to video if faces were detected
 	    if (m_drawerChangeTimer.tick(NULL)) {
 	        if (m_currDrawer->name().compare("Video") == 0)
-                    randomizeSettings();
+                    randomizeSettings(m_currDrawer);
 	        else
                     changeDrawer({"Bzr", "AlienBlob"});
 	    }
@@ -170,6 +170,9 @@ void Controller::loop(int interval) {
 	  
 
     	// update drawer
+	while (m_currDrawer->isPaused()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
     	m_currDrawer->draw(m_colIndices);
 
         cv::Mat img;
@@ -261,23 +264,17 @@ void Controller::changeDrawer(vector<string> names) {
     }
 
     cout << "Changing to drawer: " << name << endl;
-    m_currDrawer = m_drawers[name];
-    randomizeSettings();
-    m_currDrawer->reset();
+    Drawer* nextDrawer = m_drawers[name];
+    randomizeSettings(nextDrawer);
+    m_currDrawer = nextDrawer;
 
     m_drawerChangeTimer.reset();
 }
 
-void Controller::randomizeSettings() {
-	auto& settings = m_currDrawer->settings();
-	auto& settingsRanges = m_currDrawer->settingsRanges();
-
-    for (auto& setting: settings) {
-    	auto& range = settingsRanges.find(setting.first)->second;
-    	setting.second = random2() % (range.second - range.first + 1) + range.first;
-    } 
-
+void Controller::randomizeSettings(Drawer* drawer) {
+    drawer->setPaused(true);
     m_currPalIndex = random2() % m_palettes.size();
-    m_currDrawer->reset();
+    drawer->randomizeSettings();
     m_drawerChangeTimer.reset();
+    drawer->setPaused(false);
 }

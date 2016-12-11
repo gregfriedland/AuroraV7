@@ -50,7 +50,7 @@ private:
     void setSettings(const map<string,int>& settings);
     string currDrawerName();
     vector<string> drawerNames();
-    void randomizeSettings();
+    void randomizeSettings(Drawer* drawer);
 
     void changeDrawer(vector<string> names);
     void init();
