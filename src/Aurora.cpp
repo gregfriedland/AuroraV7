@@ -33,9 +33,9 @@ int main(int argc, char** argv) {
 
 	// start camera
     Camera *camera = NULL;
-    if (settings.m_cameraFps > 0) {
-        camera = new Camera(settings.m_cameraWidth, settings.m_cameraHeight, settings.m_width, settings.m_height);
-        camera->start(1000 / settings.m_cameraFps);
+    if (settings.m_cameraSettings.m_fps > 0) {
+        camera = new Camera(settings.m_cameraSettings);
+        camera->start(1000 / settings.m_cameraSettings.m_fps);
     }
 
 	// start face detection

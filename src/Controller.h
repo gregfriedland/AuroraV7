@@ -28,10 +28,8 @@ struct ControllerSettings {
     int m_numBaseColors;
     int m_baseColorsPerPalette;
     int m_faceVideoDrawerTimeout;
-    int m_cameraFps;
-    int m_cameraWidth;
-    int m_cameraHeight;
     int m_faceDetectFps;
+    CameraSettings m_cameraSettings;
 };
 
 class Controller {

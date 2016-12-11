@@ -8,10 +8,16 @@
     "camera": {
         "width": 1280,
         "height": 720,
-        "fps": 15
+        "fps": 15,
+        "contrastFactor": 6,
+        "intermediateResizeFactor": 3,
+        "medianBlurSize": 5,
+        "morphOperationType": 4,
+        "morphKernelType": 2,
+        "morphKernelSize": 10
     },
     "faceDetection": {
-        "fps": 0,
+        "fps": 1,
         "videoDrawerTimeout": 10000
     },
     "screenShowMultiplier": 10,

@@ -14,10 +14,20 @@
     #include <raspicam_cv.h>
 #endif
 
+struct CameraSettings {
+    int m_camWidth, m_camHeight, m_screenWidth, m_screenHeight;
+    float m_fps;
+    float m_contrastFactor;
+    int m_intermediateResizeFactor;
+    int m_medianBlurSize;
+    int m_morphOperationType;
+    int m_morphKernelType;
+    int m_morphKernelSize;
+};
 
 class Camera {
 public:
-    Camera(int camWidth, int camHeight, int screenWidth, int screenHeight);
+    Camera(const CameraSettings& settings);
 
     int camWidth() const;
     int camHeight() const;
@@ -35,7 +45,7 @@ public:
 
 private:
     bool m_stop;
-    int m_camWidth, m_camHeight, m_screenWidth, m_screenHeight;
+    CameraSettings m_settings;
 #ifdef RASPICAM	
     raspicam::RaspiCam_Cv m_cam;
 #else
