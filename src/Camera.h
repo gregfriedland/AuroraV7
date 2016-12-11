@@ -43,22 +43,18 @@ public:
 
     int camWidth() const;
     int camHeight() const;
+    float fps() const;
 
     void init();
 
     void start(unsigned int interval);
 
     void stop();
-
-    void lock();
-    void unlock();
-    
     cv::Mat getGrayImage();
-    cv::Mat getScaledImage();
 
     void loop(unsigned int interval);
 
-    void setImageProcSettings(const ImageProcSettings& settings);
+    void registerNewFrameCallback(std::function<void()> func);
 
 private:
     bool m_stop;
@@ -68,12 +64,13 @@ private:
 #else
     cv::VideoCapture m_cam;
 #endif
-    cv::Mat m_img, m_grayImg, m_screenImg;
+    cv::Mat m_img, m_grayImg;
     FpsCounter m_fpsCounter;
     FrameTimer m_frameTimer;
     std::thread m_thread;
     std::mutex m_mutex;
     ImageProcSettings m_imageProcSettings;
+    std::function<void()> m_newFrameCallback;
 };
 
 #endif

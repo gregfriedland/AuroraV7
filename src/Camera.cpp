@@ -22,9 +22,8 @@ int Camera::camHeight() const {
     return m_settings.m_camHeight;
 }
 
-void Camera::setImageProcSettings(const ImageProcSettings& settings) {
-    std::cout << "Setting image proc settings: " << settings.toString() << std::endl;
-    m_imageProcSettings = settings;
+float Camera::fps() const {
+    return m_settings.m_fps;
 }
 
 void Camera::init() {
@@ -55,12 +54,12 @@ void Camera::start(unsigned int interval) {
 }
 
 void Camera::stop() {
-	std::cout << "Stopping camera\n";
+    std::cout << "Stopping camera\n";
     m_stop = true;
     if (m_thread.joinable()) {
         m_thread.join();
     }
-}	
+}   
 
 cv::Mat Camera::getGrayImage() {
     m_mutex.lock();
@@ -69,56 +68,30 @@ cv::Mat Camera::getGrayImage() {
     return img;
 }
 
-cv::Mat Camera::getScaledImage() {
-    m_mutex.lock();
-    auto img = m_screenImg.clone();
-    m_mutex.unlock();
-    return img;
-}
+// cv::Mat Camera::getScaledImage() {
+//     m_mutex.lock();
+//     auto img = m_screenImg.clone();
+//     m_mutex.unlock();
+//     return img;
+// }
 
 void Camera::loop(unsigned int interval) {
     m_frameTimer.tick(interval, [=]() {
         m_fpsCounter.tick();
 
-            m_cam.grab();
-            m_cam.retrieve(m_img); // get a new frame from camera
+        m_cam.grab();
+        m_cam.retrieve(m_img); // get a new frame from camera
 
-	    m_mutex.lock();
-            cv::cvtColor(m_img, m_grayImg, CV_BGR2GRAY);
-	    m_mutex.unlock();
+        m_mutex.lock();
+        cv::cvtColor(m_img, m_grayImg, CV_BGR2GRAY);
+        m_mutex.unlock();
 
-	    cv::Mat screenImg;
-            cv::resize(m_grayImg, screenImg,
-		       cv::Size(m_imageProcSettings.m_intermediateResizeFactor * m_settings.m_screenWidth,
-				m_imageProcSettings.m_intermediateResizeFactor * m_settings.m_screenHeight));
-            cv::medianBlur(screenImg, screenImg, 2 * m_imageProcSettings.m_medianBlurSize + 1); // blur without losing edges
-            // cv::GaussianBlur(m_screenImg, m_screenImg, cv::Size(3, 3), 0, 0); // blur
-
-            if (m_imageProcSettings.m_morphOperation >= 0) {
-                if (m_imageProcSettings.m_morphOperation > 4) {
-                    std::cout << "Invalid morph operation\n";
-                } else {
-                    cv::Mat element = cv::getStructuringElement(m_imageProcSettings.m_morphKernel,
-                    cv::Size(2 * m_imageProcSettings.m_morphKernelSize + 1, 2 * m_imageProcSettings.m_morphKernelSize + 1),
-                    cv::Size(m_imageProcSettings.m_morphKernelSize, m_imageProcSettings.m_morphKernelSize));
-                    cv::morphologyEx(screenImg, screenImg, m_imageProcSettings.m_morphOperation + 2, element);
-                }
-            }
-        screenImg.convertTo(screenImg, -1, m_imageProcSettings.m_contrastFactor, 0); // increase contrast
-        cv::medianBlur(screenImg, screenImg, 2 * m_imageProcSettings.m_medianBlurSize + 1); // blur without losing edges
-	    cv::resize(screenImg, screenImg, cv::Size(m_settings.m_screenWidth, m_settings.m_screenHeight));
-
-	    m_mutex.lock();
-	    m_screenImg = screenImg;
-	    //	    cv::resize(m_grayImg, m_screenImg, cv::Size(m_settings.m_screenWidth, m_settings.m_screenHeight));
-	    m_mutex.unlock();
+        if (m_newFrameCallback) {
+            m_newFrameCallback();
+        }
     });
 }
 
- void Camera::lock() {
-   m_mutex.lock();
- }
-
- void Camera::unlock() {
-   m_mutex.unlock();
- }
+void Camera::registerNewFrameCallback(std::function<void()> func) {
+    m_newFrameCallback = func;
+}

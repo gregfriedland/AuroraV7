@@ -76,20 +76,20 @@ const unsigned char* Controller::rawData(int& size) {
 
 void Controller::init()
 {
-	// create drawers and set start drawer
-	m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
-	m_drawers.insert(make_pair("Bzr", new BzrDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+    // create drawers and set start drawer
+    m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+    m_drawers.insert(make_pair("Bzr", new BzrDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
     if (m_camera != NULL)
         m_drawers.insert(make_pair("Video", new VideoDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
-	m_drawers.insert(make_pair("Off", new OffDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
+    m_drawers.insert(make_pair("Off", new OffDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
     if (m_drawers.find(m_settings.m_startDrawerName) != m_drawers.end())
         changeDrawer({m_settings.m_startDrawerName});
     else
         changeDrawer({"AlienBlob"});
 
-	// create serial connection
-	if (m_settings.m_device.size() > 0) {
-		m_serial.connect();
+    // create serial connection
+    if (m_settings.m_device.size() > 0) {
+        m_serial.connect();
     }
 
     if (m_settings.m_screenShowMultiplier) {
@@ -121,9 +121,9 @@ void Controller::stop() {
         m_thread.join();
     }
 
-	if (m_settings.m_device.size() > 0) {
+    if (m_settings.m_device.size() > 0) {
         std::cout << "Closing serial port\n";
-		m_serial.close();
+        m_serial.close();
     }
     std::cout << "Stopped controller\n";
 }
@@ -131,49 +131,48 @@ void Controller::stop() {
 void Controller::loop(int interval) {
     static unsigned long lastUpdate = 0;
     m_frameTimer.tick(interval, [=]() {
-    	m_fpsCounter.tick();
+        m_fpsCounter.tick();
 
-    	// auto diff = millis() - lastUpdate;
-    	// if (diff > 30) {
-    	//     std::cout << diff << std::endl;
-    	// }
-    	// lastUpdate = millis();
-	
+        // auto diff = millis() - lastUpdate;
+        // if (diff > 30) {
+        //     std::cout << diff << std::endl;
+        // }
+        // lastUpdate = millis();
+    
         // change to Video drawer if faces have been detected or change
         // from video drawer is no faces detected
         if (m_faceDetect != NULL) {
             unsigned long faceTimeDiff = millis() - m_faceDetect->lastDetection();
             if (faceTimeDiff < m_settings.m_faceVideoDrawerTimeout && m_currDrawer->name().compare("Off") != 0 && m_currDrawer->name().compare("Video") != 0) {
-	        //std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
+                //std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
                 changeDrawer({"Video"});
             } else if (faceTimeDiff > m_settings.m_faceVideoDrawerTimeout && m_currDrawer->name().compare("Video") == 0) {
-	        //std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
+                //std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
                 changeDrawer({"Bzr", "AlienBlob"});
             }
 
-	    // Change drawer every so often, but only to video if faces were detected
-	    if (m_drawerChangeTimer.tick(NULL)) {
-	        if (m_currDrawer->name().compare("Video") == 0)
-                    randomizeSettings(m_currDrawer);
-	        else
-                    changeDrawer({"Bzr", "AlienBlob"});
-	    }
-	} else if (m_camera != NULL) {
-	    if (m_drawerChangeTimer.tick(NULL)) {
-	      changeDrawer({/*"Bzr", "AlienBlob", */"Video"});
-	    }
-	} else {
-	    if (m_drawerChangeTimer.tick(NULL)) {
-  	        changeDrawer({"Bzr", "AlienBlob"});
-	    }
-	}
-	  
+        // Change drawer every so often, but only to video if faces were detected
+        if (m_drawerChangeTimer.tick(NULL)) {
+            if (m_currDrawer->name().compare("Video") == 0)
+                randomizeSettings(m_currDrawer);
+            else
+                changeDrawer({"Bzr", "AlienBlob"});
+        }
+    } else if (m_camera != NULL) {
+        if (m_drawerChangeTimer.tick(NULL)) {
+            changeDrawer({/*"Bzr", "AlienBlob", */"Video"});
+        }
+    } else {
+        if (m_drawerChangeTimer.tick(NULL)) {
+            changeDrawer({"Bzr", "AlienBlob"});
+        }
+    }
 
-    	// update drawer
-	while (m_currDrawer->isPaused()) {
+    // update drawer
+    while (m_currDrawer->isPaused()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
-    	m_currDrawer->draw(m_colIndices);
+    }
+        m_currDrawer->draw(m_colIndices);
 
         cv::Mat img;
         if (m_settings.m_screenShowMultiplier) {
@@ -181,16 +180,16 @@ void Controller::loop(int interval) {
                 m_settings.m_width * m_settings.m_screenShowMultiplier, CV_8UC3);
         }
 
-    	// pack data for serial transmission
-    	int i = 0;
-    	for (int y = 0; y < m_settings.m_height; y++) {
-    		for (int x = 0; x < m_settings.m_width; x++) {
-    			Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_settings.m_width]);
-    			// if (x == 0 && y == 0)
-    			// 	cout << "00 index=" << m_colIndices[x + y * m_width] << " rgb=" << (int)col.r << " " << (int)col.g << " " << (int)col.b << endl;
-    			m_serialWriteBuffer[i++] = min((unsigned char)254, col.r);
-    			m_serialWriteBuffer[i++] = min((unsigned char)254, col.g);
-    			m_serialWriteBuffer[i++] = min((unsigned char)254, col.b);
+        // pack data for serial transmission
+        int i = 0;
+        for (int y = 0; y < m_settings.m_height; y++) {
+            for (int x = 0; x < m_settings.m_width; x++) {
+                Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_settings.m_width]);
+                // if (x == 0 && y == 0)
+                //  cout << "00 index=" << m_colIndices[x + y * m_width] << " rgb=" << (int)col.r << " " << (int)col.g << " " << (int)col.b << endl;
+                m_serialWriteBuffer[i++] = min((unsigned char)254, col.r);
+                m_serialWriteBuffer[i++] = min((unsigned char)254, col.g);
+                m_serialWriteBuffer[i++] = min((unsigned char)254, col.b);
 
                 if (m_settings.m_screenShowMultiplier) {
                     int m = m_settings.m_screenShowMultiplier;
@@ -203,23 +202,23 @@ void Controller::loop(int interval) {
                         }
                     }
                 }
-    		}
-    	}
-    	m_serialWriteBuffer[i++] = 255;
+            }
+        }
+        m_serialWriteBuffer[i++] = 255;
 
         if (m_settings.m_screenShowMultiplier) {
             cv::imshow(WINDOW_NAME, img);
             cv::waitKey(1);            
         }
 
-    	// send serial data
-    	if (m_settings.m_device.size() > 0) {
-    		m_serial.write(m_serialWriteBuffer, m_serialWriteBufferSize);
+        // send serial data
+        if (m_settings.m_device.size() > 0) {
+            m_serial.write(m_serialWriteBuffer, m_serialWriteBufferSize);
 
-    		unsigned char buffer[256];
-    		if (m_serial.read(256, buffer) > 0)
-    	        cout << "read: " << (unsigned int) buffer[0] << endl;
-    	}
+            unsigned char buffer[256];
+            if (m_serial.read(256, buffer) > 0)
+                cout << "read: " << (unsigned int) buffer[0] << endl;
+        }
 
 
     });
@@ -227,40 +226,40 @@ void Controller::loop(int interval) {
 
 
 const map<string,int>& Controller::settings() {
-	return m_currDrawer->settings();
+    return m_currDrawer->settings();
 }
 
 const map< string,pair<int,int> >& Controller::settingsRanges() {
-	return m_currDrawer->settingsRanges();
+    return m_currDrawer->settingsRanges();
 }
 
 void Controller::setSettings(const map<string,int>& settings) {
-	m_currDrawer->setSettings(settings);
+    m_currDrawer->setSettings(settings);
     m_drawerChangeTimer.reset();
 }
 
 string Controller::currDrawerName() {
-	return m_currDrawer->name();
+    return m_currDrawer->name();
 }
 
 vector<string> Controller::drawerNames() {
-	vector<string> names;
-	for (auto& d: m_drawers)
-		names.push_back(d.first);
-	return names;
+    vector<string> names;
+    for (auto& d: m_drawers)
+        names.push_back(d.first);
+    return names;
 }
 
 void Controller::changeDrawer(vector<string> names) {
-	string name;
-	assert(names.size() > 0);
-	if (names.size() == 1)
-		name = names[0];
-	else
-		name = names[random2() % names.size()];
+    string name;
+    assert(names.size() > 0);
+    if (names.size() == 1)
+        name = names[0];
+    else
+        name = names[random2() % names.size()];
 
     if (m_drawers.find(name) == m_drawers.end()) {
-    	cout << "Invalid drawer name: " << name << endl;
-    	return;
+        cout << "Invalid drawer name: " << name << endl;
+        return;
     }
 
     cout << "Changing to drawer: " << name << endl;
@@ -277,4 +276,5 @@ void Controller::randomizeSettings(Drawer* drawer) {
     drawer->randomizeSettings();
     m_drawerChangeTimer.reset();
     drawer->setPaused(false);
+    std::cout << "Randomized settings for drawer: " << drawer->name() << "\n";
 }

@@ -3,7 +3,7 @@
     "height": 32,
     "paletteSize": 4096,
     "fps": 35,
-    "startDrawer": "Video",
+    "startDrawer": "Bzr",
     "drawerChangeInterval": 10000,
     "camera": {
         "width": 1280,
