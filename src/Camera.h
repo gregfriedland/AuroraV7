@@ -50,6 +50,9 @@ public:
 
     void stop();
 
+    void lock();
+    void unlock();
+    
     cv::Mat getGrayImage();
     cv::Mat getScaledImage();
 

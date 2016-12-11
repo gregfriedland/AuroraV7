@@ -4,14 +4,14 @@
     "paletteSize": 4096,
     "fps": 35,
     "startDrawer": "Video",
-    "drawerChangeInterval": 30000,
+    "drawerChangeInterval": 10000,
     "camera": {
         "width": 640,
         "height": 480,
         "fps": 10
     },
     "faceDetection": {
-        "fps": 1,
+        "fps": 0,
         "videoDrawerTimeout": 10000
     },
     "screenShowMultiplier": 0,

@@ -160,7 +160,7 @@ void Controller::loop(int interval) {
 	    }
 	} else if (m_camera != NULL) {
 	    if (m_drawerChangeTimer.tick(NULL)) {
-  	        changeDrawer({"Bzr", "AlienBlob", "Video"});
+	      changeDrawer({/*"Bzr", "AlienBlob", */"Video"});
 	    }
 	} else {
 	    if (m_drawerChangeTimer.tick(NULL)) {

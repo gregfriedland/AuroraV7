@@ -34,7 +34,8 @@ void VideoDrawer::reset() {
 }
 
 void VideoDrawer::draw(int* colIndices) {
-    auto img = m_camera->getScaledImage();
+  m_camera->lock();
+  auto img = m_camera->getScaledImage();
     if (img.cols == 0 || img.rows == 0) {
       std::cout << "Zero sized image from camera\n";
       return;
@@ -46,6 +47,7 @@ void VideoDrawer::draw(int* colIndices) {
 	    colIndices[x + y * m_width] = index;
         }
     }
+    m_camera->unlock();
     m_colorIndex += m_settings["colorSpeed"];
 }
 
