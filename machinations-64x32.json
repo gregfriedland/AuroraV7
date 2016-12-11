@@ -3,12 +3,12 @@
     "height": 32,
     "paletteSize": 4096,
     "fps": 35,
-    "startDrawer": "Bzr",
+    "startDrawer": "Video",
     "drawerChangeInterval": 30000,
     "camera": {
         "width": 640,
         "height": 480,
-        "fps": 15
+        "fps": 10
     },
     "faceDetection": {
         "fps": 1,

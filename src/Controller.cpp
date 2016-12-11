@@ -141,21 +141,30 @@ void Controller::loop(int interval) {
         if (m_faceDetect != NULL) {
             unsigned long faceTimeDiff = millis() - m_faceDetect->lastDetection();
             if (faceTimeDiff < m_settings.m_faceVideoDrawerTimeout && m_currDrawer->name().compare("Off") != 0 && m_currDrawer->name().compare("Video") != 0) {
-                std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
+	        //std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
                 changeDrawer({"Video"});
             } else if (faceTimeDiff > m_settings.m_faceVideoDrawerTimeout && m_currDrawer->name().compare("Video") == 0) {
-                std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
+	        //std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
                 changeDrawer({"Bzr", "AlienBlob"});
             }
-        }
 
-    	// Change drawer every so often, but only to video if faces were detected
-    	if (m_drawerChangeTimer.tick(NULL)) {
-            if (m_currDrawer->name().compare("Video") == 0)
-                randomizeSettings();
-            else
-                changeDrawer({"Bzr", "AlienBlob"});
-        }
+	    // Change drawer every so often, but only to video if faces were detected
+	    if (m_drawerChangeTimer.tick(NULL)) {
+	        if (m_currDrawer->name().compare("Video") == 0)
+                    randomizeSettings();
+	        else
+                    changeDrawer({"Bzr", "AlienBlob"});
+	    }
+	} else if (m_camera != NULL) {
+	    if (m_drawerChangeTimer.tick(NULL)) {
+  	        changeDrawer({"Bzr", "AlienBlob", "Video"});
+	    }
+	} else {
+	    if (m_drawerChangeTimer.tick(NULL)) {
+  	        changeDrawer({"Bzr", "AlienBlob"});
+	    }
+	}
+	  
 
     	// update drawer
     	m_currDrawer->draw(m_colIndices);
