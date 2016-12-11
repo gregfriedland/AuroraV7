@@ -4,7 +4,7 @@
     "paletteSize": 4096,
     "fps": 35,
     "startDrawer": "Bzr",
-    "drawerChangeInterval": 10000,
+    "drawerChangeInterval": 30000,
     "camera": {
         "width": 640,
         "height": 480,

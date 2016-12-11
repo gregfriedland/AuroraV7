@@ -160,7 +160,7 @@ void Controller::loop(int interval) {
         }
     } else if (m_camera != NULL) {
         if (m_drawerChangeTimer.tick(NULL)) {
-            changeDrawer({/*"Bzr", "AlienBlob", */"Video"});
+            changeDrawer({"Bzr", "AlienBlob", "Video"});
         }
     } else {
         if (m_drawerChangeTimer.tick(NULL)) {
@@ -265,6 +265,9 @@ void Controller::changeDrawer(vector<string> names) {
     cout << "Changing to drawer: " << name << endl;
     Drawer* nextDrawer = m_drawers[name];
     randomizeSettings(nextDrawer);
+    if (m_currDrawer) {
+        m_currDrawer->cleanup();
+    }
     m_currDrawer = nextDrawer;
 
     m_drawerChangeTimer.reset();

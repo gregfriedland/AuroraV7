@@ -5,12 +5,14 @@
 #include "Camera.h"
 #include "Util.h"
 #include <opencv2/opencv.hpp>
+#include <mutex>
 
 class VideoDrawer : public Drawer {
 public:
     VideoDrawer(int width, int height, int palSize, Camera* camera);
 
     virtual void reset();
+    virtual void cleanup();
 
     virtual void draw(int* colIndices);
 
@@ -24,6 +26,7 @@ public:
     FrameTimer m_camFrameTimer;
     cv::Mat m_screenImg;
     ImageProcSettings m_imageProcSettings;
+    std::mutex m_mutex;
 };
 
 #endif

@@ -31,17 +31,27 @@ void VideoDrawer::reset() {
     s.m_morphKernel = m_settings["morphKernel"];
     s.m_morphKernelSize = m_settings["morphKernelSize"];
     m_imageProcSettings = s;
+    std::cout << "New image proc settings: " << s.toString() << std::endl;
+    
+    m_camera->registerNewFrameCallback([=]() {
+	cv::Mat img = processImage(m_camera->getGrayImage());
+	m_mutex.lock();
+	m_screenImg = img;
+	m_mutex.unlock();
+    });
+}
+
+void VideoDrawer::cleanup() {
+  m_camera->registerNewFrameCallback(nullptr);
 }
 
 void VideoDrawer::draw(int* colIndices) {
-    m_camera->registerNewFrameCallback([=]() {
-        m_screenImg = processImage(m_camera->getGrayImage());
-    });
-
     if (m_screenImg.cols == 0 || m_screenImg.rows == 0) {
         std::cout << "Zero sized image from camera\n";
         return;
     }
+
+    m_mutex.lock();
     for (int x = 0; x < m_width; ++x) {
         for (int y = 0; y < m_height; ++y) {
             auto& val = m_screenImg.at<unsigned char>(y, x);
@@ -49,6 +59,8 @@ void VideoDrawer::draw(int* colIndices) {
             colIndices[x + y * m_width] = index;
         }
     }
+    m_mutex.unlock();
+    
     //m_camera->unlock();
     m_colorIndex += m_settings["colorSpeed"];
 }

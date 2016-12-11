@@ -34,6 +34,7 @@ public:
 	void setPaused(bool value) { m_paused = value; }
 	bool isPaused() const { return m_paused; }
 	
+	virtual void cleanup() {}
 	virtual void reset() = 0;
 	virtual void draw(int* colIndices) = 0;
 	virtual ~Drawer() {}
