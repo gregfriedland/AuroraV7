@@ -130,23 +130,23 @@ void Controller::loop(int interval) {
     m_frameTimer.tick(interval, [=]() {
     	m_fpsCounter.tick();
 
-	// auto diff = millis() - lastUpdate;
-	// if (diff > 30) {
-	//     std::cout << diff << std::endl;
-	// }
-	// lastUpdate = millis();
+    	// auto diff = millis() - lastUpdate;
+    	// if (diff > 30) {
+    	//     std::cout << diff << std::endl;
+    	// }
+    	// lastUpdate = millis();
 	
         // change to Video drawer if faces have been detected or change
         // from video drawer is no faces detected
-        unsigned long faceTimeDiff = millis() - m_faceDetect->lastDetection();
-        if (m_faceDetect != NULL && faceTimeDiff < m_settings.m_faceVideoDrawerTimeout &&
-                    m_currDrawer->name().compare("Off") != 0 && m_currDrawer->name().compare("Video") != 0) {
-            std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
-            changeDrawer({"Video"});
-        } else if (m_faceDetect != NULL && faceTimeDiff > m_settings.m_faceVideoDrawerTimeout &&
-                    m_currDrawer->name().compare("Video") == 0) {
-            std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
-            changeDrawer({"Bzr", "AlienBlob"});
+        if (m_faceDetect != NULL) {
+            unsigned long faceTimeDiff = millis() - m_faceDetect->lastDetection();
+            if (faceTimeDiff < m_settings.m_faceVideoDrawerTimeout && m_currDrawer->name().compare("Off") != 0 && m_currDrawer->name().compare("Video") != 0) {
+                std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
+                changeDrawer({"Video"});
+            } else if (faceTimeDiff > m_settings.m_faceVideoDrawerTimeout && m_currDrawer->name().compare("Video") == 0) {
+                std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
+                changeDrawer({"Bzr", "AlienBlob"});
+            }
         }
 
     	// Change drawer every so often, but only to video if faces were detected

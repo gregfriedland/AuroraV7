@@ -80,9 +80,11 @@ void Camera::loop(unsigned int interval) {
 
 	m_mutex.lock();
 	cv::cvtColor(m_img, m_grayImg, CV_BGR2GRAY);
-	cv::resize(m_grayImg, m_screenImg, cv::Size(m_screenWidth, m_screenHeight));
-	//cv::GaussianBlur(m_screenImg, m_screenImg, cv::Size(3, 3), 0, 0);
-	m_screenImg.convertTo(m_screenImg, -1, 2.5, -50);
+    cv::resize(m_grayImg, m_screenImg, cv::Size(2 * m_screenWidth, 2 * m_screenHeight));
+    cv::medianBlur(m_screenImg, m_screenImg, 5); // blur without losing edges
+    cv::resize(m_screenImg, m_screenImg, cv::Size(m_screenWidth, m_screenHeight));
+	// cv::GaussianBlur(m_screenImg, m_screenImg, cv::Size(3, 3), 0, 0); // blur
+	m_screenImg.convertTo(m_screenImg, -1, 2.2, 0); // increase contrast
 	
 	m_mutex.unlock();
     });

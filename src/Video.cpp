@@ -6,7 +6,7 @@ using namespace std;
 VideoDrawer::VideoDrawer(int width, int height, int palSize, Camera* camera) 
 : Drawer("Video", width, height, palSize), m_camera(camera), m_colorIndex(0) {
     m_settings.insert(make_pair("colorSpeed",20));
-    m_settingsRanges.insert(make_pair("colorSpeed", make_pair(10,50)));
+    m_settingsRanges.insert(make_pair("colorSpeed", make_pair(5,25)));
 }
 
 void VideoDrawer::reset() {
