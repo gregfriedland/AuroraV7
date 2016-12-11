@@ -5,30 +5,21 @@
 #include <unistd.h>
 #include <thread>
 
-Camera::Camera(int width, int height)
- : m_fpsCounter(30000, "Camera") {
+Camera::Camera(int camWidth, int camHeight, int screenWidth, int screenHeight)
+: m_fpsCounter(30000, "Camera"), m_camWidth(camWidth), m_camHeight(camHeight),
+  m_screenWidth(screenWidth), m_screenHeight(screenHeight) {
     m_cam.set(CV_CAP_PROP_FORMAT, CV_8UC3);
 
-    m_cam.set(CV_CAP_PROP_FRAME_WIDTH, width);
-    m_cam.set(CV_CAP_PROP_FRAME_HEIGHT, height);
-    // m_img = cv::Mat(height, width, CV_8UC3);
-
-    // m_cam.read(m_img);
-    m_width = width;
-    m_height = height;
-    // m_width = m_vc.get(CV_CAP_PROP_FRAME_WIDTH);
-    // m_height = m_vc.get(CV_CAP_PROP_FRAME_HEIGHT);
-
-    std::cout << "Creating camera with dims " << m_width << "x" << m_height <<
-        " (desired " << width << "x" << height << ")\n";
+    m_cam.set(CV_CAP_PROP_FRAME_WIDTH, camWidth);
+    m_cam.set(CV_CAP_PROP_FRAME_HEIGHT, camHeight);
 }
 
-int Camera::width() const { 
-    return m_width;
+int Camera::camWidth() const { 
+    return m_camWidth;
 }
 
-int Camera::height() const { 
-    return m_height;
+int Camera::camHeight() const { 
+    return m_camHeight;
 }
 
 void Camera::init() {
@@ -45,7 +36,7 @@ void Camera::init() {
 void Camera::start(unsigned int interval) {
     init();
 
-    std::cout << "Starting camera with dims " << m_width << "x" << m_height << "\n";
+    std::cout << "Starting camera with dims " << m_camWidth << "x" << m_camHeight << "\n";
     m_stop = false;
     auto run = [=]() {
         while (!m_stop) {
@@ -68,7 +59,14 @@ void Camera::stop() {
 
 cv::Mat Camera::getGrayImage() {
     m_mutex.lock();
-    auto img = m_lastImg.clone();
+    auto img = m_grayImg.clone();
+    m_mutex.unlock();
+    return img;
+}
+
+cv::Mat Camera::getScaledImage() {
+    m_mutex.lock();
+    auto img = m_screenImg.clone();
     m_mutex.unlock();
     return img;
 }
@@ -77,10 +75,12 @@ void Camera::loop(unsigned int interval) {
     m_frameTimer.tick(interval, [=]() {
         m_fpsCounter.tick();
 
-	m_mutex.lock();
         m_cam.grab();
 	m_cam.retrieve(m_img); // get a new frame from camera
-	cv::cvtColor(m_img, m_lastImg, CV_BGR2GRAY);
+
+	m_mutex.lock();
+	cv::cvtColor(m_img, m_grayImg, CV_BGR2GRAY);
+	cv::resize(m_grayImg, m_screenImg, cv::Size(m_screenWidth, m_screenHeight));
 	m_mutex.unlock();
     });
 }

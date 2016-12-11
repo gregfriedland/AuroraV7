@@ -17,10 +17,10 @@
 
 class Camera {
 public:
-	Camera(int width, int height);
+    Camera(int camWidth, int camHeight, int screenWidth, int screenHeight);
 
-    int width() const;
-    int height() const;
+    int camWidth() const;
+    int camHeight() const;
 
     void init();
 
@@ -29,19 +29,19 @@ public:
     void stop();
 
     cv::Mat getGrayImage();
+    cv::Mat getScaledImage();
 
     void loop(unsigned int interval);
 
 private:
     bool m_stop;
-    int m_width, m_height;
+    int m_camWidth, m_camHeight, m_screenWidth, m_screenHeight;
 #ifdef RASPICAM	
     raspicam::RaspiCam_Cv m_cam;
 #else
     cv::VideoCapture m_cam;
 #endif
-    cv::Mat m_img;
-    cv::Mat m_lastImg;
+    cv::Mat m_img, m_grayImg, m_screenImg;
     FpsCounter m_fpsCounter;
     FrameTimer m_frameTimer;
     std::thread m_thread;

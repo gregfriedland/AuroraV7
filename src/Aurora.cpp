@@ -7,19 +7,6 @@
 #include <unistd.h>
 #include <thread>
 
-// #define WIDTH 64
-// #define HEIGHT 32
-// #define PAL_SIZE 1<<12 // #colors in the gradient of each palette
-// #define FPS 35
-// #define START_DRAWER "Video"
-// #define DRAWER_CHANGE_INTERVAL 30000
-// #define LAYOUT_LEFT_TO_RIGHT false
-// #define CAMERA_WIDTH 1280
-// #define CAMERA_HEIGHT 720
-// #define CAMERA_FPS 15
-// #define FACEDETECT_FPS 1
-// #define FACE_VIDEO_DRAWER_TIMEOUT 10000
-
 static Controller* controller;
 
 void sigHandler(int sig) {
@@ -47,7 +34,7 @@ int main(int argc, char** argv) {
 	// start camera
     Camera *camera = NULL;
     if (settings.m_cameraFps > 0) {
-        camera = new Camera(settings.m_cameraWidth, settings.m_cameraHeight);
+        camera = new Camera(settings.m_cameraWidth, settings.m_cameraHeight, settings.m_width, settings.m_height);
         camera->start(1000 / settings.m_cameraFps);
     }
 
