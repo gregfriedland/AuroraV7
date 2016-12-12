@@ -84,14 +84,18 @@ void Camera::loop(unsigned int interval) {
 
         m_mutex.lock();
         cv::cvtColor(m_img, m_grayImg, CV_BGR2GRAY);
+
+	auto callback = m_newFrameCallback ? m_newFrameCallback : nullptr;	
         m_mutex.unlock();
 
-        if (m_newFrameCallback) {
-            m_newFrameCallback();
+        if (callback) {
+            callback();
         }
     });
 }
 
 void Camera::registerNewFrameCallback(std::function<void()> func) {
+    m_mutex.lock();
     m_newFrameCallback = func;
+    m_mutex.unlock();
 }
