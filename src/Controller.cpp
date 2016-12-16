@@ -2,6 +2,7 @@
 #include "Palette.h"
 #include "AlienBlob.h"
 #include "Bzr.h"
+#include "GrayScott.h"
 #include "Off.h"
 #include "Video.h"
 #include "Util.h"
@@ -79,6 +80,7 @@ void Controller::init()
     // create drawers and set start drawer
     m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
     m_drawers.insert(make_pair("Bzr", new BzrDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+    m_drawers.insert(make_pair("GrayScott", new GrayScottDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
     if (m_camera != NULL)
         m_drawers.insert(make_pair("Video", new VideoDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
     m_drawers.insert(make_pair("Off", new OffDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
@@ -148,7 +150,7 @@ void Controller::loop(int interval) {
                 changeDrawer({"Video"});
             } else if (faceTimeDiff > m_settings.m_faceVideoDrawerTimeout && m_currDrawer->name().compare("Video") == 0) {
                 //std::cout << "faceTimeDiff=" << faceTimeDiff << "; faceVideoDrawerTimeout=" << m_settings.m_faceVideoDrawerTimeout << std::endl;
-                changeDrawer({"Bzr", "AlienBlob"});
+                changeDrawer({"GrayScott", "Bzr", "AlienBlob"});
             }
 
         // Change drawer every so often, but only to video if faces were detected
@@ -156,15 +158,15 @@ void Controller::loop(int interval) {
             if (m_currDrawer->name().compare("Video") == 0)
                 randomizeSettings(m_currDrawer);
             else
-                changeDrawer({"Bzr", "AlienBlob"});
+                changeDrawer({"GrayScott", "Bzr", "AlienBlob"});
         }
     } else if (m_camera != NULL) {
         if (m_drawerChangeTimer.tick(NULL)) {
-            changeDrawer({"Bzr", "AlienBlob", "Video"});
+            changeDrawer({"GrayScott", "Bzr", "AlienBlob", "Video"});
         }
     } else {
         if (m_drawerChangeTimer.tick(NULL)) {
-            changeDrawer({"Bzr", "AlienBlob"});
+            changeDrawer({"GrayScott", "Bzr", "AlienBlob"});
         }
     }
 
