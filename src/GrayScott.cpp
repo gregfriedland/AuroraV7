@@ -6,8 +6,8 @@
 #include "Util.h"
 
 // #define GRAY_SCOTT_SPEED_MULTIPLIER 100
-#define NUM_INIT_ISLANDS 1
-#define ISLAND_SIZE 20
+#define NUM_INIT_ISLANDS 5
+#define ISLAND_SIZE 10
 
 GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* camera)
 : Drawer("GrayScott", width, height, palSize), m_colorIndex(0), m_camera(camera) {
@@ -18,14 +18,26 @@ GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* cam
     m_settingsRanges.insert(make_pair("colorSpeed", make_pair(0,50)));
     m_settingsRanges.insert(make_pair("zoom", make_pair(30,100)));
 
-    m_F = 0.018; //0.008;
-    m_k = 0.053; //0.031;
-    m_du = 0.08; //0.0385;
-    m_dv = 0.04; //0.008;
-    m_dx = 0.7;//1;
-    m_dt = 1; //0.1;
+    // params from http://mrob.com/pub/comp/xmorphia
+    // 0.022/0.049
+    // 0.026/0.051
+    // 0.026/0.052
+    // 0.022/0.048
+    // 0.018/0.045
+    // 0.014/0.041 **
+    // 0.010/0.033 ***
+    // 0.006/0.045 *
+    // 0.006/0.043 *
+    // 0.010/0.047 **
+
+    m_F = 0.11;
+    m_k = 0.0523;
+    m_du = 0.08;
+    m_dv = 0.04;
+    m_dx = 1;
+    m_dt = 1;
     m_frameInterval = 8;
-    m_rxn = 1; //0.6;
+    m_rxn = 1;
 
     m_u = new float[m_width * m_height * 2];
     m_v = new float[m_width * m_height * 2];
@@ -62,18 +74,19 @@ void GrayScottDrawer::reset() {
 void GrayScottDrawer::draw(int* colIndices) {
     float zoom = 1; //m_settings["zoom"] / 100.0;
 
+    int n = m_width * m_height * 2;
     for (int f = 0; f < m_frameInterval; ++f) {
         int qOffset = m_q * m_width * m_height;
         int qOffsetNext = (!m_q) * m_width * m_height;
 
-        for (int x = 1; x < m_width - 1; ++x) {
-            for (int y = 1; y < m_height - 1; ++y) {
+        for (int x = 0; x < m_width; ++x) {
+            for (int y = 0; y < m_height; ++y) {
                 int index = x + y * m_width + qOffset;
                 int nextIndex = x + y * m_width + qOffsetNext;
-                int left = index - 1;
-                int right = index + 1;
-                int top = index - m_width;
-                int bottom = index + m_width;
+                int left = (index - 1 + n) % n;
+                int right = (index + 1) % n;
+                int top = (index - m_width + n) % n;
+                int bottom = (index + m_width) % n;
 
                 float u = m_u[index];
                 float v = m_v[index];
