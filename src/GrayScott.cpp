@@ -6,7 +6,7 @@
 #include "Util.h"
 
 // #define GRAY_SCOTT_SPEED_MULTIPLIER 100
-#define NUM_INIT_ISLANDS 5
+#define NUM_INIT_ISLANDS 1
 #define ISLAND_SIZE 20
 
 GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* camera)
@@ -18,14 +18,14 @@ GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* cam
     m_settingsRanges.insert(make_pair("colorSpeed", make_pair(0,50)));
     m_settingsRanges.insert(make_pair("zoom", make_pair(30,100)));
 
-    m_F = 0.008;
-    m_k = 0.031;
-    m_du = 0.0385;
-    m_dv = 0.008;
-    m_dx = 1;//0.009766;
+    m_F = 0.018; //0.008;
+    m_k = 0.053; //0.031;
+    m_du = 0.08; //0.0385;
+    m_dv = 0.04; //0.008;
+    m_dx = 0.7;//1;
     m_dt = 1; //0.1;
     m_frameInterval = 8;
-    m_rxn = 0.6;
+    m_rxn = 1; //0.6;
 
     m_u = new float[m_width * m_height * 2];
     m_v = new float[m_width * m_height * 2];
