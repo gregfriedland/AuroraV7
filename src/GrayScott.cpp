@@ -6,7 +6,7 @@
 #include "Util.h"
 
 // #define GRAY_SCOTT_SPEED_MULTIPLIER 100
-#define NUM_INIT_ISLANDS 1
+#define NUM_INIT_ISLANDS 5
 #define ISLAND_SIZE 20
 
 GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* camera)
@@ -23,8 +23,9 @@ GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* cam
     m_du = 0.0385;
     m_dv = 0.008;
     m_dx = 1;//0.009766;
-    m_dt = 2; //0.1;
-    m_rxn = 0.62;
+    m_dt = 1; //0.1;
+    m_frameInterval = 8;
+    m_rxn = 0.6;
 
     m_u = new float[m_width * m_height * 2];
     m_v = new float[m_width * m_height * 2];
@@ -38,40 +39,21 @@ GrayScottDrawer::~GrayScottDrawer() {
     delete[] m_v;
 }
 
-float& GrayScottDrawer::u(int x, int y, bool q) {
-    if (q) {
-        return m_u[x + y * m_width];
-    } else {
-        return m_u[x + y * m_width + m_width * m_height];
-    }
-}
-
-float& GrayScottDrawer::v(int x, int y, bool q) {
-    if (q) {
-        return m_v[x + y * m_width];
-    } else {
-        return m_v[x + y * m_width + m_width * m_height];
-    }
-}
-
 void GrayScottDrawer::reset() {
-    for (int q = 0; q < 2; ++q) {
-        for (int x = 0; x < m_width; ++x) {
-            for (int y = 0; y < m_height; ++y) {
-                int index = x + y * m_width;
-                u(x, y, q) = 1.0;
-                v(x, y, q) = 0.0;
-            }
-        }
+    for (int i = 0; i < m_width * m_height * 2; ++i) {
+        m_u[i] = 1.0;
+        m_v[i] = 0.0;
+    }
 
-        for (int i = 0; i < NUM_INIT_ISLANDS; ++i) {
-            int ix = 1;//random2() % (m_width - ISLAND_SIZE);
-            int iy = 1;//random2() % (m_height - ISLAND_SIZE);
-            for (int x = ix; x < ix + ISLAND_SIZE; ++x) {
-                for (int y = iy; y < iy + ISLAND_SIZE; ++y) {
-                    u(x, y, q) = 0.5;//(random2() % 10000) / 10000.0;
-                    v(x, y, q) = 0.25;//(random2() % 10000) / 10000.0;
-                }
+    int qOffset = m_q * m_width * m_height;
+    for (int i = 0; i < NUM_INIT_ISLANDS; ++i) {
+        int ix = random2() % (m_width - ISLAND_SIZE);
+        int iy = random2() % (m_height - ISLAND_SIZE);
+        for (int x = ix; x < ix + ISLAND_SIZE; ++x) {
+            for (int y = iy; y < iy + ISLAND_SIZE; ++y) {
+                int index = x + y * m_width + qOffset;
+                m_u[index] = 0.5;//(random2() % 10000) / 10000.0;
+                m_v[index] = 0.25;//(random2() % 10000) / 10000.0;
             }
         }
     }
@@ -80,59 +62,46 @@ void GrayScottDrawer::reset() {
 void GrayScottDrawer::draw(int* colIndices) {
     float zoom = 1; //m_settings["zoom"] / 100.0;
 
-    for (int x = 1; x < m_width - 1; ++x) {
-        for (int y = 1; y < m_height - 1; ++y) {
-            float uu = u(x,y,m_q);
-            float vv = v(x,y,m_q);
-            float d2 = uu * vv * vv;
-            float dx2 = m_dx * m_dx;
+    for (int f = 0; f < m_frameInterval; ++f) {
+        int qOffset = m_q * m_width * m_height;
+        int qOffsetNext = (!m_q) * m_width * m_height;
 
-            float d2u = u(x-1,y,m_q) + u(x+1,y,m_q) + u(x,y-1,m_q) + u(x,y+1,m_q) - 4 * uu;
-            float d2v = v(x-1,y,m_q) + v(x+1,y,m_q) + v(x,y-1,m_q) + v(x,y+1,m_q) - 4 * vv;
-            
-            // if (x == 2 && y == 2) {
-            //     // std::cout <<  std::endl;
-            //     // std::cout << "dx2=" << dx2 << std::endl;
-            //     std::cout << "uu=" << uu << " vv=" << vv << " d2u=" << d2u << " d2v=" << d2v << " d2=" << d2 << std::endl;
-            // }
- 
-            // GrayScot.java
-            // nextU = max(0, currU + t * ((dU * ((uu[right] + uu[left] + uu[bottom] + uu[top]) - 4 * currU) - d2) + currF * (1.0f - currU)));
-            // nextV = max(0, currV + t * ((dV * ((vv[right] + vv[left] + vv[bottom] + vv[top]) - 4 * currV) + d2) - currK * currV));
-            
-            // diffusion
-            u(x,y,!m_q) = uu + m_dt * m_du / dx2 * d2u;
-            v(x,y,!m_q) = vv + m_dt * m_dv / dx2 * d2v;
+        for (int x = 1; x < m_width - 1; ++x) {
+            for (int y = 1; y < m_height - 1; ++y) {
+                int index = x + y * m_width + qOffset;
+                int nextIndex = x + y * m_width + qOffsetNext;
+                int left = index - 1;
+                int right = index + 1;
+                int top = index - m_width;
+                int bottom = index + m_width;
 
-            // reaction
-            u(x,y,!m_q) += m_dt * m_rxn * (-d2 + m_F * (1 - uu));
-            v(x,y,!m_q) += m_dt * m_rxn * (d2 - (m_F + m_k) * vv);
+                float u = m_u[index];
+                float v = m_v[index];
+                float d2 = u * v * v;
+                float dx2 = m_dx * m_dx;
 
-            // u(x,y,!m_q) = uu + m_du * m_dt / dx2 * d2u;// ;
-            // v(x,y,!m_q) = vv + m_dv * m_dt / dx2 * d2v;//(m_dv + d2vdx2 + d2 - (m_k + m_F) * vv);
+                float d2u = m_u[left] + m_u[right] + m_u[top] + m_u[bottom] - 4 * u;
+                float d2v = m_v[left] + m_v[right] + m_v[top] + m_v[bottom] - 4 * v;
+                
+                // diffusion
+                m_u[nextIndex] = u + m_dt * m_du / dx2 * d2u;
+                m_v[nextIndex] = v + m_dt * m_dv / dx2 * d2v;
 
-            // if (x == 1 && y == 1) {
-            //     std::cout << "post-diff: uu=" << u(x,y,!m_q) << " vv=" << v(x,y,!m_q) << std::endl;
-            // }
-            
-            // u(x,y,!m_q) += m_dt * (-d2 + m_F * (1 - uu));
-            // v(x,y,!m_q) += m_dt * (d2 - (/*m_F +*/ m_k) * vv);
-
-            // if (x == 1 && y == 1) {
-            //     std::cout << "post-rxn: uu=" << u(x,y,!m_q) << " vv=" << v(x,y,!m_q) << std::endl;
-            //     std::cout << std::endl;
-            // }
+                // reaction
+                m_u[nextIndex] += m_dt * m_rxn * (-d2 + m_F * (1 - u));
+                m_v[nextIndex] += m_dt * m_rxn * (d2 - (m_F + m_k) * v);
+            }
         }
+        m_q = !m_q;
     }
 
-    m_q = !m_q;
-
+    int qOffset = m_q * m_width * m_height;
     for (int x = 0; x < m_width; ++x) {
         for (int y = 0; y < m_height; ++y) {
             int x2 = x * zoom;
             int y2 = y * zoom;
 
-            colIndices[x + y * m_width] = v(x2,y2,m_q) * (m_palSize - 1);
+            colIndices[x + y * m_width] = m_v[x2 + y2 * m_width + qOffset] * (m_palSize - 1);
         }
     }
 
