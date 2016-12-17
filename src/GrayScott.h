@@ -20,7 +20,7 @@ public:
     float m_F, m_k, m_du, m_dv, m_dx, m_dt, m_rxn;
     int m_colorIndex;
     Camera* m_camera;
-    float m_vMax;
+    float m_lastMaxV;
 };
 
 #endif
