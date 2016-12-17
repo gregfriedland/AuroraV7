@@ -5,19 +5,17 @@
 #include <map>
 #include <string>
 
-using namespace std;
-
 
 class Drawer {
 public:
-	Drawer(string name, int width, int height, int palSize) 
-	: m_name(name), m_width(width), m_height(height), m_palSize(palSize)
+	Drawer(std::string name, int width, int height, int palSize) 
+	: m_name(name), m_width(width), m_height(height), m_palSize(palSize), m_frame(0)
 	{}
 
-	string name() { return m_name; }
-	map<string,int>& settings() { return m_settings; }
-	const map< string,pair<int,int> >& settingsRanges() { return m_settingsRanges; }
-	void setSettings(const map<string,int>& settings) { m_settings = settings; }
+	std::string name() { return m_name; }
+	std::map<std::string,int>& settings() { return m_settings; }
+	const std::map<std::string,std::pair<int,int> >& settingsRanges() { return m_settingsRanges; }
+	void setSettings(const std::map<std::string,int>& settings) { m_settings = settings; }
 
 	void randomizeSettings() {
 	    auto& settings = this->settings();
@@ -36,15 +34,20 @@ public:
 	
 	virtual void cleanup() {}
 	virtual void reset() = 0;
-	virtual void draw(int* colIndices) = 0;
+
+	virtual void draw(int* colIndices) {
+		++m_frame;
+	}
+
 	virtual ~Drawer() {}
 	
 protected:
-	string m_name;
+	std::string m_name;
 	int m_width, m_height, m_palSize;
-	map<string,int> m_settings;
-	map< string,pair<int,int> > m_settingsRanges;
+	std::map<std::string,int> m_settings;
+	std::map<std::string,std::pair<int,int>> m_settingsRanges;
 	bool m_paused;
+	size_t m_frame;
 };
 
 #endif

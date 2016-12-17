@@ -10,7 +10,7 @@
 static Controller* controller;
 
 void sigHandler(int sig) {
-    cout << "Caught SIGINT\n";
+    std::cout << "Caught SIGINT\n";
 	controller->stop();
 	fail();
 }

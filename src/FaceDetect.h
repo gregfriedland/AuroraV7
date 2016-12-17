@@ -12,8 +12,6 @@
 
 #include "Camera.h"
 
-using namespace std;
-
 
 class FaceDetect {
 public:

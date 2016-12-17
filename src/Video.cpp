@@ -1,25 +1,24 @@
 #include "Video.h"
 #include <iostream>
 
-using namespace std;
 
 VideoDrawer::VideoDrawer(int width, int height, int palSize, Camera* camera) 
 : Drawer("Video", width, height, palSize), m_camera(camera), m_colorIndex(0) {
-    m_settings.insert(make_pair("colorSpeed", 20));
-    m_settings.insert(make_pair("contrast", 1));
-    m_settings.insert(make_pair("intermediateResizeFactor", 3));
-    m_settings.insert(make_pair("medianBlurSize", 1));
-    m_settings.insert(make_pair("morphOperation", 2));
-    m_settings.insert(make_pair("morphKernel", 2));
-    m_settings.insert(make_pair("morphKernelSize", 4));
+    m_settings.insert(std::make_pair("colorSpeed", 20));
+    m_settings.insert(std::make_pair("contrast", 1));
+    m_settings.insert(std::make_pair("intermediateResizeFactor", 3));
+    m_settings.insert(std::make_pair("medianBlurSize", 1));
+    m_settings.insert(std::make_pair("morphOperation", 2));
+    m_settings.insert(std::make_pair("morphKernel", 2));
+    m_settings.insert(std::make_pair("morphKernelSize", 4));
 
-    m_settingsRanges.insert(make_pair("colorSpeed", make_pair(10,35)));
-    m_settingsRanges.insert(make_pair("contrast", make_pair(1,4)));
-    m_settingsRanges.insert(make_pair("intermediateResizeFactor", make_pair(3, 3)));
-    m_settingsRanges.insert(make_pair("medianBlurSize", make_pair(1, 3)));
-    m_settingsRanges.insert(make_pair("morphOperation", make_pair(-1, 4)));
-    m_settingsRanges.insert(make_pair("morphKernel", make_pair(2,2)));
-    m_settingsRanges.insert(make_pair("morphKernelSize", make_pair(2, 6)));
+    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(10,35)));
+    m_settingsRanges.insert(std::make_pair("contrast", std::make_pair(1,4)));
+    m_settingsRanges.insert(std::make_pair("intermediateResizeFactor", std::make_pair(3, 3)));
+    m_settingsRanges.insert(std::make_pair("medianBlurSize", std::make_pair(1, 3)));
+    m_settingsRanges.insert(std::make_pair("morphOperation", std::make_pair(-1, 4)));
+    m_settingsRanges.insert(std::make_pair("morphKernel", std::make_pair(2,2)));
+    m_settingsRanges.insert(std::make_pair("morphKernelSize", std::make_pair(2, 6)));
 }
 
 void VideoDrawer::reset() {

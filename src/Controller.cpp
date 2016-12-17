@@ -62,7 +62,7 @@ Controller::Controller(const ControllerSettings& settings, int* baseColors,
 }
 
 Controller::~Controller() {
-    cout << "Freeing Controller memory\n";
+    std::cout << "Freeing Controller memory\n";
 
     for (auto elem: m_drawers)
         delete elem.second;
@@ -78,12 +78,12 @@ const unsigned char* Controller::rawData(int& size) {
 void Controller::init()
 {
     // create drawers and set start drawer
-    m_drawers.insert(make_pair("AlienBlob", new AlienBlobDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
-    m_drawers.insert(make_pair("Bzr", new BzrDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
-    m_drawers.insert(make_pair("GrayScott", new GrayScottDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+    m_drawers.insert(std::make_pair("AlienBlob", new AlienBlobDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+    m_drawers.insert(std::make_pair("Bzr", new BzrDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+    m_drawers.insert(std::make_pair("GrayScott", new GrayScottDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
     if (m_camera != NULL)
-        m_drawers.insert(make_pair("Video", new VideoDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
-    m_drawers.insert(make_pair("Off", new OffDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
+        m_drawers.insert(std::make_pair("Video", new VideoDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+    m_drawers.insert(std::make_pair("Off", new OffDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
     if (m_drawers.find(m_settings.m_startDrawerName) != m_drawers.end())
         changeDrawer({m_settings.m_startDrawerName});
     else
@@ -189,9 +189,9 @@ void Controller::loop(int interval) {
                 Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_settings.m_width]);
                 // if (x == 0 && y == 0)
                 //  cout << "00 index=" << m_colIndices[x + y * m_width] << " rgb=" << (int)col.r << " " << (int)col.g << " " << (int)col.b << endl;
-                m_serialWriteBuffer[i++] = min((unsigned char)254, col.r);
-                m_serialWriteBuffer[i++] = min((unsigned char)254, col.g);
-                m_serialWriteBuffer[i++] = min((unsigned char)254, col.b);
+                m_serialWriteBuffer[i++] = std::min((unsigned char)254, col.r);
+                m_serialWriteBuffer[i++] = std::min((unsigned char)254, col.g);
+                m_serialWriteBuffer[i++] = std::min((unsigned char)254, col.b);
 
                 if (m_settings.m_screenShowMultiplier) {
                     int m = m_settings.m_screenShowMultiplier;
@@ -219,7 +219,7 @@ void Controller::loop(int interval) {
 
             unsigned char buffer[256];
             if (m_serial.read(256, buffer) > 0)
-                cout << "read: " << (unsigned int) buffer[0] << endl;
+                std::cout << "read: " << (unsigned int) buffer[0] << std::endl;
         }
 
 
@@ -227,32 +227,32 @@ void Controller::loop(int interval) {
 }
 
 
-const map<string,int>& Controller::settings() {
+const std::map<std::string,int>& Controller::settings() {
     return m_currDrawer->settings();
 }
 
-const map< string,pair<int,int> >& Controller::settingsRanges() {
+const std::map<std::string,std::pair<int,int> >& Controller::settingsRanges() {
     return m_currDrawer->settingsRanges();
 }
 
-void Controller::setSettings(const map<string,int>& settings) {
+void Controller::setSettings(const std::map<std::string,int>& settings) {
     m_currDrawer->setSettings(settings);
     m_drawerChangeTimer.reset();
 }
 
-string Controller::currDrawerName() {
+std::string Controller::currDrawerName() {
     return m_currDrawer->name();
 }
 
-vector<string> Controller::drawerNames() {
-    vector<string> names;
+std::vector<std::string> Controller::drawerNames() {
+    std::vector<std::string> names;
     for (auto& d: m_drawers)
         names.push_back(d.first);
     return names;
 }
 
-void Controller::changeDrawer(vector<string> names) {
-    string name;
+void Controller::changeDrawer(std::vector<std::string> names) {
+    std::string name;
     assert(names.size() > 0);
     if (names.size() == 1)
         name = names[0];
@@ -260,11 +260,11 @@ void Controller::changeDrawer(vector<string> names) {
         name = names[random2() % names.size()];
 
     if (m_drawers.find(name) == m_drawers.end()) {
-        cout << "Invalid drawer name: " << name << endl;
+        std::cout << "Invalid drawer name: " << name << std::endl;
         return;
     }
 
-    cout << "Changing to drawer: " << name << endl;
+    std::cout << "Changing to drawer: " << name << std::endl;
     Drawer* nextDrawer = m_drawers[name];
     randomizeSettings(nextDrawer);
     if (m_currDrawer) {

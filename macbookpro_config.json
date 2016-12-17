@@ -1,6 +1,6 @@
 {
-    "width": 192,
-    "height": 96,
+    "width": 64,
+    "height": 32,
     "paletteSize": 4096,
     "fps": 35,
     "startDrawer": "GrayScott",
@@ -14,6 +14,6 @@
         "fps": 1,
         "videoDrawerTimeout": 10000
     },
-    "screenShowMultiplier": 5,
+    "screenShowMultiplier": 10,
     "serialDevice": ""
 }

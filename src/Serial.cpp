@@ -36,7 +36,7 @@ static void close_port(PORTTYPE port);
 static void die(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 
 
-Serial::Serial(string device) : m_device(device) {}
+Serial::Serial(std::string device) : m_device(device) {}
 
 void Serial::connect() {
     m_port = open_port_and_set_baud_or_die(m_device.c_str(), BAUD);        
@@ -53,7 +53,7 @@ void Serial::write(const unsigned char* buffer, int size) {
         int result = transmit_bytes(m_port, buffer, size);
         // cout << "Serial writing: " << size << " bytes; wrote: " << result << " bytes\n";
         if (errno != 0 || result == -1) {
-            cout << "Serial error while writing: " << errno << endl;
+            std::cout << "Serial error while writing: " << errno << std::endl;
             fail();
         }
         written += result;

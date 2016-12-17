@@ -20,14 +20,14 @@ static void alienblob(int width, int height, int numColors, float zoff, int perl
 
 AlienBlobDrawer::AlienBlobDrawer(int width, int height, int palSize, Camera* camera)
 : Drawer("AlienBlob", width, height, palSize), m_colorIndex(0), m_camera(camera) {
-    m_settings.insert(make_pair("speed",3));
-    m_settings.insert(make_pair("colorSpeed",0));
-    m_settings.insert(make_pair("detail",3));
-    m_settings.insert(make_pair("zoom",70));
-    m_settingsRanges.insert(make_pair("speed", make_pair(0,100)));
-    m_settingsRanges.insert(make_pair("colorSpeed", make_pair(0,50)));
-    m_settingsRanges.insert(make_pair("detail", make_pair(1,4)));
-    m_settingsRanges.insert(make_pair("zoom", make_pair(0,100)));
+    m_settings.insert(std::make_pair("speed",3));
+    m_settings.insert(std::make_pair("colorSpeed",0));
+    m_settings.insert(std::make_pair("detail",3));
+    m_settings.insert(std::make_pair("zoom",70));
+    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(0,100)));
+    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,50)));
+    m_settingsRanges.insert(std::make_pair("detail", std::make_pair(1,4)));
+    m_settingsRanges.insert(std::make_pair("zoom", std::make_pair(0,100)));
 
     init_noise();
     for (int i = 0; i < 360; i ++) 

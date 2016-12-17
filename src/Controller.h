@@ -45,14 +45,14 @@ public:
     void loop(int interval);
 
 private:    
-    const map<string,int>& settings();
-    const map< string,pair<int,int> >& settingsRanges();
-    void setSettings(const map<string,int>& settings);
-    string currDrawerName();
-    vector<string> drawerNames();
+    const std::map<std::string,int>& settings();
+    const std::map<std::string,std::pair<int,int> >& settingsRanges();
+    void setSettings(const std::map<std::string,int>& settings);
+    std::string currDrawerName();
+    std::vector<std::string> drawerNames();
     void randomizeSettings(Drawer* drawer);
 
-    void changeDrawer(vector<string> names);
+    void changeDrawer(std::vector<std::string> names);
     void init();
 
     ControllerSettings m_settings;
@@ -64,7 +64,7 @@ private:
     Camera* m_camera;
     FaceDetect* m_faceDetect;
 
-    map<string,Drawer*> m_drawers;
+    std::map<std::string,Drawer*> m_drawers;
     Drawer* m_currDrawer;
     IntervalTimer m_drawerChangeTimer;
 

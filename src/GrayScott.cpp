@@ -4,22 +4,24 @@
 #include "GrayScott.h"
 #include "Drawer.h"
 #include "Util.h"
+#include <algorithm>
 
-// #define GRAY_SCOTT_SPEED_MULTIPLIER 100
-#define NUM_INIT_ISLANDS 5
+#define VMAX_INIT_PERIOD_LENGTH 30
+#define VMAX_INIT_PERIOD_START 30
+#define NUM_INIT_ISLANDS 3
 #define ISLAND_SIZE 10
 
 GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* camera)
 : Drawer("GrayScott", width, height, palSize), m_colorIndex(0), m_camera(camera) {
-    m_settings.insert(make_pair("speed",50));
-    m_settings.insert(make_pair("colorSpeed",0));
-    m_settings.insert(make_pair("zoom",70));
-    m_settingsRanges.insert(make_pair("speed", make_pair(0,100)));
-    m_settingsRanges.insert(make_pair("colorSpeed", make_pair(0,50)));
-    m_settingsRanges.insert(make_pair("zoom", make_pair(30,100)));
+    m_settings.insert(std::make_pair("speed",10));
+    m_settings.insert(std::make_pair("colorSpeed",0));
+    m_settings.insert(std::make_pair("zoom",70));
+    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(1,15)));
+    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,20)));
+    m_settingsRanges.insert(std::make_pair("zoom", std::make_pair(30,100)));
 
     // params from http://mrob.com/pub/comp/xmorphia
-    // 0.022/0.049
+    // 0.022/0.049 ***
     // 0.026/0.051
     // 0.026/0.052
     // 0.022/0.048
@@ -30,13 +32,13 @@ GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* cam
     // 0.006/0.043 *
     // 0.010/0.047 **
 
-    m_F = 0.11;
-    m_k = 0.0523;
+    m_F = 0.026;
+    m_k = 0.051;
     m_du = 0.08;
     m_dv = 0.04;
     m_dx = 1;
     m_dt = 1;
-    m_frameInterval = 8;
+    // m_frameInterval = 8;
     m_rxn = 1;
 
     m_u = new float[m_width * m_height * 2];
@@ -52,6 +54,8 @@ GrayScottDrawer::~GrayScottDrawer() {
 }
 
 void GrayScottDrawer::reset() {
+    m_vMax = 0;
+
     for (int i = 0; i < m_width * m_height * 2; ++i) {
         m_u[i] = 1.0;
         m_v[i] = 0.0;
@@ -72,10 +76,13 @@ void GrayScottDrawer::reset() {
 }
 
 void GrayScottDrawer::draw(int* colIndices) {
-    float zoom = 1; //m_settings["zoom"] / 100.0;
+    Drawer::draw(colIndices);
+
+    float zoom = 1;//m_settings["zoom"] / 100.0;
+    size_t speed = m_settings["speed"];
 
     int n = m_width * m_height * 2;
-    for (int f = 0; f < m_frameInterval; ++f) {
+    for (int f = 0; f < speed; ++f) {
         int qOffset = m_q * m_width * m_height;
         int qOffsetNext = (!m_q) * m_width * m_height;
 
@@ -109,21 +116,35 @@ void GrayScottDrawer::draw(int* colIndices) {
     }
 
     int qOffset = m_q * m_width * m_height;
+    float minv = 100, maxv = 0;
+    for (int i = qOffset; i < qOffset + m_width * m_height; ++i) {
+        float v = m_v[i];
+        minv = std::min(minv, v);
+        maxv = std::max(maxv, v);
+    }
+    if (m_frame > VMAX_INIT_PERIOD_START && m_frame <= VMAX_INIT_PERIOD_START + VMAX_INIT_PERIOD_LENGTH) {
+        m_vMax = std::max(m_vMax, maxv);
+        // std::cout << "vmax=" << m_vMax << std::endl;
+    } else if (m_frame > VMAX_INIT_PERIOD_START + VMAX_INIT_PERIOD_LENGTH) {
+        maxv = m_vMax;
+    }
+
     for (int x = 0; x < m_width; ++x) {
         for (int y = 0; y < m_height; ++y) {
             int x2 = x * zoom;
             int y2 = y * zoom;
+            float v = m_v[x2 + y2 * m_width + qOffset];
 
-            colIndices[x + y * m_width] = m_v[x2 + y2 * m_width + qOffset] * (m_palSize - 1);
+            v = mapValue(v, minv, maxv, minv, 1.0);
+            colIndices[x + y * m_width] = v * (m_palSize - 1);
         }
     }
 
-    // for (int x = 0; x < m_width; ++x) {
-    //     for (int y = 0; y < m_height; ++y) {
-    //         colIndices[x + y * m_width] += m_colorIndex;
-    //     }
-    // }
-
-    // m_colorIndex += m_settings["colorSpeed"];
+    for (int x = 0; x < m_width; ++x) {
+        for (int y = 0; y < m_height; ++y) {
+            colIndices[x + y * m_width] += m_colorIndex;
+        }
+    }
+    m_colorIndex += m_settings["colorSpeed"];
 }
 

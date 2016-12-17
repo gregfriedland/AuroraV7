@@ -13,12 +13,12 @@ void bzr(int width, int height, int numColors, int width2, int height2, int& sta
 
 BzrDrawer::BzrDrawer(int width, int height, int palSize, Camera* camera)
 : Drawer("Bzr", width, height, palSize), m_colorIndex(0), m_camera(camera) {
-    m_settings.insert(make_pair("speed",50));
-    m_settings.insert(make_pair("colorSpeed",0));
-    m_settings.insert(make_pair("zoom",70));
-    m_settingsRanges.insert(make_pair("speed", make_pair(0,100)));
-    m_settingsRanges.insert(make_pair("colorSpeed", make_pair(0,50)));
-    m_settingsRanges.insert(make_pair("zoom", make_pair(30,100)));
+    m_settings.insert(std::make_pair("speed",50));
+    m_settings.insert(std::make_pair("colorSpeed",0));
+    m_settings.insert(std::make_pair("zoom",70));
+    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(0,100)));
+    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,50)));
+    m_settingsRanges.insert(std::make_pair("zoom", std::make_pair(30,100)));
 
     m_p = 0;
     m_q = 1;
@@ -89,9 +89,9 @@ void bzr(int width, int height, int numColors, int width2, int height2, int& sta
         c_c /= 9;
 
         int ind = x + y * width2 + q * width2 * height2;
-        a[ind] = min(max(c_a + c_a * ( c_b - c_c ), 0.0f), 1.0f);
-        b[ind] = min(max(c_b + c_b * ( c_c - c_a ), 0.0f), 1.0f);
-        c[ind] = min(max(c_c + c_c * ( c_a - c_b ), 0.0f), 1.0f);
+        a[ind] = std::min(std::max(c_a + c_a * ( c_b - c_c ), 0.0f), 1.0f);
+        b[ind] = std::min(std::max(c_b + c_b * ( c_c - c_a ), 0.0f), 1.0f);
+        c[ind] = std::min(std::max(c_c + c_c * ( c_a - c_b ), 0.0f), 1.0f);
       }
     }
     p = 1-p;

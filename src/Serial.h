@@ -23,11 +23,9 @@
 #error "You must define the operating system\n"
 #endif
 
-using namespace std;
-
 class Serial {
 public:
-    Serial(string device);
+    Serial(std::string device);
 
     void connect();
 
@@ -38,7 +36,7 @@ public:
     int read(int size, unsigned char* buffer);
 
 private:
-    string m_device;
+    std::string m_device;
     PORTTYPE m_port;
 };
 
