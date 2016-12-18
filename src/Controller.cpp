@@ -279,6 +279,13 @@ void Controller::randomizeSettings(Drawer* drawer) {
     drawer->setPaused(true);
     m_currPalIndex = random2() % m_palettes.size();
     drawer->randomizeSettings();
+
+    std::cout << "New palette=" << m_currPalIndex;
+    for (auto& s: drawer->settings()) {
+        std::cout << " " << s.first << "=" << s.second;
+    }
+    std::cout << std::endl;
+
     m_drawerChangeTimer.reset();
     drawer->setPaused(false);
     std::cout << "Randomized settings for drawer: " << drawer->name() << "\n";

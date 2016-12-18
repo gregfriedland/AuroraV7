@@ -104,7 +104,8 @@ void GrayScottDrawer::reset() {
     //         m_k = 0.047;
     //         break;
     }
-    std::cout << "GrayScott with param set #" << m_settings["params"] << " F=" << m_F << " k=" << m_k << std::endl;
+    std::cout << "GrayScott with param set #" << m_settings["params"] <<
+        std::setprecision(4) << " F=" << m_F << " k=" << m_k << std::endl;
 }
 
 void GrayScottDrawer::draw(int* colIndices) {
