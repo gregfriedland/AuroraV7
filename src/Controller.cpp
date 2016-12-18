@@ -46,10 +46,10 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
     }
 }
 
-Controller::Controller(const ControllerSettings& settings, int* baseColors,
+Controller::Controller(const ControllerSettings& settings, const std::vector<int>& baseColors,
     Camera* camera, FaceDetect* faceDetect)
 : m_settings(settings), m_camera(camera), m_faceDetect(faceDetect),
-  m_palettes(m_settings.m_palSize, baseColors, m_settings.m_numBaseColors, m_settings.m_baseColorsPerPalette),
+  m_palettes(m_settings.m_palSize, baseColors, m_settings.m_baseColorsPerPalette),
   m_currDrawer(NULL), m_fpsCounter(30000, "Controller"), m_serial(m_settings.m_device),
   m_drawerChangeTimer(m_settings.m_drawerChangeInterval) {
     m_currPalIndex = random2() % m_palettes.size();
@@ -162,7 +162,7 @@ void Controller::loop(int interval) {
         }
     } else if (m_camera != NULL) {
         if (m_drawerChangeTimer.tick(NULL)) {
-            changeDrawer({"GrayScott", "Bzr", "AlienBlob", "Video"});
+	  changeDrawer({"GrayScott", "Bzr", "AlienBlob", "Video"});
         }
     } else {
         if (m_drawerChangeTimer.tick(NULL)) {

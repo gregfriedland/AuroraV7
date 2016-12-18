@@ -4,11 +4,12 @@
 #include <math.h>
 #include <assert.h>
 #include <iostream>
+#include <vector>
 #include "Util.h"
 
 class Palettes {
 public:
-    Palettes(int palSize, int* baseColors, int numBaseColors, int baseColorsPerPalette);
+    Palettes(int palSize, const std::vector<int>& baseColors, int baseColorsPerPalette);
 
     int size();
 
@@ -16,8 +17,7 @@ public:
     
 private:
     int m_palSize;
-    int* m_baseColors;
-    int m_numBaseColors;
+    const std::vector<int>& m_baseColors;
     int m_baseColorsPerPalette;
 };
 

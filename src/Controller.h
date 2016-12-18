@@ -25,7 +25,6 @@ struct ControllerSettings {
     std::string m_startDrawerName;
     int m_drawerChangeInterval;
     int m_screenShowMultiplier;
-    int m_numBaseColors;
     int m_baseColorsPerPalette;
     int m_faceVideoDrawerTimeout;
     int m_faceDetectFps;
@@ -34,7 +33,7 @@ struct ControllerSettings {
 
 class Controller {
 public:
-    Controller(const ControllerSettings& settings, int* baseColors, Camera* camera, FaceDetect* faceDetect);
+    Controller(const ControllerSettings& settings, const std::vector<int>& baseColors, Camera* camera, FaceDetect* faceDetect);
 
     ~Controller();
 

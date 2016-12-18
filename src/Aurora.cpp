@@ -38,16 +38,15 @@ int main(int argc, char** argv) {
         camera->start(1000 / settings.m_cameraSettings.m_fps);
     }
 
-	// start face detection
+    // start face detection
     FaceDetect *faceDetect = NULL;
     if (settings.m_faceDetectFps > 0 && camera != NULL) {
         faceDetect = new FaceDetect(camera);
         faceDetect->start(1000 / settings.m_faceDetectFps);
     }
 
-    settings.m_numBaseColors = BASE_COLORS_SIZE;
     settings.m_baseColorsPerPalette = BASE_COLORS_PER_PALETTE;
-	controller = new Controller(settings, baseColors, camera, faceDetect);
+    controller = new Controller(settings, baseColors, camera, faceDetect);
 
     // do it in the main thread so we can optionally display the opencv window
     while (true) {

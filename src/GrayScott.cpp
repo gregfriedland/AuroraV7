@@ -6,7 +6,7 @@
 #include "Util.h"
 #include <algorithm>
 
-#define MAX_ROLLING_MULTIPLIER (2.0 / (30 + 1))
+#define MAX_ROLLING_MULTIPLIER (2.0 / (35 * 5 + 1))
 #define NUM_INIT_ISLANDS 5
 #define ISLAND_SIZE 20
 
@@ -16,10 +16,10 @@ GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* cam
     m_settings.insert(std::make_pair("colorSpeed",0));
     m_settings.insert(std::make_pair("zoom",70));
     m_settings.insert(std::make_pair("params",0));
-    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(1,15)));
-    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,20)));
+    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(1,10)));
+    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,10)));
     m_settingsRanges.insert(std::make_pair("zoom", std::make_pair(30,100)));
-    m_settingsRanges.insert(std::make_pair("params", std::make_pair(0,6)));
+    m_settingsRanges.insert(std::make_pair("params", std::make_pair(0,5)));
 
     m_F = 0.026;
     m_k = 0.051;
@@ -33,6 +33,7 @@ GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* cam
     m_v = new float[m_width * m_height * 2];
     m_q = true;
 
+    m_lastMaxV = 0.5;
     reset();
 }
 
@@ -83,14 +84,14 @@ void GrayScottDrawer::reset() {
             m_k = 0.045;
             break;
         case 5:
-            m_F = 0.014;
-            m_k = 0.041;
-            break;
-        case 6:
             m_F = 0.010;
             m_k = 0.033;
             break;
     // these parameters often cause patterns that end quickly
+        // case 6:
+        //     m_F = 0.014;
+        //     m_k = 0.041;
+        //     break;
     //     case 7:
     //         m_F = 0.006;
     //         m_k = 0.045;
@@ -156,6 +157,7 @@ void GrayScottDrawer::draw(int* colIndices) {
         maxv = std::max(maxv, v);
     }
     maxv = m_lastMaxV + MAX_ROLLING_MULTIPLIER * (maxv - m_lastMaxV); // adapted from rolling EMA equation
+    //std::cout << "maxv=" << std::setprecision(3) << maxv << " ";
 
     for (int x = 0; x < m_width; ++x) {
         for (int y = 0; y < m_height; ++y) {

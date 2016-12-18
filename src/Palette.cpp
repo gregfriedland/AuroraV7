@@ -1,17 +1,16 @@
 #include "Palette.h"
 
 
-Palettes::Palettes(int palSize, int* baseColors, int numBaseColors, int baseColorsPerPalette)
-: m_palSize(palSize), m_baseColors(baseColors), m_numBaseColors(numBaseColors),
-  m_baseColorsPerPalette(baseColorsPerPalette)
+Palettes::Palettes(int palSize, const std::vector<int>& baseColors, int baseColorsPerPalette)
+: m_palSize(palSize), m_baseColors(baseColors), m_baseColorsPerPalette(baseColorsPerPalette)
 {}
 
 int Palettes::size() {
-	return m_numBaseColors / m_baseColorsPerPalette;
+    return m_baseColors.size() / m_baseColorsPerPalette;
 }
 
 Color24 Palettes::get(int paletteIndex, int gradientIndex) {
-    assert(paletteIndex < m_numBaseColors);
+    assert(paletteIndex < size());
 
     gradientIndex = gradientIndex % m_palSize;
     int subGradientSize = ceil(m_palSize / (float)m_baseColorsPerPalette);
