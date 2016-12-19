@@ -6,6 +6,7 @@
 #include "Util.h"
 
 #define BZR_SPEED_MULTIPLIER 100
+#define DIFFUSION_NUM_CELLS 2
 
 void bzr(int width, int height, int numColors, int width2, int height2, int& state, int numStates,
          int& p, int& q, float zoom, float *a, float *b, float *c, int *indices);
@@ -16,9 +17,9 @@ BzrDrawer::BzrDrawer(int width, int height, int palSize, Camera* camera)
     m_settings.insert(std::make_pair("speed",50));
     m_settings.insert(std::make_pair("colorSpeed",0));
     m_settings.insert(std::make_pair("zoom",70));
-    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(0,100)));
-    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,50)));
-    m_settingsRanges.insert(std::make_pair("zoom", std::make_pair(30,100)));
+    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(100,100)));
+    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,0)));
+    m_settingsRanges.insert(std::make_pair("zoom", std::make_pair(100,100)));
 
     m_p = 0;
     m_q = 1;
@@ -65,53 +66,54 @@ void BzrDrawer::draw(int* colIndices) {
 
 void bzr(int width, int height, int numColors, int width2, int height2, int& state, int numStates,
          int& p, int& q, float zoom, float *a, float *b, float *c, int *indices) {
-  if (state > numStates)
-    state = 1;
+    if (state > numStates)
+        state = 1;
 
-  if (state == 1) {
-    for (int x=0; x<width2; x++) {
-      for (int y=0; y<height2; y++) {
-        float c_a=0, c_b=0, c_c=0;
+    float quotient = 1/ ((2*DIFFUSION_NUM_CELLS+1)* (2*DIFFUSION_NUM_CELLS+1));
+    if (state == 1) {
+        for (int x=0; x<width2; x++) {
+            for (int y=0; y<height2; y++) {
+                float c_a=0, c_b=0, c_c=0;
 
-        for (int i=x-1; i<=x+1; i++) {
-          int ii = (i + width2) % width2;
-          for (int j=y-1; j<=y+1; j++) {
-            int jj = (j + height2) % height2;
-            int ind = ii + jj * width2 + p * width2 * height2;
-            c_a += a[ind];
-            c_b += b[ind];
-            c_c += c[ind];
-          }
+                int n = p * width2 * height2;
+                for (int j=y-DIFFUSION_NUM_CELLS; j<=y+DIFFUSION_NUM_CELLS; j++) {
+                    int jj = (j + height2) % height2;
+                    int jjwn = jj * width2 + n;
+                    for (int i=x-DIFFUSION_NUM_CELLS; i<=x+DIFFUSION_NUM_CELLS; i++) {
+                        int ii = (i + width2) % width2;
+
+                        int ind = ii + jjwn;
+                        c_a += a[ind];
+                        c_b += b[ind];
+                        c_c += c[ind];
+                    }
+                }
+
+                c_a *= quotient;
+                c_b *= quotient;
+                c_c *= quotient;
+
+                int ind = x + y * width2 + q * width2 * height2;
+                a[ind] = std::min(std::max(c_a + c_a * ( c_b - c_c ), 0.0f), 1.0f);
+                b[ind] = std::min(std::max(c_b + c_b * ( c_c - c_a ), 0.0f), 1.0f);
+                c[ind] = std::min(std::max(c_c + c_c * ( c_a - c_b ), 0.0f), 1.0f);
+            }
         }
-
-        c_a /= 9;
-        c_b /= 9;
-        c_c /= 9;
-
-        int ind = x + y * width2 + q * width2 * height2;
-        a[ind] = std::min(std::max(c_a + c_a * ( c_b - c_c ), 0.0f), 1.0f);
-        b[ind] = std::min(std::max(c_b + c_b * ( c_c - c_a ), 0.0f), 1.0f);
-        c[ind] = std::min(std::max(c_c + c_c * ( c_a - c_b ), 0.0f), 1.0f);
-      }
+        p = 1-p;
+        q = 1-q;
     }
-    p = 1-p;
-    q = 1-q;
-  }
   
-  for (int x=0; x<width; x++) {
-    for (int y=0; y<height; y++) {
-      int x2 = x * zoom;
-      int y2 = y * zoom;
-      float a_p = a[x2 + y2*width2 + width2*height2*p];
-      float a_q = a[x2 + y2*width2 + width2*height2*q];
+    for (int x=0; x<width; x++) {
+        for (int y=0; y<height; y++) {
+            int x2 = x * zoom;
+            int y2 = y * zoom;
+            float a_p = a[x2 + y2*width2 + width2*height2*p];
+            float a_q = a[x2 + y2*width2 + width2*height2*q];
       
-      // interpolate
-      float a_val = state * (a_p - a_q) / numStates + a_q;
-//      if (x == 0 && y ==0) {
-//        printf("%d: %.2f -> (%.2f) -> %.2f", state, a_q, a_val, a_p);
-//      }
-      indices[x + y * width] = a_val * (numColors-1);
+            // interpolate
+            float a_val = state * (a_p - a_q) / numStates + a_q;
+            indices[x + y * width] = a_val * (numColors-1);
+        }
     }
-  }
-  state++;  
+    state++;  
 }

@@ -4,7 +4,8 @@
     "paletteSize": 4096,
     "fps": 35,
     "startDrawer": "GrayScott",
-    "drawerChangeInterval": 60000,
+    "drawers": ["Bzr", "GrayScott", "AlienBlob"],
+    "drawerChangeInterval": 30000,
     "camera": {
         "width": 1280,
         "height": 720,

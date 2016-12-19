@@ -23,6 +23,7 @@ struct ControllerSettings {
     std::string m_device;
     bool m_layoutLeftToRight;
     std::string m_startDrawerName;
+    std::vector<std::string> m_drawers;
     int m_drawerChangeInterval;
     int m_screenShowMultiplier;
     int m_baseColorsPerPalette;
