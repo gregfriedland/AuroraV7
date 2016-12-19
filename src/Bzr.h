@@ -15,6 +15,7 @@ public:
     virtual void draw(int* colIndices);
 
  private:
+ 	int m_bzrWidth, m_bzrHeight;
     int m_p, m_q, m_state;
     float *m_a, *m_b, *m_c;
     int m_colorIndex;

@@ -6,9 +6,11 @@
 #include "Util.h"
 
 #define BZR_SPEED_MULTIPLIER 100
-#define DIFFUSION_NUM_CELLS 2
+#define DIFFUSION_NUM_CELLS 1
+#define MIN_WIDTH 128
+#define MIN_HEIGHT 64
 
-void bzr(int width, int height, int numColors, int width2, int height2, int& state, int numStates,
+void bzr(int width, int height, int numColors, int bzrWidth, int bzrHeight, int& state, int numStates,
          int& p, int& q, float zoom, float *a, float *b, float *c, int *indices);
 
 
@@ -17,16 +19,19 @@ BzrDrawer::BzrDrawer(int width, int height, int palSize, Camera* camera)
     m_settings.insert(std::make_pair("speed",50));
     m_settings.insert(std::make_pair("colorSpeed",0));
     m_settings.insert(std::make_pair("zoom",70));
-    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(100,100)));
+    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(95,95)));
     m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,0)));
-    m_settingsRanges.insert(std::make_pair("zoom", std::make_pair(100,100)));
+    m_settingsRanges.insert(std::make_pair("zoom", std::make_pair(MIN_WIDTH / width * 100 / 4, MIN_WIDTH / width * 100)));
+
+    m_bzrWidth = std::max(MIN_WIDTH, m_width);
+    m_bzrHeight = std::max(MIN_HEIGHT, m_height);
 
     m_p = 0;
     m_q = 1;
     m_state = 0;
-    m_a = new float[m_width * m_height * 2];
-    m_b = new float[m_width * m_height * 2];
-    m_c = new float[m_width * m_height * 2];
+    m_a = new float[m_bzrWidth * m_bzrHeight * 2];
+    m_b = new float[m_bzrWidth * m_bzrHeight * 2];
+    m_c = new float[m_bzrWidth * m_bzrHeight * 2];
 
     reset();
 }
@@ -38,9 +43,9 @@ BzrDrawer::~BzrDrawer() {
 }
 
 void BzrDrawer::reset() {
-    for (int x = 0; x < m_width; x++)
-        for (int y = 0; y < m_height; y++) {
-            int index = x + y * m_width;
+    for (int x = 0; x < m_bzrWidth; x++)
+        for (int y = 0; y < m_bzrHeight; y++) {
+            int index = x + y * m_bzrWidth;
             m_a[index] = (random2() % 10000) / 10000.0;
             m_b[index] = (random2() % 10000) / 10000.0;
             m_c[index] = (random2() % 10000) / 10000.0;
@@ -53,7 +58,7 @@ void BzrDrawer::draw(int* colIndices) {
 
     int numStates = BZR_SPEED_MULTIPLIER - floor(pow(speed, 0.25) * (BZR_SPEED_MULTIPLIER-1));
 
-    bzr(m_width, m_height, m_palSize, m_width, m_height, m_state, numStates, m_p, m_q, 
+    bzr(m_width, m_height, m_palSize, m_bzrWidth, m_bzrHeight, m_state, numStates, m_p, m_q, 
         m_settings["zoom"]/100.0, m_a, m_b, m_c, colIndices);
 
     for (int x = 0; x < m_width; x++)
@@ -64,23 +69,24 @@ void BzrDrawer::draw(int* colIndices) {
 }
 
 
-void bzr(int width, int height, int numColors, int width2, int height2, int& state, int numStates,
+void bzr(int screenWidth, int screenHeight, int numColors, int bzrWidth, int bzrHeight, int& state, int numStates,
          int& p, int& q, float zoom, float *a, float *b, float *c, int *indices) {
     if (state > numStates)
         state = 1;
 
-    float quotient = 1/ ((2*DIFFUSION_NUM_CELLS+1)* (2*DIFFUSION_NUM_CELLS+1));
+    int quotient = (2*DIFFUSION_NUM_CELLS+1) * (2*DIFFUSION_NUM_CELLS+1);
+    float invQuotient = 1.0 / quotient;
     if (state == 1) {
-        for (int x=0; x<width2; x++) {
-            for (int y=0; y<height2; y++) {
+        for (int x=0; x<bzrWidth; x++) {
+            for (int y=0; y<bzrHeight; y++) {
                 float c_a=0, c_b=0, c_c=0;
 
-                int n = p * width2 * height2;
+                int n = p * bzrWidth * bzrHeight;
                 for (int j=y-DIFFUSION_NUM_CELLS; j<=y+DIFFUSION_NUM_CELLS; j++) {
-                    int jj = (j + height2) % height2;
-                    int jjwn = jj * width2 + n;
+                    int jj = (j + bzrHeight) % bzrHeight;
+                    int jjwn = jj * bzrWidth + n;
                     for (int i=x-DIFFUSION_NUM_CELLS; i<=x+DIFFUSION_NUM_CELLS; i++) {
-                        int ii = (i + width2) % width2;
+                        int ii = (i + bzrWidth) % bzrWidth;
 
                         int ind = ii + jjwn;
                         c_a += a[ind];
@@ -89,11 +95,11 @@ void bzr(int width, int height, int numColors, int width2, int height2, int& sta
                     }
                 }
 
-                c_a *= quotient;
-                c_b *= quotient;
-                c_c *= quotient;
+                c_a *= invQuotient;
+                c_b *= invQuotient;
+                c_c *= invQuotient;
 
-                int ind = x + y * width2 + q * width2 * height2;
+                int ind = x + y * bzrWidth + q * bzrWidth * bzrHeight;
                 a[ind] = std::min(std::max(c_a + c_a * ( c_b - c_c ), 0.0f), 1.0f);
                 b[ind] = std::min(std::max(c_b + c_b * ( c_c - c_a ), 0.0f), 1.0f);
                 c[ind] = std::min(std::max(c_c + c_c * ( c_a - c_b ), 0.0f), 1.0f);
@@ -103,16 +109,16 @@ void bzr(int width, int height, int numColors, int width2, int height2, int& sta
         q = 1-q;
     }
   
-    for (int x=0; x<width; x++) {
-        for (int y=0; y<height; y++) {
+    for (int x=0; x<screenWidth; x++) {
+        for (int y=0; y<screenHeight; y++) {
             int x2 = x * zoom;
             int y2 = y * zoom;
-            float a_p = a[x2 + y2*width2 + width2*height2*p];
-            float a_q = a[x2 + y2*width2 + width2*height2*q];
+            const float& a_p = a[x2 + y2*bzrWidth + bzrWidth*bzrHeight*p];
+            const float& a_q = a[x2 + y2*bzrWidth + bzrWidth*bzrHeight*q];
       
             // interpolate
             float a_val = state * (a_p - a_q) / numStates + a_q;
-            indices[x + y * width] = a_val * (numColors-1);
+            indices[x + y * screenWidth] = a_val * (numColors-1);
         }
     }
     state++;  
