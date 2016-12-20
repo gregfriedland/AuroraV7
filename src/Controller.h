@@ -51,13 +51,13 @@ public:
     void loop(int interval);
 
 private:    
-    const std::map<std::string,int>& settings();
-    const std::map<std::string,std::pair<int,int> >& settingsRanges();
+    const std::map<std::string,int>& settings() const;
+    const std::map<std::string,std::pair<int,int> >& settingsRanges() const;
     void setSettings(const std::map<std::string,int>& settings);
-    std::string currDrawerName();
-    std::vector<std::string> drawerNames();
+    std::string currDrawerName() const;
+    std::vector<std::string> drawerNames() const;
     void randomizeSettings(Drawer* drawer);
-    void changeDrawer(std::vector<std::string> names);
+    void changeDrawer(const std::vector<std::string>& names);
     void init();
 
     Matrix* m_matrix;

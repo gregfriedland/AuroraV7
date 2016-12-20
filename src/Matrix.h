@@ -7,7 +7,7 @@ class Matrix {
     : m_width(width), m_height(height) {}
 
     virtual ~Matrix() {}
-    virtual void setPixel(size_t x, size_t y, char r, char g, char b) = 0;
+    virtual void setPixel(size_t x, size_t y, unsigned char r, unsigned char g, unsigned char b) = 0;
     virtual void update() = 0;
 
  protected:

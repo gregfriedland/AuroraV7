@@ -13,8 +13,8 @@
 #endif
 #include "ComputerScreenMatrix.h"
 
-static Controller* controller;
-static bool interrupted = false;
+Controller* controller = nullptr;
+bool interrupted = false;
 
 void sigHandler(int sig) {
     std::cout << "Caught SIGINT\n";
@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
         case HZELLER_RPI_MATRIX:
             matrix = new HzellerRpiMatrix(settings.m_width, settings.m_height);
             break;
-        case SERIAL_MATRX:
+        case SERIAL_MATRIX:
             matrix = new SerialMatrix(settings.m_width, settings.m_height, settings.m_device);
             break;
 #endif
@@ -61,15 +61,15 @@ int main(int argc, char** argv) {
     }
 
 	// start camera
-    Camera *camera = NULL;
+    Camera *camera = nullptr;
     if (settings.m_cameraSettings.m_fps > 0) {
         camera = new Camera(settings.m_cameraSettings);
         camera->start(1000 / settings.m_cameraSettings.m_fps);
     }
 
     // start face detection
-    FaceDetect *faceDetect = NULL;
-    if (settings.m_faceDetectFps > 0 && camera != NULL) {
+    FaceDetect *faceDetect = nullptr;
+    if (settings.m_faceDetectFps > 0 && camera != nullptr) {
         faceDetect = new FaceDetect(camera);
         faceDetect->start(1000 / settings.m_faceDetectFps);
     }

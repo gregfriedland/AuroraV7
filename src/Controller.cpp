@@ -187,11 +187,11 @@ void Controller::loop(int interval) {
 }
 
 
-const std::map<std::string,int>& Controller::settings() {
+const std::map<std::string,int>& Controller::settings() const {
     return m_currDrawer->settings();
 }
 
-const std::map<std::string,std::pair<int,int>>& Controller::settingsRanges() {
+const std::map<std::string,std::pair<int,int>>& Controller::settingsRanges() const {
     return m_currDrawer->settingsRanges();
 }
 
@@ -200,18 +200,18 @@ void Controller::setSettings(const std::map<std::string,int>& settings) {
     m_drawerChangeTimer.reset();
 }
 
-std::string Controller::currDrawerName() {
+std::string Controller::currDrawerName() const {
     return m_currDrawer->name();
 }
 
-std::vector<std::string> Controller::drawerNames() {
+std::vector<std::string> Controller::drawerNames() const {
     std::vector<std::string> names;
     for (auto& d: m_drawers)
         names.push_back(d.first);
     return names;
 }
 
-void Controller::changeDrawer(std::vector<std::string> names) {
+void Controller::changeDrawer(const std::vector<std::string>& names) {
     std::string name;
     assert(names.size() > 0);
     if (names.size() == 1)

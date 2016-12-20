@@ -9,9 +9,7 @@
 #include <chrono>
 #include "threaded-canvas-manipulator.h"
 
-using rgb_matrix::RGBMatrix;
-using rgb_matrix::Canvas;
-using rgb_matrix::ThreadedCanvasManipulator;
+using namespace rgb_matrix;
 
 #if 0
 void thread_func(size_t width, size_t height, unsigned char* data) {
@@ -81,14 +79,14 @@ class HzellerRpiMatrix : public Matrix {
         options.parallel = height / 32;
         options.show_refresh_rate = true;
 
-        m_canvas = rgb_matrix::CreateMatrixFromOptions(options, runtime);
-        if (m_canvas == NULL) {
+        m_matrix = rgb_matrix::CreateMatrixFromOptions(options, runtime);
+        if (m_matrix == NULL) {
           std::cout << "Unable to create hzeller rpi matrix\n";
           exit(1);
         }
         
         m_data = new unsigned char[width * height * 3];
-        m_thread = new HzellerRpiMatrixThread(m_canvas, width, height, m_data);
+        m_thread = new HzellerRpiMatrixThread(m_matrix, width, height, m_data);
         m_thread->Start();
           //        std::thread t(&thread_func, width, height, m_data);
           //        t.detach();
@@ -97,11 +95,11 @@ class HzellerRpiMatrix : public Matrix {
     virtual ~HzellerRpiMatrix() {
         m_thread->Stop();
         delete m_thread;
-        delete m_canvas;
+        delete m_matrix;
         delete [] m_data;
     }
   
-    virtual void setPixel(size_t x, size_t y, char r, char g, char b) {
+    virtual void setPixel(size_t x, size_t y, unsigned char r, unsigned char g, unsigned char b) {
         m_data[y * m_width * 3 + x * 3] = r;
         m_data[y * m_width * 3 + x * 3 + 1] = g;
         m_data[y * m_width * 3 + x * 3 + 2] = b;
@@ -109,11 +107,11 @@ class HzellerRpiMatrix : public Matrix {
     }
   
     virtual void update() {   
-        m_offscreenCanvas = m_matrix->SwapOnVSync(m_offscreenCanvas, 5);
+      m_offscreenCanvas = m_matrix->SwapOnVSync(m_offscreenCanvas);//, 5);
     }
   
  private:
-    Canvas* m_canvas;
+    RGBMatrix* m_matrix;
     ThreadedCanvasManipulator* m_thread;
     FrameCanvas* m_offscreenCanvas;   
     unsigned char* m_data;

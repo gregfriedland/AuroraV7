@@ -1,5 +1,5 @@
-#ifndef SERIAL_MATRIX_H
-#define SERIAL_MATRIX_H
+#ifndef COMPUTER_SCREEN_MATRIX_H
+#define COMPUTER_SCREEN_MATRIX_H
 
 #include "Matrix.h"
 #include <iostream>
@@ -19,7 +19,7 @@ class ComputerScreenMatrix : public Matrix {
 	    m_img = cv::Mat(height * m_pixelMultiplier, width * m_pixelMultiplier, CV_8UC3);
 	}
 
-	virtual void setPixel(size_t x, size_t y, char r, char g, char b) {
+	virtual void setPixel(size_t x, size_t y, unsigned char r, unsigned char g, unsigned char b) {
         int m = m_pixelMultiplier;
         for (int xx = 0; xx < m; ++xx) {
             for (int yy = 0; yy < m; ++yy) {
@@ -29,7 +29,7 @@ class ComputerScreenMatrix : public Matrix {
 		        pix[2] = b;
 		    }
 		}
-    }
+        }
 
 	virtual void update() {	
         cv::imshow(WINDOW_NAME, m_img);

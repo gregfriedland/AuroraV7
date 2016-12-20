@@ -26,11 +26,11 @@ class SerialMatrix : public Matrix {
 		delete m_serialWriteBuffer;
 	}
 
-	virtual void setPixel(size_t x, size_t y, char r, char g, char b) {
+	virtual void setPixel(size_t x, size_t y, unsigned char r, unsigned char g, unsigned char b) {
 		size_t index = (y * m_width + x) * 3;
-		m_serialWriteBuffer[index] = min((unsigned char)254, r);
-		m_serialWriteBuffer[index + 1] = min((unsigned char)254, g);
-		m_serialWriteBuffer[index + 2] = min((unsigned char)254, b);
+		m_serialWriteBuffer[index] = std::min((unsigned char)254, r);
+		m_serialWriteBuffer[index + 1] = std::min((unsigned char)254, g);
+		m_serialWriteBuffer[index + 2] = std::min((unsigned char)254, b);
 	}
 
 	virtual void update() {	
@@ -43,7 +43,7 @@ class SerialMatrix : public Matrix {
 
 			unsigned char buffer[256];
 			if (m_serial.read(256, buffer) > 0)
-		        cout << "read: " << (unsigned int) buffer[0] << endl;
+			  std::cout << "read: " << (unsigned int) buffer[0] << std::endl;
 		}
 	}
 
@@ -52,6 +52,6 @@ class SerialMatrix : public Matrix {
  	Serial m_serial;
     unsigned char* m_serialWriteBuffer; // stores data in serial write order
     size_t m_serialWriteBufferSize; 	
-}
+};
 
 #endif
