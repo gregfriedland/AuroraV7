@@ -52,6 +52,12 @@ inline int random2() {
 	return randGen();
 }
 
+inline float randomFloat(float min, float max) {
+	static std::random_device rd;
+	static std::mt19937 gen(rd());
+
+	return std::uniform_real_distribution<>(min, max)(gen);
+}
 
 class IntervalTimer {
 public:
@@ -176,6 +182,10 @@ class Array2D {
  				get(x, y) = std::min(min, std::max(max, get(x, y)));
  			}
  		}
+ 	}
+
+ 	const T* rawData() const {
+ 		return m_data;
  	}
 
  	size_t width() const {
