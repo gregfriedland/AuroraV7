@@ -30,6 +30,10 @@ inline float mapValue(float x, float in_min, float in_max, float out_min, float 
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
+inline int mapValue(int x, int in_min, int in_max, int out_min, int out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
 inline unsigned long millis() {
 	/* struct timeval tv; */
 

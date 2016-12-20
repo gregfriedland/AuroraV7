@@ -15,13 +15,13 @@ public:
     virtual void draw(int* colIndices);
 
  private:
-    float *m_u, *m_v;
+    int *m_u, *m_v;
     bool m_q;
-    float m_F, m_k, m_du, m_dv, m_dt;
+    int m_F, m_k, m_du, m_dv, m_dt;
     int m_colorIndex;
     Camera* m_camera;
-    float m_lastMaxV;
-    float m_scale;
+    int m_lastMaxV;
+    int m_scale;
 };
 
 #endif
