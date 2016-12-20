@@ -15,9 +15,9 @@ GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* cam
     m_settings.insert(std::make_pair("speed",10));
     m_settings.insert(std::make_pair("colorSpeed",0));
     m_settings.insert(std::make_pair("params",1));
-    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(5,25)));
-    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,10)));
-    m_settingsRanges.insert(std::make_pair("params", std::make_pair(0,8)));
+    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(10,10)));//5,25)));
+    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,0)));//,10)));
+    m_settingsRanges.insert(std::make_pair("params", std::make_pair(0,0)));//8)));
 
     m_u = new float[m_width * m_height * 2];
     m_v = new float[m_width * m_height * 2];
@@ -56,7 +56,7 @@ void GrayScottDrawer::reset() {
         case 0:
             m_F = 0.022;
             m_k = 0.049;
-            m_scale = std::exp(randomFloat(std::log(0.3), std::log(20)));
+            m_scale = 5;//std::exp(randomFloat(std::log(0.3), std::log(20)));
             break;
         case 1:
             m_F = 0.026;

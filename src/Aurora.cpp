@@ -78,9 +78,15 @@ int main(int argc, char** argv) {
     controller = new Controller(matrix, settings, baseColors, camera, faceDetect);
 
     // do it in the main thread so we can optionally display the opencv window
+    int i = 0;
     while (true) {
         controller->loop(1000 / settings.m_fps);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+	++i;
+	if (i >= 50) {
+	  exit(0);
+	}
     }
 
     delete matrix;
