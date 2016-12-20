@@ -20,7 +20,8 @@ public:
  	size_t m_bzrWidth, m_bzrHeight;
  	int m_q;
     int m_state;
-    Array2D<float> *m_a[2], *m_b[2], *m_c[2], *m_convArr;
+    Array2D<float> *m_a[2], *m_b[2], *m_c[2];
+    // Array2D<float> *m_convArr;
     int m_colorIndex;
     Camera* m_camera;
 };

@@ -6,7 +6,8 @@
 #include "Util.h"
 
 #define BZR_SPEED_MULTIPLIER 100
-#define DIFFUSION_NUM_CELLS 3
+#define DIFFUSION_NUM_CELLS 1
+#define DIFFUSION_CONVOLUTION_SIZE (2 * DIFFUSION_NUM_CELLS + 1)
 #define MIN_WIDTH 64
 #define MIN_HEIGHT 32
 
@@ -32,21 +33,21 @@ BzrDrawer::BzrDrawer(int width, int height, int palSize, Camera* camera)
         m_c[q] = new Array2D<float>(m_bzrWidth, m_bzrHeight);
     }
 
-    m_convArr = new Array2D<float>(2 * DIFFUSION_NUM_CELLS + 1, 2 * DIFFUSION_NUM_CELLS + 1);
-    for (int x = 0; x < m_convArr->width(); ++x) {
-        for (int y = 0; y < m_convArr->height(); ++y) {
-            size_t xDist = std::abs<int>(x - m_convArr->width() / 2);
-            size_t yDist = std::abs<int>(y - m_convArr->height() / 2);
-            m_convArr->get(x, y) = 1 / (1 + std::sqrt(xDist * xDist + yDist * yDist));
-        }
-    }
+    // m_convArr = new Array2D<float>(2 * DIFFUSION_NUM_CELLS + 1, 2 * DIFFUSION_NUM_CELLS + 1);
+    // for (int x = 0; x < m_convArr->width(); ++x) {
+    //     for (int y = 0; y < m_convArr->height(); ++y) {
+    //         size_t xDist = std::abs<int>(x - m_convArr->width() / 2);
+    //         size_t yDist = std::abs<int>(y - m_convArr->height() / 2);
+    //         m_convArr->get(x, y) = 1;// / (1 + std::sqrt(xDist * xDist + yDist * yDist));
+    //     }
+    // }
     // std::cout << "convArr:\n" << *m_convArr << std::endl;
 
     reset();
 }
 
 BzrDrawer::~BzrDrawer() {
-    delete m_convArr;
+    // delete m_convArr;
     for (size_t q = 0; q < 2; ++q) {
         delete m_a[q];
         delete m_b[q];
@@ -76,6 +77,29 @@ void BzrDrawer::reset() {
     m_c[m_q]->random();
 }
 
+void convolve(const Array2D<float>* inputArr, Array2D<float>* outputArr) {
+    assert(inputArr->width() == outputArr->width() && inputArr->height() == outputArr->height());
+
+    float convSum = DIFFUSION_CONVOLUTION_SIZE * DIFFUSION_CONVOLUTION_SIZE;
+
+    for (int x = 0; x < inputArr->width(); ++x) {
+        for (int y = 0; y < inputArr->height(); ++y) {
+
+            float val = 0;
+            int n = inputArr->width() + inputArr->height();
+            for (int yy = y - DIFFUSION_NUM_CELLS; yy <= y + DIFFUSION_NUM_CELLS; ++yy) {
+                const float *offsetData = inputArr->rawData() + (yy * inputArr->width() + n) % n;
+                for (int xx = x - DIFFUSION_NUM_CELLS; xx <= x + DIFFUSION_NUM_CELLS; ++xx) {
+                    // val += inputArr->get(xx,yy);
+                    val += offsetData[(xx + n) % n];
+                }
+            }
+            val /= convSum;
+            outputArr->get(x, y) = val;
+        }
+    }
+}
+
 void BzrDrawer::draw(int* colIndices) {
     float speed = m_settings["speed"] / 100.0;
     float zoom = m_settings["zoom"] / 100.0;
@@ -88,9 +112,9 @@ void BzrDrawer::draw(int* colIndices) {
     if (m_state == 0) {
         // std::cout << *m_a[m_q] << std::endl;
 
-        convolve(m_convArr, m_a[m_q], m_a[1 - m_q]);
-        convolve(m_convArr, m_b[m_q], m_b[1 - m_q]);
-        convolve(m_convArr, m_c[m_q], m_c[1 - m_q]);
+        convolve(m_a[m_q], m_a[1 - m_q]);
+        convolve(m_b[m_q], m_b[1 - m_q]);
+        convolve(m_c[m_q], m_c[1 - m_q]);
 
         for (size_t x = 0; x < m_bzrWidth; ++x) {
             for (size_t y = 0; y < m_bzrHeight; ++y) {
