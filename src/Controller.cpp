@@ -24,6 +24,19 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
         json j;
         ifs >> j;
 
+        std::string matrixType = j["matrix"];
+        if (matrixType == "HzellerRpi") {
+            m_matrixType = HZELLER_RPI_MATRIX;
+        } else if (matrixType == "Serial") {
+            m_matrixType = SERIAL_MATRIX;
+        } else if (matrixType == "ComputerScreen") {
+            m_matrixType = COMPUTER_SCREEN_MATRIX;
+        } else {
+            std::cerr << "Invalid matrix type in json file: " << matrixType << 
+                ". Must be one of: 'HzellerRpi', 'Serial', or 'Computer'" << std::endl;
+            exit(1);            
+        }
+
         m_width = j["width"];
         m_height = j["height"];
         m_palSize = j["paletteSize"];
@@ -49,9 +62,10 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
     }
 }
 
-Controller::Controller(const ControllerSettings& settings, const std::vector<int>& baseColors,
-    Camera* camera, FaceDetect* faceDetect)
-: m_settings(settings), m_camera(camera), m_faceDetect(faceDetect),
+<<<<<<< HEAD
+Controller::Controller(Matrix* matrix, const ControllerSettings& settings, const std::vector<int>& baseColors,
+                       Camera* camera, FaceDetect* faceDetect)
+: m_matrix(matrix), m_settings(settings), m_camera(camera), m_faceDetect(faceDetect),
   m_palettes(m_settings.m_palSize, baseColors, m_settings.m_baseColorsPerPalette),
   m_currDrawer(NULL), m_fpsCounter(30000, "Controller"), m_serial(m_settings.m_device),
   m_drawerChangeTimer(m_settings.m_drawerChangeInterval) {
@@ -59,8 +73,6 @@ Controller::Controller(const ControllerSettings& settings, const std::vector<int
 
     m_colIndicesSize = m_settings.m_width * m_settings.m_height;
     m_colIndices = new int[m_colIndicesSize];
-    m_serialWriteBufferSize = m_settings.m_width * m_settings.m_height * 3 + 1;
-    m_serialWriteBuffer = new unsigned char[m_serialWriteBufferSize];
     init();
 }
 
@@ -70,12 +82,10 @@ Controller::~Controller() {
     for (auto elem: m_drawers)
         delete elem.second;
     delete m_colIndices;
-    delete m_serialWriteBuffer;
 }
 
-const unsigned char* Controller::rawData(int& size) {
-    size = m_serialWriteBufferSize;
-    return m_serialWriteBuffer;
+const unsigned char* Controller::rawData(size_t& size) {
+    return m_matrix->rawData(size);
 }
 
 void Controller::init()
@@ -173,7 +183,7 @@ void Controller::loop(int interval) {
         if (m_drawerChangeTimer.tick(NULL)) {
             auto drawers = m_settings.m_drawers;
             drawers.push_back("Video");
-	        changeDrawer(drawers);
+            changeDrawer(drawers);
         }
     } else {
         if (m_drawerChangeTimer.tick(NULL)) {
@@ -183,58 +193,67 @@ void Controller::loop(int interval) {
 
     // update drawer
     while (m_currDrawer->isPaused()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-        m_currDrawer->draw(m_colIndices);
+    m_currDrawer->draw(m_colIndices);
 
-        cv::Mat img;
-        if (m_settings.m_screenShowMultiplier) {
-            img = cv::Mat(m_settings.m_height * m_settings.m_screenShowMultiplier,
-                m_settings.m_width * m_settings.m_screenShowMultiplier, CV_8UC3);
+    // cv::Mat img;
+    // if (m_settings.m_screenShowMultiplier) {
+    //     img = cv::Mat(m_settings.m_height * m_settings.m_screenShowMultiplier,
+    //         m_settings.m_width * m_settings.m_screenShowMultiplier, CV_8UC3);
+    // }
+
+    // // pack data for serial transmission
+    // int i = 0;
+    // for (int y = 0; y < m_settings.m_height; y++) {
+    //     for (int x = 0; x < m_settings.m_width; x++) {
+    //         Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_settings.m_width]);
+    //         // if (x == 0 && y == 0)
+    //         //  cout << "00 index=" << m_colIndices[x + y * m_width] << " rgb=" << (int)col.r << " " << (int)col.g << " " << (int)col.b << endl;
+    //         m_serialWriteBuffer[i++] = std::min((unsigned char)254, col.r);
+    //         m_serialWriteBuffer[i++] = std::min((unsigned char)254, col.g);
+    //         m_serialWriteBuffer[i++] = std::min((unsigned char)254, col.b);
+
+    //         if (m_settings.m_screenShowMultiplier) {
+    //             int m = m_settings.m_screenShowMultiplier;
+    //             for (int xx = 0; xx < m; ++xx) {
+    //                 for (int yy = 0; yy < m; ++yy) {
+    //                     cv::Vec3b& pix = img.at<cv::Vec3b>(y * m + yy, x * m + xx);
+    //                     pix[0] = col.r;
+    //                     pix[1] = col.g;
+    //                     pix[2] = col.b;
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+    // m_serialWriteBuffer[i++] = 255;
+
+    // if (m_settings.m_screenShowMultiplier) {
+    //     cv::imshow(WINDOW_NAME, img);
+    //     cv::waitKey(1);            
+    // }
+
+    // // send serial data
+    // if (m_settings.m_device.size() > 0) {
+    //     m_serial.write(m_serialWriteBuffer, m_serialWriteBufferSize);
+
+    //     unsigned char buffer[256];
+    //     if (m_serial.read(256, buffer) > 0)
+    //         std::cout << "read: " << (unsigned int) buffer[0] << std::endl;
+    // }
+
+    // update drawer
+    m_currDrawer->draw(m_colIndices);
+
+    // update matrix
+    for (int y = 0; y < m_height; y++) {
+        for (int x = 0; x < m_width; x++) {
+            Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_width]);
+            m_matrix->setPixel(x, y, col.r, col.g, col.b);
         }
-
-        // pack data for serial transmission
-        int i = 0;
-        for (int y = 0; y < m_settings.m_height; y++) {
-            for (int x = 0; x < m_settings.m_width; x++) {
-                Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_settings.m_width]);
-                // if (x == 0 && y == 0)
-                //  cout << "00 index=" << m_colIndices[x + y * m_width] << " rgb=" << (int)col.r << " " << (int)col.g << " " << (int)col.b << endl;
-                m_serialWriteBuffer[i++] = std::min((unsigned char)254, col.r);
-                m_serialWriteBuffer[i++] = std::min((unsigned char)254, col.g);
-                m_serialWriteBuffer[i++] = std::min((unsigned char)254, col.b);
-
-                if (m_settings.m_screenShowMultiplier) {
-                    int m = m_settings.m_screenShowMultiplier;
-                    for (int xx = 0; xx < m; ++xx) {
-                        for (int yy = 0; yy < m; ++yy) {
-                            cv::Vec3b& pix = img.at<cv::Vec3b>(y * m + yy, x * m + xx);
-                            pix[0] = col.r;
-                            pix[1] = col.g;
-                            pix[2] = col.b;
-                        }
-                    }
-                }
-            }
-        }
-        m_serialWriteBuffer[i++] = 255;
-
-        if (m_settings.m_screenShowMultiplier) {
-            cv::imshow(WINDOW_NAME, img);
-            cv::waitKey(1);            
-        }
-
-        // send serial data
-        if (m_settings.m_device.size() > 0) {
-            m_serial.write(m_serialWriteBuffer, m_serialWriteBufferSize);
-
-            unsigned char buffer[256];
-            if (m_serial.read(256, buffer) > 0)
-                std::cout << "read: " << (unsigned int) buffer[0] << std::endl;
-        }
-
-
-    });
+    }
+    m_matrix->update();
 }
 
 

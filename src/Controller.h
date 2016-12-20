@@ -3,9 +3,9 @@
 
 #include "Drawer.h"
 #include "Palette.h"
-#include "Serial.h"
 #include "Util.h"
 #include "Camera.h"
+#include "Matrix.h"
 #include "FaceDetect.h"
 
 #include <map>
@@ -14,9 +14,16 @@
 #include <thread>
 #include <string>
 
+typedef enum {
+    HZELLER_RPI_MATRIX,
+    SERIAL_MATRIX,
+    COMPUTER_SCREEN_MATRIX
+} MatrixType;
+
 struct ControllerSettings {
     ControllerSettings(const std::string& configFilename);
 
+    MatrixType m_matrixType;
     int m_fps;
     int m_width, m_height;
     int m_palSize;
@@ -34,11 +41,11 @@ struct ControllerSettings {
 
 class Controller {
 public:
-    Controller(const ControllerSettings& settings, const std::vector<int>& baseColors, Camera* camera, FaceDetect* faceDetect);
+    Controller(Matrix* matrix, const ControllerSettings& settings, const std::vector<int>& baseColors, Camera* camera, FaceDetect* faceDetect);
 
     ~Controller();
 
-    const unsigned char* rawData(int& size);
+    const unsigned char* rawData(size_t& size);
 
     void start(int interval);
     void stop();
@@ -51,10 +58,10 @@ private:
     std::string currDrawerName();
     std::vector<std::string> drawerNames();
     void randomizeSettings(Drawer* drawer);
-
     void changeDrawer(std::vector<std::string> names);
     void init();
 
+    Matrix* m_matrix;
     ControllerSettings m_settings;
     
     Palettes m_palettes;
@@ -70,8 +77,6 @@ private:
 
     int* m_colIndices; // stores current color indices before mapping to rgb
     int m_colIndicesSize; // size of color indices array
-    unsigned char* m_serialWriteBuffer; // stores data in serial write order
-    int m_serialWriteBufferSize;
 
     FpsCounter m_fpsCounter;
     FrameTimer m_frameTimer;
