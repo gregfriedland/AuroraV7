@@ -17,7 +17,8 @@
 typedef enum {
     HZELLER_RPI_MATRIX,
     SERIAL_MATRIX,
-    COMPUTER_SCREEN_MATRIX
+    COMPUTER_SCREEN_MATRIX,
+    NOOP_MATRIX
 } MatrixType;
 
 struct ControllerSettings {

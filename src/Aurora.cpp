@@ -12,6 +12,7 @@
     #include "SerialMatrix.h"
 #endif
 #include "ComputerScreenMatrix.h"
+#include "NoopMatrix.h"
 
 Controller* controller = nullptr;
 bool interrupted = false;
@@ -53,6 +54,9 @@ int main(int argc, char** argv) {
 #endif
         case COMPUTER_SCREEN_MATRIX:
             matrix = new ComputerScreenMatrix(settings.m_width, settings.m_height);
+            break;
+        case NOOP_MATRIX:
+            matrix = new NoopMatrix(settings.m_width, settings.m_height);
             break;
         default:
             std::cerr << "Matrix type not implemented\n";

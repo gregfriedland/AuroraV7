@@ -16,7 +16,6 @@
 using json = nlohmann::json;
 
 
-
 ControllerSettings::ControllerSettings(const std::string& configFilename) {
     try {
         std::ifstream ifs(configFilename);
@@ -30,6 +29,8 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
             m_matrixType = SERIAL_MATRIX;
         } else if (matrixType == "ComputerScreen") {
             m_matrixType = COMPUTER_SCREEN_MATRIX;
+        } else if (matrixType == "Noop") {
+            m_matrixType = NOOP_MATRIX;
         } else {
             std::cerr << "Invalid matrix type in json file: " << matrixType << 
                 ". Must be one of: 'HzellerRpi', 'Serial', or 'Computer'" << std::endl;
