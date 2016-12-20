@@ -5,24 +5,24 @@
 #include "Serial.h"
 #include <iostream>
 
-using rgb_matrix::RGBMatrix;
-using rgb_matrix::Canvas;
-
 class SerialMatrix : public Matrix {
  public:
 	SerialMatrix(size_t width, size_t height, const std::string& device)
 	: Matrix(width, height), m_device(device), m_serial(device) {
 		// create serial connection
-		if (m_device.size() > 0)
+		if (m_device.size() > 0) {
 			m_serial.connect();
+		}
 
 	    m_serialWriteBufferSize = width * height * 3 + 1;
 	    m_serialWriteBuffer = new unsigned char[m_serialWriteBufferSize];		
 	}
 
 	virtual ~SerialMatrix() {
-		if (m_device.size() > 0)
+		if (m_device.size() > 0) {
+	        std::cout << "Closing serial port\n";
 			m_serial.close();
+		}
 		delete m_serialWriteBuffer;
 	}
 
@@ -45,11 +45,6 @@ class SerialMatrix : public Matrix {
 			if (m_serial.read(256, buffer) > 0)
 		        cout << "read: " << (unsigned int) buffer[0] << endl;
 		}
-	}
-
-	virtual const unsigned char* rawData(size_t& size) const {
-		size = m_serialWriteBufferSize;
-		return m_serialWriteBuffer;
 	}
 
  private:

@@ -15,6 +15,6 @@
         "fps": 0,
         "videoDrawerTimeout": 10000
     },
-    "screenShowMultiplier": 5,
+    "matrix": "ComputerScreen",
     "serialDevice": ""
 }

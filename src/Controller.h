@@ -45,8 +45,6 @@ public:
 
     ~Controller();
 
-    const unsigned char* rawData(size_t& size);
-
     void start(int interval);
     void stop();
     void loop(int interval);
@@ -66,7 +64,6 @@ private:
     
     Palettes m_palettes;
     int m_currPalIndex; // index of current palette
-    Serial m_serial;
 
     Camera* m_camera;
     FaceDetect* m_faceDetect;

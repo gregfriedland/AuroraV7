@@ -15,7 +15,6 @@
 
 using json = nlohmann::json;
 
-#define WINDOW_NAME "Aurora"
 
 
 ControllerSettings::ControllerSettings(const std::string& configFilename) {
@@ -48,7 +47,6 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
         m_drawerChangeInterval = j["drawerChangeInterval"];
         m_faceDetectFps = j["faceDetection"]["fps"];
         m_faceVideoDrawerTimeout = j["faceDetection"]["videoDrawerTimeout"];
-        m_screenShowMultiplier = j["screenShowMultiplier"];
         m_device = j["serialDevice"];
 
         m_cameraSettings.m_camWidth = j["camera"]["width"];
@@ -62,15 +60,14 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
     }
 }
 
-<<<<<<< HEAD
 Controller::Controller(Matrix* matrix, const ControllerSettings& settings, const std::vector<int>& baseColors,
                        Camera* camera, FaceDetect* faceDetect)
 : m_matrix(matrix), m_settings(settings), m_camera(camera), m_faceDetect(faceDetect),
   m_palettes(m_settings.m_palSize, baseColors, m_settings.m_baseColorsPerPalette),
-  m_currDrawer(NULL), m_fpsCounter(30000, "Controller"), m_serial(m_settings.m_device),
+  m_currDrawer(NULL), m_fpsCounter(30000, "Controller"),
   m_drawerChangeTimer(m_settings.m_drawerChangeInterval) {
-    m_currPalIndex = random2() % m_palettes.size();
 
+    m_currPalIndex = random2() % m_palettes.size();
     m_colIndicesSize = m_settings.m_width * m_settings.m_height;
     m_colIndices = new int[m_colIndicesSize];
     init();
@@ -84,12 +81,7 @@ Controller::~Controller() {
     delete m_colIndices;
 }
 
-const unsigned char* Controller::rawData(size_t& size) {
-    return m_matrix->rawData(size);
-}
-
-void Controller::init()
-{
+void Controller::init() {
     // create drawers and set start drawer
     if (std::find(m_settings.m_drawers.begin(), m_settings.m_drawers.end(), "AlienBlob") != m_settings.m_drawers.end()) {
         m_drawers.insert(std::make_pair("AlienBlob", new AlienBlobDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
@@ -107,17 +99,6 @@ void Controller::init()
         changeDrawer({m_settings.m_startDrawerName});
     else
         changeDrawer({"AlienBlob"});
-
-    // create serial connection
-    if (m_settings.m_device.size() > 0) {
-        m_serial.connect();
-    }
-
-    if (m_settings.m_screenShowMultiplier) {
-        cv::namedWindow(WINDOW_NAME, CV_WINDOW_AUTOSIZE);
-        cv::moveWindow(WINDOW_NAME, 0, 0);
-        std::cout << "Creating video window\n";
-    }
 }
 
 void Controller::start(int interval) {
@@ -141,11 +122,7 @@ void Controller::stop() {
     if (m_thread.joinable()) {
         m_thread.join();
     }
-
-    if (m_settings.m_device.size() > 0) {
-        std::cout << "Closing serial port\n";
-        m_serial.close();
-    }
+    delete m_matrix;
     std::cout << "Stopped controller\n";
 }
 
@@ -179,81 +156,33 @@ void Controller::loop(int interval) {
             else
                 changeDrawer(m_settings.m_drawers);
         }
-    } else if (m_camera != NULL) {
-        if (m_drawerChangeTimer.tick(NULL)) {
-            auto drawers = m_settings.m_drawers;
-            drawers.push_back("Video");
-            changeDrawer(drawers);
+        } else if (m_camera != NULL) {
+            if (m_drawerChangeTimer.tick(NULL)) {
+                auto drawers = m_settings.m_drawers;
+                drawers.push_back("Video");
+                changeDrawer(drawers);
+            }
+        } else {
+            if (m_drawerChangeTimer.tick(NULL)) {
+                changeDrawer(m_settings.m_drawers);
+            }
         }
-    } else {
-        if (m_drawerChangeTimer.tick(NULL)) {
-            changeDrawer(m_settings.m_drawers);
+
+        // update drawer
+        while (m_currDrawer->isPaused()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-    }
+        m_currDrawer->draw(m_colIndices);
 
-    // update drawer
-    while (m_currDrawer->isPaused()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    m_currDrawer->draw(m_colIndices);
-
-    // cv::Mat img;
-    // if (m_settings.m_screenShowMultiplier) {
-    //     img = cv::Mat(m_settings.m_height * m_settings.m_screenShowMultiplier,
-    //         m_settings.m_width * m_settings.m_screenShowMultiplier, CV_8UC3);
-    // }
-
-    // // pack data for serial transmission
-    // int i = 0;
-    // for (int y = 0; y < m_settings.m_height; y++) {
-    //     for (int x = 0; x < m_settings.m_width; x++) {
-    //         Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_settings.m_width]);
-    //         // if (x == 0 && y == 0)
-    //         //  cout << "00 index=" << m_colIndices[x + y * m_width] << " rgb=" << (int)col.r << " " << (int)col.g << " " << (int)col.b << endl;
-    //         m_serialWriteBuffer[i++] = std::min((unsigned char)254, col.r);
-    //         m_serialWriteBuffer[i++] = std::min((unsigned char)254, col.g);
-    //         m_serialWriteBuffer[i++] = std::min((unsigned char)254, col.b);
-
-    //         if (m_settings.m_screenShowMultiplier) {
-    //             int m = m_settings.m_screenShowMultiplier;
-    //             for (int xx = 0; xx < m; ++xx) {
-    //                 for (int yy = 0; yy < m; ++yy) {
-    //                     cv::Vec3b& pix = img.at<cv::Vec3b>(y * m + yy, x * m + xx);
-    //                     pix[0] = col.r;
-    //                     pix[1] = col.g;
-    //                     pix[2] = col.b;
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-    // m_serialWriteBuffer[i++] = 255;
-
-    // if (m_settings.m_screenShowMultiplier) {
-    //     cv::imshow(WINDOW_NAME, img);
-    //     cv::waitKey(1);            
-    // }
-
-    // // send serial data
-    // if (m_settings.m_device.size() > 0) {
-    //     m_serial.write(m_serialWriteBuffer, m_serialWriteBufferSize);
-
-    //     unsigned char buffer[256];
-    //     if (m_serial.read(256, buffer) > 0)
-    //         std::cout << "read: " << (unsigned int) buffer[0] << std::endl;
-    // }
-
-    // update drawer
-    m_currDrawer->draw(m_colIndices);
-
-    // update matrix
-    for (int y = 0; y < m_height; y++) {
-        for (int x = 0; x < m_width; x++) {
-            Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_width]);
-            m_matrix->setPixel(x, y, col.r, col.g, col.b);
+        // update matrix
+        for (int y = 0; y < m_settings.m_height; y++) {
+            for (int x = 0; x < m_settings.m_width; x++) {
+                Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_settings.m_width]);
+                m_matrix->setPixel(x, y, col.r, col.g, col.b);
+            }
         }
-    }
-    m_matrix->update();
+        m_matrix->update();
+    });
 }
 
 
@@ -261,7 +190,7 @@ const std::map<std::string,int>& Controller::settings() {
     return m_currDrawer->settings();
 }
 
-const std::map<std::string,std::pair<int,int> >& Controller::settingsRanges() {
+const std::map<std::string,std::pair<int,int>>& Controller::settingsRanges() {
     return m_currDrawer->settingsRanges();
 }
 

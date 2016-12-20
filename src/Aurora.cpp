@@ -7,18 +7,18 @@
 #include <unistd.h>
 #include <thread>
 #include "Matrix.h"
-#include "HzellerRpiMatrix.h"
-
-// #define MATRIX_TYPE HZELLER_RPI_MATRX
+#ifdef LINUX
+    #include "HzellerRpiMatrix.h"
+    #include "SerialMatrix.h"
+#endif
+#include "ComputerScreenMatrix.h"
 
 static Controller* controller;
-
 static bool interrupted = false;
 
 void sigHandler(int sig) {
     std::cout << "Caught SIGINT\n";
 	controller->stop();
-    cout << "Caught SIGINT\n";
 	fail();
 }
 
@@ -43,12 +43,14 @@ int main(int argc, char** argv) {
     // Create matrix
     Matrix* matrix = nullptr;
     switch(settings.m_matrixType) {
-        case HZELLER_RPI_MATRX:
+#ifdef LINUX
+        case HZELLER_RPI_MATRIX:
             matrix = new HzellerRpiMatrix(settings.m_width, settings.m_height);
             break;
         case SERIAL_MATRX:
-            matrix = new SerialMatrix(settings.m_width, settings.m_height);
+            matrix = new SerialMatrix(settings.m_width, settings.m_height, settings.m_device);
             break;
+#endif
         case COMPUTER_SCREEN_MATRIX:
             matrix = new ComputerScreenMatrix(settings.m_width, settings.m_height);
             break;
@@ -80,7 +82,7 @@ int main(int argc, char** argv) {
         controller->loop(1000 / settings.m_fps);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    
+
     delete matrix;
     delete camera;
     delete faceDetect;

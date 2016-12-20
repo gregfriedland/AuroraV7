@@ -4,6 +4,6 @@
 [submodule "raspicam"]
 	path = raspicam
 	url = https://github.com/cedricve/raspicam.git
-[submodule "modules/rpi-rgb-led-matrix"]
-	path = modules/rpi-rgb-led-matrix
+[submodule "rpi-rgb-led-matrix"]
+	path = rpi-rgb-led-matrix
 	url = https://github.com/hzeller/rpi-rgb-led-matrix.git
