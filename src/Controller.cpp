@@ -38,6 +38,7 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
 
         m_width = j["width"];
         m_height = j["height"];
+        m_gamma = j["gamma"];
         m_palSize = j["paletteSize"];
         m_fps = j["fps"];
         m_startDrawerName = j["startDrawer"];
@@ -63,7 +64,7 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
 Controller::Controller(Matrix* matrix, const ControllerSettings& settings, const std::vector<int>& baseColors,
                        Camera* camera, FaceDetect* faceDetect)
 : m_matrix(matrix), m_settings(settings), m_camera(camera), m_faceDetect(faceDetect),
-  m_palettes(m_settings.m_palSize, baseColors, m_settings.m_baseColorsPerPalette),
+  m_palettes(m_settings.m_palSize, baseColors, m_settings.m_baseColorsPerPalette, m_settings.m_gamma),
   m_currDrawer(NULL), m_fpsCounter(30000, "Controller"),
   m_drawerChangeTimer(m_settings.m_drawerChangeInterval) {
 

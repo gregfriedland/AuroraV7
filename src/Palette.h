@@ -9,7 +9,7 @@
 
 class Palettes {
 public:
-    Palettes(int palSize, const std::vector<int>& baseColors, int baseColorsPerPalette);
+    Palettes(int palSize, const std::vector<int>& baseColors, int baseColorsPerPalette, float gamma);
 
     int size();
 
@@ -19,6 +19,7 @@ private:
     int m_palSize;
     const std::vector<int>& m_baseColors;
     int m_baseColorsPerPalette;
+    unsigned char m_gammaTable[256];
 };
 
 #endif

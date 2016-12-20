@@ -1,9 +1,13 @@
 #include "Palette.h"
 
 
-Palettes::Palettes(int palSize, const std::vector<int>& baseColors, int baseColorsPerPalette)
-: m_palSize(palSize), m_baseColors(baseColors), m_baseColorsPerPalette(baseColorsPerPalette)
-{}
+Palettes::Palettes(int palSize, const std::vector<int>& baseColors, int baseColorsPerPalette, float gamma)
+: m_palSize(palSize), m_baseColors(baseColors),
+  m_baseColorsPerPalette(baseColorsPerPalette) {
+    for (int i = 0; i < 256; ++i) {
+        m_gammaTable[i] = (unsigned char)(pow((float)i / (float)255, gamma) * 255 + 0.5);
+    }
+}
 
 int Palettes::size() {
     return m_baseColors.size() / m_baseColorsPerPalette;
@@ -24,7 +28,10 @@ Color24 Palettes::get(int paletteIndex, int gradientIndex) {
 
     gradientIndex = gradientIndex % subGradientSize;
 
-    return Color24(floor(col1.r + gradientIndex * (col2.r - col1.r) / subGradientSize),
-                 floor(col1.g + gradientIndex * (col2.g - col1.g) / subGradientSize),
-                 floor(col1.b + gradientIndex * (col2.b - col1.b) / subGradientSize));
+    unsigned char r, g, b;
+    r = floor(col1.r + gradientIndex * (col2.r - col1.r) / subGradientSize);
+    g = floor(col1.g + gradientIndex * (col2.g - col1.g) / subGradientSize);
+    b = floor(col1.b + gradientIndex * (col2.b - col1.b) / subGradientSize);
+
+    return Color24(m_gammaTable[r], m_gammaTable[g], m_gammaTable[b]); 
 }

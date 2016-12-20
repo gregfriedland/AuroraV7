@@ -26,6 +26,7 @@ struct ControllerSettings {
     MatrixType m_matrixType;
     int m_fps;
     int m_width, m_height;
+    float m_gamma;
     int m_palSize;
     std::string m_device;
     bool m_layoutLeftToRight;

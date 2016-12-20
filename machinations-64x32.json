@@ -1,6 +1,7 @@
 {
     "width": 64,
     "height": 32,
+    "gamma": 3.0,
     "paletteSize": 4096,
     "fps": 35,
     "startDrawer": "Bzr",
@@ -15,6 +16,6 @@
         "fps": 1,
         "videoDrawerTimeout": 10000
     },
-    "screenShowMultiplier": 0,
+    "matrix": "Serial",
     "serialDevice": "/dev/ttyACM0"
 }
