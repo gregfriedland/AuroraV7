@@ -81,9 +81,15 @@ const unsigned char* Controller::rawData(int& size) {
 void Controller::init()
 {
     // create drawers and set start drawer
-    m_drawers.insert(std::make_pair("AlienBlob", new AlienBlobDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
-    m_drawers.insert(std::make_pair("Bzr", new BzrDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
-    m_drawers.insert(std::make_pair("GrayScott", new GrayScottDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+    if (std::find(m_settings.m_drawers.begin(), m_settings.m_drawers.end(), "AlienBlob") != m_settings.m_drawers.end()) {
+        m_drawers.insert(std::make_pair("AlienBlob", new AlienBlobDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+    }
+    if (std::find(m_settings.m_drawers.begin(), m_settings.m_drawers.end(), "Bzr") != m_settings.m_drawers.end()) {
+        m_drawers.insert(std::make_pair("Bzr", new BzrDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+    }
+    if (std::find(m_settings.m_drawers.begin(), m_settings.m_drawers.end(), "GrayScott") != m_settings.m_drawers.end()) {
+        m_drawers.insert(std::make_pair("GrayScott", new GrayScottDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+    }
     if (m_camera != NULL)
         m_drawers.insert(std::make_pair("Video", new VideoDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
     m_drawers.insert(std::make_pair("Off", new OffDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
