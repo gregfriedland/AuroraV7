@@ -29,7 +29,7 @@ class ComputerScreenMatrix : public Matrix {
 		        pix[2] = b;
 		    }
 		}
-        }
+    }
 
 	virtual void update() {	
         cv::imshow(WINDOW_NAME, m_img);

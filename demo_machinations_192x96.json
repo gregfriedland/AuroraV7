@@ -16,6 +16,6 @@
         "fps": 0,
         "videoDrawerTimeout": 10000
     },
-    "matrix": "Noop",
+    "matrix": "ComputerScreen",
     "serialDevice": ""
 }
