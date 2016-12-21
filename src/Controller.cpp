@@ -66,7 +66,7 @@ Controller::Controller(Matrix* matrix, const ControllerSettings& settings, const
                        Camera* camera, FaceDetect* faceDetect)
 : m_matrix(matrix), m_settings(settings), m_camera(camera), m_faceDetect(faceDetect),
   m_palettes(m_settings.m_palSize, baseColors, m_settings.m_baseColorsPerPalette, m_settings.m_gamma),
-  m_currDrawer(NULL), m_fpsCounter(10000, "Controller"),
+  m_currDrawer(NULL), m_fpsCounter(2000, "Controller"),
   m_drawerChangeTimer(m_settings.m_drawerChangeInterval) {
 
     m_currPalIndex = random2() % m_palettes.size();

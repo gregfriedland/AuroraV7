@@ -1,7 +1,8 @@
 cmake_minimum_required (VERSION 3.0)
 project(AuroraV6)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pg")
+#-mcpu=cortex-a53 -march=armv8-a+crc -mtune=cortex-a53 -mfpu=neon-fp-armv8 -mfloat-abi=hard -mvectorize-with-neon-quad -mhard-float -funsafe-math-optimizations")
 
 find_package(OpenCV REQUIRED)
 

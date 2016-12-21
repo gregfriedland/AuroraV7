@@ -123,54 +123,36 @@ void GrayScottDrawer::draw(int* colIndices) {
     Drawer::draw(colIndices);
 
     float zoom = 1;
-    size_t speed = m_settings["speed"] * m_scale;
+    size_t speed = m_settings["speed"];//m_scale;
 
     size_t n = m_width * m_height * 2;
     for (size_t f = 0; f < speed; ++f) {
         size_t qOffset = m_q * m_width * m_height;
         size_t qOffsetNext = (!m_q) * m_width * m_height;
 
-        // add left and right and self for borders
+        // add neighbors for borders
         for (size_t y = 0; y < m_height; y += m_height - 1) {
             for (size_t x = 0; x < m_width; x += m_height - 1) {
                 size_t ind = x + y * m_width;
                 size_t left = (x - 1 + m_width) % m_width + y * m_width + qOffset;
                 size_t right = (x + 1) % m_width + y * m_width + qOffset;
-                m_d2u[ind] = m_u[left] + m_u[right] - 4 * m_u[ind + qOffset];
-                m_d2v[ind] = m_v[left] + m_v[right] - 4 * m_v[ind + qOffset];
+                size_t top = x + ((y - 1 + m_width) % m_height) * m_width + qOffset;
+                size_t bottom = x + ((y + 1) % m_height) * m_width + qOffset;
+                m_d2u[ind] = m_u[left] + m_u[right] + m_u[top] + m_u[bottom] - 4 * m_u[ind + qOffset];
+                m_d2v[ind] = m_v[left] + m_v[right] + m_v[top] + m_v[bottom]- 4 * m_v[ind + qOffset];
             }
         }
-        // add left and right and self for center
+        // add neighbors for center
         for (size_t y = 1; y < m_height - 1; ++y) {
             size_t baseInd = y * m_width;
             for (size_t x = 1; x < m_width - 1; ++x) {
                 size_t ind = x + baseInd;
                 size_t left = ind - 1;
                 size_t right = ind + 1;
-                m_d2u[ind] = m_u[left] + m_u[right] - 4 * m_u[ind + qOffset];
-                m_d2v[ind] = m_v[left] + m_v[right] - 4 * m_v[ind + qOffset];
-            }
-        }
-
-        // add top and bottom for borders
-        for (size_t y = 0; y < m_height; y += m_height - 1) {
-            for (size_t x = 0; x < m_width; x += m_height - 1) {
-                size_t ind = x + y * m_width;
-                size_t top = x + ((y - 1 + m_width) % m_height) * m_width + qOffset;
-                size_t bottom = x + ((y + 1) % m_height) * m_width + qOffset;
-                m_d2u[ind] += m_u[top] + m_u[bottom];
-                m_d2v[ind] += m_v[top] + m_v[bottom];
-            }
-        }
-        // add top and bottom for center
-        for (size_t y = 1; y < m_height - 1; ++y) {
-            size_t baseInd = y * m_width ;
-            for (size_t x = 1; x < m_width - 1; ++x) {
-                size_t ind = x + baseInd;;
                 size_t top = ind - m_width;
                 size_t bottom = ind + m_width;
-                m_d2u[ind] += m_u[top] + m_u[bottom];
-                m_d2v[ind] += m_v[top] + m_v[bottom];
+                m_d2u[ind] = m_u[left] + m_u[right] + m_u[top] + m_u[bottom]- 4 * m_u[ind + qOffset];
+                m_d2v[ind] = m_v[left] + m_v[right] + m_v[top] + m_v[bottom]- 4 * m_v[ind + qOffset];
             }
         }
 
