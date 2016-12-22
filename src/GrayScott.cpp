@@ -7,8 +7,8 @@
 #include <algorithm>
 
 #define MAX_ROLLING_MULTIPLIER (2.0 / (35 * 5 + 1))
-#define NUM_INIT_ISLANDS 1
-#define ISLAND_SIZE 10
+#define NUM_INIT_ISLANDS 5
+#define ISLAND_SIZE 20
 
 #ifdef __arm__
     #define vmul(x, y) vmulq_f32(x, y)
@@ -181,6 +181,7 @@ void GrayScottDrawer::reset() {
 
 
 #ifdef __arm__
+#if 0
 GSTypeN laplacian(const GSArrayType& arr, size_t index, size_t width) {
     GSTypeN curr = arr.getN(index);
     GSTypeN left = arr.getN(index - 1);
@@ -194,16 +195,28 @@ GSTypeN laplacian(const GSArrayType& arr, size_t index, size_t width) {
     sum = vsub(sum, vmul(curr, fourN));
     return sum;
 }
+#endif
 
-GSTypeN laplacianOverlap(const GSArrayType& arr, int x, int y) {
+template <bool CHECK_BOUNDS>
+GSTypeN laplacian(const GSArrayType& arr, int x, int y) {
+  GSTypeN curr, left, right, bottom, top;
+  
+  if (CHECK_BOUNDS) {
     size_t w = arr.width();
     size_t h = arr.height();
-
-    GSTypeN curr = arr.getN<true>(y * w + x);
-    GSTypeN left = arr.getN<true>(y * w + (x - 1 + w) % w);
-    GSTypeN right = arr.getN<true>(y * w + (x + 1) % w);
-    GSTypeN bottom = arr.getN<true>(((y - 1 + h) % h) * w + x);
-    GSTypeN top = arr.getN<true>(((y + 1) % h) * w + x);
+    curr = arr.getN<true>(y * w + x);
+    left = arr.getN<true>(y * w + (x - 1 + w) % w);
+    right = arr.getN<true>(y * w + (x + 1) % w);
+    bottom = arr.getN<true>(((y - 1 + h) % h) * w + x);
+    top = arr.getN<true>(((y + 1) % h) * w + x);
+  } else {
+    size_t index = x + y * arr.width();
+    curr = arr.getN(index);
+    left = arr.getN(index - 1);
+    right = arr.getN(index + 1);
+    bottom = arr.getN(index - arr.width());
+    top = arr.getN(index + arr.width());
+  }
 
 #if 0
     if (x == 0 && y == h - 1) {
@@ -223,69 +236,32 @@ GSTypeN laplacianOverlap(const GSArrayType& arr, int x, int y) {
     return sum;
 }
 
-void GrayScottDrawer::draw(int* colIndices) {
-    Drawer::draw(colIndices);
-
-    GSType zoom = 1;
-    size_t speed = m_settings["speed"]; // m_scale;
-
-    for (size_t f = 0; f < speed; ++f) {
-      //	std::cout << *m_v[m_q] << std::endl;
-
-#if 1
-      for (size_t y = 1; y < m_height - 1; ++y) {
-            for (size_t x = VEC_N; x < m_width - VEC_N; x += VEC_N) {
-                size_t index = y * m_width + x;
-                GSTypeN u = m_u[m_q]->getN(index);
-                GSTypeN v = m_v[m_q]->getN(index);
-
-                // get vector of floats for laplacian transform
-                GSTypeN d2u = laplacian(*m_u[m_q], index, m_width);
-                GSTypeN d2v = laplacian(*m_v[m_q], index, m_width);
-
-                // uvv = u*v*v
-                GSTypeN uvv = vmul(u, vmul(v, v));
-
-                // uOut[curr] = u + dt * du * d2u;
-                // uOut[curr] += dt * (-d2 + F * (1 - u));
-                GSTypeN uRD = vadd(u, vmul(vmul(m_dt, m_du), d2u));
-                uRD = vadd(uRD, vmul(m_dt, vsub(vmul(m_F, vsub(oneN, u)), uvv)));
-                m_u[1-m_q]->setN(index, uRD);
-
-                // vOut[curr] = v + dt * dv * d2v;
-                // vOut[curr] += dt * (d2 - (F + k) * v);
-                GSTypeN vRD = vadd(v, vmul(vmul(m_dt, m_dv), d2v));
-                vRD = vadd(vRD, vmul(m_dt, vsub(uvv, vmul(vadd(m_F, m_k), v))));
-                m_v[1-m_q]->setN(index, vRD);
-            }
-        }
-#endif
-#if 1
-	// borders are a special case
-        for (size_t y = 0; y < m_height; y += m_height - 1) {
-  	    for (size_t x = 0; x < m_width; x += m_width - VEC_N) {
-                size_t index = y * m_width + x;
-                GSTypeN u = m_u[m_q]->getN<true>(index);
-                GSTypeN v = m_v[m_q]->getN<true>(index);
-
-                // get vector of floats for laplacian transform
-                GSTypeN d2u = laplacianOverlap(*m_u[m_q], x, y);
-                GSTypeN d2v = laplacianOverlap(*m_v[m_q], x, y);
-
-                // uvv = u*v*v
-                GSTypeN uvv = vmul(u, vmul(v, v));
-
-                // uOut[curr] = u + dt * du * d2u;
-                // uOut[curr] += dt * (-d2 + F * (1 - u));
-                GSTypeN uRD = vadd(u, vmul(vmul(m_dt, m_du), d2u));
-                uRD = vadd(uRD, vmul(m_dt, vsub(vmul(m_F, vsub(oneN, u)), uvv)));
-                m_u[1-m_q]->setN(index, uRD);
-
-                // vOut[curr] = v + dt * dv * d2v;
-                // vOut[curr] += dt * (d2 - (F + k) * v);
-                GSTypeN vRD = vadd(v, vmul(vmul(m_dt, m_dv), d2v));
-                vRD = vadd(vRD, vmul(m_dt, vsub(uvv, vmul(vadd(m_F, m_k), v))));
-                m_v[1-m_q]->setN(index, vRD);
+template <bool CHECK_BOUNDS>
+void updateUV(GSArrayType *u[], GSArrayType *v[], bool q, size_t x, size_t y,
+	      const GSTypeN& dt, const GSTypeN& du, const GSTypeN& dv, const GSTypeN& F,
+	      const GSTypeN& k) {
+  size_t index = y * u[q]->width() + x;
+  GSTypeN currU = u[q]->getN<CHECK_BOUNDS>(index);
+  GSTypeN currV = v[q]->getN<CHECK_BOUNDS>(index);
+  
+  // get vector of floats for laplacian transform
+  GSTypeN d2u = laplacian<CHECK_BOUNDS>(*u[q], x, y);
+  GSTypeN d2v = laplacian<CHECK_BOUNDS>(*v[q], x, y);
+  
+  // uvv = u*v*v
+  GSTypeN uvv = vmul(currU, vmul(currV, currV));
+  
+  // uOut[curr] = u + dt * du * d2u;
+  // uOut[curr] += dt * (-d2 + F * (1 - u));
+  GSTypeN uRD = vadd(currU, vmul(vmul(dt, du), d2u));
+  uRD = vadd(uRD, vmul(dt, vsub(vmul(F, vsub(oneN, currU)), uvv)));
+  u[1-q]->setN(index, uRD);
+  
+  // vOut[curr] = v + dt * dv * d2v;
+  // vOut[curr] += dt * (d2 - (F + k) * v);
+  GSTypeN vRD = vadd(currV, vmul(vmul(dt, dv), d2v));
+  vRD = vadd(vRD, vmul(dt, vsub(uvv, vmul(vadd(F, k), currV))));
+  v[1-q]->setN(index, vRD);  
 
 #if 0
 		for (size_t yy = 0; yy < m_height; yy += m_height - 1) {
@@ -299,6 +275,35 @@ void GrayScottDrawer::draw(int* colIndices) {
 		  }
 		}
 #endif		
+}
+
+
+void GrayScottDrawer::draw(int* colIndices) {
+    Drawer::draw(colIndices);
+
+    GSType zoom = 1;
+    size_t speed = m_settings["speed"]; //m_scale;
+
+    for (size_t f = 0; f < speed; ++f) {
+      //      	std::cout << *m_v[m_q] << std::endl;
+
+#if 1
+      for (size_t y = 1; y < m_height - 1; ++y) {
+            for (size_t x = VEC_N; x < m_width - VEC_N; x += VEC_N) {
+	      updateUV<false>(m_u, m_v, m_q, x, y, m_dt, m_du, m_dv, m_F, m_k);
+            }
+        }
+#endif
+#if 1
+	// borders are a special case
+        for (size_t y = 0; y < m_height; y += m_height - 1) {
+  	    for (size_t x = 0; x < m_width; x += VEC_N) {
+	      updateUV<true>(m_u, m_v, m_q, x, y, m_dt, m_du, m_dv, m_F, m_k);
+	    }
+        }
+        for (size_t y = 0; y < m_height; y += 1) {
+  	    for (size_t x = 0; x < m_width; x += m_width - VEC_N) {
+	      updateUV<true>(m_u, m_v, m_q, x, y, m_dt, m_du, m_dv, m_F, m_k);
 	    }
         }
 #endif

@@ -271,14 +271,14 @@ class Array2DNeon {
 	    return m_data[index / REGISTER_N];
 	  }
 
-	  T tmp[REGISTER_N * 2];
+	  static T tmp[REGISTER_N * 2];
 	  size_t indexN = index / REGISTER_N;
 	  size_t indexNextN;
-	  if (CHECK_BOUNDS) {
+	  //if (CHECK_BOUNDS) {
 	    indexNextN = (indexN + 1) % m_numVectors;
-	  } else {
-	    indexNextN = indexN + 1;
-	  }
+	  //	  } else {
+	  //indexNextN = indexN + 1;
+	  //}
 	   
 	  vst1q_f32(tmp, m_data[indexN]);
 	  vst1q_f32(tmp + REGISTER_N, m_data[indexNextN]);
