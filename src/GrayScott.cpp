@@ -199,11 +199,11 @@ GSTypeN laplacianOverlap(const GSArrayType& arr, int x, int y) {
     size_t w = arr.width();
     size_t h = arr.height();
 
-    GSTypeN curr = arr.getN(y * w + x);
-    GSTypeN left = arr.getN(y * w + (x - 1 + w) % w);
-    GSTypeN right = arr.getN(y * w + (x + 1) % w);
-    GSTypeN bottom = arr.getN(((y - 1 + h) % h) * w + x);
-    GSTypeN top = arr.getN(((y + 1) % h) * w + x);
+    GSTypeN curr = arr.getN<true>(y * w + x);
+    GSTypeN left = arr.getN<true>(y * w + (x - 1 + w) % w);
+    GSTypeN right = arr.getN<true>(y * w + (x + 1) % w);
+    GSTypeN bottom = arr.getN<true>(((y - 1 + h) % h) * w + x);
+    GSTypeN top = arr.getN<true>(((y + 1) % h) * w + x);
 
 #if 0
     if (x == 0 && y == h - 1) {
@@ -227,13 +227,13 @@ void GrayScottDrawer::draw(int* colIndices) {
     Drawer::draw(colIndices);
 
     GSType zoom = 1;
-    size_t speed = m_settings["speed"]; //* m_scale;
+    size_t speed = m_settings["speed"]; // m_scale;
 
     for (size_t f = 0; f < speed; ++f) {
       //	std::cout << *m_v[m_q] << std::endl;
 
-#if 0      
-        for (size_t y = 1; y < m_height - 1; ++y) {
+#if 1
+      for (size_t y = 1; y < m_height - 1; ++y) {
             for (size_t x = VEC_N; x < m_width - VEC_N; x += VEC_N) {
                 size_t index = y * m_width + x;
                 GSTypeN u = m_u[m_q]->getN(index);
@@ -260,12 +260,13 @@ void GrayScottDrawer::draw(int* colIndices) {
             }
         }
 #endif
+#if 1
 	// borders are a special case
-        for (size_t y = 0; y < m_height; ++y) {//m_height - 1) {
-  	    for (size_t x = 0; x < m_width; x += VEC_N) {//m_width - VEC_N) {
+        for (size_t y = 0; y < m_height; y += m_height - 1) {
+  	    for (size_t x = 0; x < m_width; x += m_width - VEC_N) {
                 size_t index = y * m_width + x;
-                GSTypeN u = m_u[m_q]->getN(index);
-                GSTypeN v = m_v[m_q]->getN(index);
+                GSTypeN u = m_u[m_q]->getN<true>(index);
+                GSTypeN v = m_v[m_q]->getN<true>(index);
 
                 // get vector of floats for laplacian transform
                 GSTypeN d2u = laplacianOverlap(*m_u[m_q], x, y);
@@ -300,6 +301,7 @@ void GrayScottDrawer::draw(int* colIndices) {
 #endif		
 	    }
         }
+#endif
 
 	m_q = 1 - m_q;
 

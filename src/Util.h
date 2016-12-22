@@ -264,6 +264,7 @@ class Array2DNeon {
 	  m_data[index / REGISTER_N] = val;
  	}
 
+	template <bool CHECK_BOUNDS = false>
  	NEON_TYPE getN(size_t index) const {
 	  size_t remainder = index % REGISTER_N;
 	  if (remainder == 0) {
@@ -271,8 +272,16 @@ class Array2DNeon {
 	  }
 
 	  T tmp[REGISTER_N * 2];
-	  vst1q_f32(tmp, m_data[index / REGISTER_N]);
-	  vst1q_f32(tmp + REGISTER_N, m_data[(index / REGISTER_N + 1) % m_numVectors]);
+	  size_t indexN = index / REGISTER_N;
+	  size_t indexNextN;
+	  if (CHECK_BOUNDS) {
+	    indexNextN = (indexN + 1) % m_numVectors;
+	  } else {
+	    indexNextN = indexN + 1;
+	  }
+	   
+	  vst1q_f32(tmp, m_data[indexN]);
+	  vst1q_f32(tmp + REGISTER_N, m_data[indexNextN]);
 	  return vld1q_f32(tmp + remainder);
 	}
 
