@@ -10,8 +10,7 @@
 #include <mutex>
 #include <sstream>
 
-#ifdef LINUX
-    #define RASPICAM
+#ifdef __arm__
     #include <raspicam_cv.h>
 #endif
 
@@ -59,7 +58,7 @@ public:
 private:
     bool m_stop;
     CameraSettings m_settings;
-#ifdef RASPICAM	
+#ifdef __arm__	
     raspicam::RaspiCam_Cv m_cam;
 #else
     cv::VideoCapture m_cam;
