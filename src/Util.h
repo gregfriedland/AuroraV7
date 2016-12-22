@@ -154,6 +154,14 @@ class Array2D {
  		return m_data[x + y * m_width];
   	}
 
+ 	T& get(size_t index) {
+ 		return m_data[index];
+ 	}
+
+ 	const T& get(size_t index) const {
+ 		return m_data[index];
+ 	}
+
  	T& operator[](size_t index) {
  		return m_data[index];
  	}
