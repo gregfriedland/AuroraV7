@@ -7,6 +7,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pg")
 find_package(OpenCV REQUIRED)
 
 if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm") 
+  add_subdirectory(raspicam)
+
   file(GLOB SRCS
          ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
          ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/lib/*.cc
@@ -14,10 +16,11 @@ if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
          ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/lib/*.c
   )
   add_executable(${PROJECT_NAME} ${SRCS})
-
-  add_subdirectory(raspicam)
   target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${CMAKE_CURRENT_BINARY_DIR}/raspicam/src/libraspicam_cv.so)
   target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/json/src ${CMAKE_CURRENT_SOURCE_DIR}/raspicam/src ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/include)
+
+  add_executable(neon_test neon_test.cpp)
+  target_compile_options(neon_test PUBLIC -mfp16-format=alternative -mfp16-format -mfpu=neon-fp16)
 else()
   file(GLOB SRCS
          ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
