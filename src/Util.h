@@ -218,9 +218,65 @@ class Array2D {
  		return os;
 	}
 	
- private:
+ protected:
  	size_t m_width, m_height;
  	T* m_data;
+};
+
+template <typename T, typename NEON_TYPE, int REGISTER_N>
+class Array2DNeon {
+ public:
+ 	Array2DNeon(size_t width, size_t height)
+ 	: m_width(width), m_height(height) {
+ 		m_data = new NEON_TYPE[width * height / REGISTER_N];
+ 	}
+
+ 	~Array2DNeon() {
+ 		delete[] m_data;
+ 	}
+
+ 	T get(size_t index) {
+ 		T out[REGISTER_N];
+ 		vst1_f32(out, m_data[index / REGISTER_N]);
+ 		return out[index % REGISTER_N];
+ 	}
+
+ 	void set1(size_t index, T val) {
+ 		T tmp[REGISTER_N];
+ 		vst1_f32(tmp, m_data[index / REGISTER_N]);
+ 		tmp[index % REGISTER_N] = val;
+ 		m_data[index / REGISTER_N] = vld1_f32(tmp);
+ 	}
+
+ 	void setN(size_t indexN, T val) {
+ 		m_data[indexN] = vdup_n_f32(val);
+ 	}
+
+ 	NEON_TYPE& getN(size_t indexN) {
+		return m_data[indexN];
+ 	}
+
+ 	size_t width() const {
+ 		return m_width;
+ 	}
+
+ 	size_t height() const {
+ 		return m_height;
+ 	}
+
+	// friend std::ostream& operator <<(std::ostream& os, const Array2D<T>& arr) {
+ // 		for (size_t x = 0; x < arr.m_width; ++x) {
+ // 			for (size_t y = 0; y < arr.m_height; ++y) {
+ // 				os << std::setprecision(3) << std::setw(4) << arr.get(x, y) << " ";
+ // 			}
+ // 			os << std::endl;
+ // 		}
+ // 		return os;
+	// }
+	
+ protected:
+ 	size_t m_width, m_height;
+ 	NEON_TYPE* m_data;
 };
 
 template <typename T>
