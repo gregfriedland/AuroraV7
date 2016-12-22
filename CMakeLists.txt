@@ -6,16 +6,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pg")
 
 find_package(OpenCV REQUIRED)
 
-if(APPLE)
-  file(GLOB SRCS
-         ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
-  )
-  add_executable(${PROJECT_NAME} ${SRCS})
-
-  add_definitions(-DMACOSX)
-  target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
-  target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/json/src)
-elseif(UNIX)
+if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm") 
   file(GLOB SRCS
          ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
          ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/lib/*.cc
@@ -24,10 +15,17 @@ elseif(UNIX)
   )
   add_executable(${PROJECT_NAME} ${SRCS})
 
-  add_definitions(-DLINUX)
   add_subdirectory(raspicam)
   target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${CMAKE_CURRENT_BINARY_DIR}/raspicam/src/libraspicam_cv.so)
   target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/json/src ${CMAKE_CURRENT_SOURCE_DIR}/raspicam/src ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/include)
+else()
+  file(GLOB SRCS
+         ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+  )
+  add_executable(${PROJECT_NAME} ${SRCS})
+
+  target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+  target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/json/src)
 endif()
 
 

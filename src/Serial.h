@@ -1,21 +1,16 @@
 #ifndef SERIAL_H
 #define SERIAL_H
 
-// One of these must be defined, usually via the Makefile
-//#define MACOSX
-//#define LINUX
-//#define WINDOWS
-
-#if defined(MACOSX) || defined(LINUX)
+#if defined(__APPLE__) || defined(__linux__)
 #include <termios.h>
 #include <sys/select.h>
 #define PORTTYPE int
 #define BAUD B115200
-#if defined(LINUX)
+#if defined(__linux__)
 #include <sys/ioctl.h>
 #include <linux/serial.h>
 #endif
-#elif defined(WINDOWS)
+#elif defined(_WIN32)
 #include <windows.h>
 #define PORTTYPE HANDLE
 #define BAUD 115200

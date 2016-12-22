@@ -68,7 +68,7 @@ int Serial::read(int size, unsigned char* buffer) {
 PORTTYPE open_port_and_set_baud_or_die(const char *name, long baud)
 {
     PORTTYPE fd;
-#if defined(MACOSX)
+#if defined(__APPLE__)
     struct termios tinfo;
     fd = open(name, O_RDWR | O_NONBLOCK);
     if (fd < 0) die("unable to open port %s\n", name);
@@ -79,7 +79,7 @@ PORTTYPE open_port_and_set_baud_or_die(const char *name, long baud)
     if (tcsetattr(fd, TCSANOW, &tinfo) < 0) die("unable to set baud rate\n");
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
     std::cout << "Configured serial port " << name << " on macosx\n";
-#elif defined(LINUX)
+#elif defined(__linux__)
     struct termios tinfo;
     memset (&tinfo, 0, sizeof tinfo);
     struct serial_struct kernel_serial_settings;
@@ -111,7 +111,7 @@ PORTTYPE open_port_and_set_baud_or_die(const char *name, long baud)
     /*     if (r >= 0) printf("set linux low latency mode\n"); */
     /* } */
     std::cout << "Configured serial port " << name << " on linux\n";
-#elif defined(WINDOWS)
+#elif defined(_WIN32)
     COMMCONFIG cfg;
     COMMTIMEOUTS timeout;
     DWORD n;
@@ -161,9 +161,9 @@ PORTTYPE open_port_and_set_baud_or_die(const char *name, long baud)
 
 
 int transmit_bytes(PORTTYPE port, const unsigned char *data, int len) {
-#if defined(MACOSX) || defined(LINUX)
+#if defined(__APPLE__) || defined(__linux__)
     return write(port, data, len);
-#elif defined(WINDOWS)
+#elif defined(_WIN32)
     DWORD n;
     BOOL r;
     r = WriteFile(port, data, len, &n, NULL);
@@ -174,9 +174,9 @@ int transmit_bytes(PORTTYPE port, const unsigned char *data, int len) {
 
 
 void close_port(PORTTYPE port) {
-#if defined(MACOSX) || defined(LINUX)
+#if defined(__APPLE__) || defined(__linux__)
     close(port);
-#elif defined(WINDOWS)
+#elif defined(_WIN32)
     CloseHandle(port);
 #endif
 }

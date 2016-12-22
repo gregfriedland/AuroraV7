@@ -27,7 +27,7 @@ float Camera::fps() const {
 }
 
 void Camera::init() {
-#ifdef RASPICAM
+#ifdef __arm__
     if (!m_cam.open()) {
 #else
     if (!m_cam.open(0)) {
