@@ -17,6 +17,8 @@
     #define vdup(x) vdupq_n_f32(x)
     GSTypeN fourN = vdup(4);
     GSTypeN oneN = vdup(1);
+
+#define vprint(name, v) { GSType arr[VEC_N]; vst1q_f32(arr, v); std::cout << name << ": "; for (size_t i=0; i < VEC_N; ++i) { std::cout << arr[i] << " "; }; std::cout << std::endl; }
 #endif
 
 GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* camera)
@@ -55,7 +57,7 @@ GrayScottDrawer::~GrayScottDrawer() {
 void GrayScottDrawer::reset() {
 #ifdef __arm__
     for (size_t q = 0; q < 2; ++q) {
-        for (size_t i = 0; i < m_width * m_height; i += VEC_N) {
+      for (size_t i = 0; i < m_width * m_height; i += VEC_N) {
             m_u[q]->setN(i, 1.0);
             m_v[q]->setN(i, 0.0);
         }
@@ -66,14 +68,14 @@ void GrayScottDrawer::reset() {
         size_t iy = random2() % (m_height - ISLAND_SIZE);
         ix = ix - ix % VEC_N;
         iy = iy - iy % VEC_N;
-
+	
         assert(ISLAND_SIZE % VEC_N == 0);
         for (size_t y = iy; y < iy + ISLAND_SIZE; ++y) {
 	  for (size_t x = ix; x < ix + ISLAND_SIZE; x += VEC_N) {
 	    size_t index = x + y * m_width;
-                m_u[m_q]->setN(index, 0.5);
-                m_v[m_q]->setN(index, 0.25);
-            }
+	    m_u[m_q]->setN(index, 0.5);
+	    m_v[m_q]->setN(index, 0.25);
+	  }
         }
     }
 #else    
@@ -193,19 +195,46 @@ GSTypeN laplacian(const GSArrayType& arr, size_t index, size_t width) {
     return sum;
 }
 
+GSTypeN laplacianOverlap(const GSArrayType& arr, int x, int y) {
+    size_t w = arr.width();
+    size_t h = arr.height();
+
+    GSTypeN curr = arr.getN(y * w + x);
+    GSTypeN left = arr.getN(y * w + (x - 1 + w) % w);
+    GSTypeN right = arr.getN(y * w + (x + 1) % w);
+    GSTypeN bottom = arr.getN(((y - 1 + h) % h) * w + x);
+    GSTypeN top = arr.getN(((y + 1) % h) * w + x);
+
+#if 0
+    if (x == 0 && y == h - 1) {
+      std::cout << "  left index: " << y * w + (x - 1 + w) % w << std::endl;
+      vprint("  curr:", curr);
+      vprint("  left:", left);
+      vprint("  right:", right);
+      vprint("  bottom:", bottom);
+      vprint("  top:", top);
+    }
+#endif
+    
+    GSTypeN sum = vadd(left, right);
+    sum = vadd(sum, bottom);
+    sum = vadd(sum, top);
+    sum = vsub(sum, vmul(curr, fourN));
+    return sum;
+}
+
 void GrayScottDrawer::draw(int* colIndices) {
     Drawer::draw(colIndices);
 
     GSType zoom = 1;
-    size_t speed = m_settings["speed"];//m_scale;
-
-    float32x4_t four_n = vdup(4);
-
-    //std::cout << *m_v[m_q] << std::endl;
+    size_t speed = m_settings["speed"]; //* m_scale;
 
     for (size_t f = 0; f < speed; ++f) {
+      //	std::cout << *m_v[m_q] << std::endl;
+
+#if 0      
         for (size_t y = 1; y < m_height - 1; ++y) {
-            for (size_t x = 4; x < m_width - 4; x += VEC_N) {
+            for (size_t x = VEC_N; x < m_width - VEC_N; x += VEC_N) {
                 size_t index = y * m_width + x;
                 GSTypeN u = m_u[m_q]->getN(index);
                 GSTypeN v = m_v[m_q]->getN(index);
@@ -230,7 +259,75 @@ void GrayScottDrawer::draw(int* colIndices) {
                 m_v[1-m_q]->setN(index, vRD);
             }
         }
-        m_q = 1 - m_q;
+#endif
+	// borders are a special case
+        for (size_t y = 0; y < m_height; ++y) {//m_height - 1) {
+  	    for (size_t x = 0; x < m_width; x += VEC_N) {//m_width - VEC_N) {
+                size_t index = y * m_width + x;
+                GSTypeN u = m_u[m_q]->getN(index);
+                GSTypeN v = m_v[m_q]->getN(index);
+
+                // get vector of floats for laplacian transform
+                GSTypeN d2u = laplacianOverlap(*m_u[m_q], x, y);
+                GSTypeN d2v = laplacianOverlap(*m_v[m_q], x, y);
+
+                // uvv = u*v*v
+                GSTypeN uvv = vmul(u, vmul(v, v));
+
+                // uOut[curr] = u + dt * du * d2u;
+                // uOut[curr] += dt * (-d2 + F * (1 - u));
+                GSTypeN uRD = vadd(u, vmul(vmul(m_dt, m_du), d2u));
+                uRD = vadd(uRD, vmul(m_dt, vsub(vmul(m_F, vsub(oneN, u)), uvv)));
+                m_u[1-m_q]->setN(index, uRD);
+
+                // vOut[curr] = v + dt * dv * d2v;
+                // vOut[curr] += dt * (d2 - (F + k) * v);
+                GSTypeN vRD = vadd(v, vmul(vmul(m_dt, m_dv), d2v));
+                vRD = vadd(vRD, vmul(m_dt, vsub(uvv, vmul(vadd(m_F, m_k), v))));
+                m_v[1-m_q]->setN(index, vRD);
+
+#if 0
+		for (size_t yy = 0; yy < m_height; yy += m_height - 1) {
+		  if (x == 0 && y == yy) {
+		    std::cout << "x==0 y==" << yy << std::endl;
+		    vprint("  u", u);
+		    vprint("  v", v);
+		    vprint("  d2v", d2v);
+		    vprint("  uvv", uvv);
+		    vprint("  vRD", vRD);
+		  }
+		}
+#endif		
+	    }
+        }
+
+	m_q = 1 - m_q;
+
+	// // set the top and bottom border equal to the overlapped values from the other side
+	// // this way we don't have to do modulus ops in the main loop
+	// for (size_t x = ARRAY_BORDER_W; x < arrWidth - ARRAY_BORDER_W; ++x) {
+	//   size_t indexTopOut = (ARRAY_BORDER_H - 1) * arrWidth + x;
+	//   size_t indexTopIn = ARRAY_BORDER_H * arrWidth + x;
+	//   size_t indexBottomOut = (arrHeight - ARRAY_BORDER_H) * arrWidth + x; 
+	//   size_t indexBottomIn = (arrHeight - ARRAY_BORDER_H - 1) * arrWidth + x;
+
+	//   m_u[m_q]->setN(indexTopOut, m_u[m_q]->get(indexBottomIn));
+	//   m_u[m_q]->setN(indexBottomOut, m_u[m_q]->get(indexTopIn));
+	//   m_v[m_q]->setN(indexTopOut, m_v[m_q]->get(indexBottomIn));
+	//   m_v[m_q]->setN(indexBottomOut, m_v[m_q]->get(indexTopIn));
+	// }
+	
+	// for (size_t y = ARRAY_BORDER_H; y < arrHeight - ARRAY_BORDER_H; ++y) {
+	//   size_t indexLeftOut = y * arrWidth + ARRAY_BORDER_W - VEC_N;
+	//   size_t indexLeftIn = y * arrWidth + ARRAY_BORDER_W;
+	//   size_t indexRightOut = y * arrWidth + arrWidth - ARRAY_BORDER_W;
+	//   size_t indexRightIn = y * arrWidth + arrWidth - ARRAY_BORDER_W - VEC_N;
+
+	//   m_u[m_q]->setN(indexLeftOut, m_u[m_q]->get(indexRightIn));
+	//   m_u[m_q]->setN(indexRightOut, m_u[m_q]->get(indexLeftIn));
+	//   m_v[m_q]->setN(indexLeftOut, m_v[m_q]->get(indexRightIn));
+	//   m_v[m_q]->setN(indexRightOut, m_v[m_q]->get(indexLeftIn));
+	// }
     }
 #else
 void GrayScottDrawer::draw(int* colIndices) {
@@ -275,13 +372,15 @@ void GrayScottDrawer::draw(int* colIndices) {
 #endif
     
     GSType minv = 100, maxv = 0;
-    for (size_t i = 0; i < m_width * m_height; ++i) {
-        const GSType& v = m_v[m_q]->get(i);
+    for (size_t y = 0; y < m_height; ++y) {
+      for (size_t x = 0; x < m_width; ++x) {
+	size_t index = y * m_width + x;
+        const GSType& v = m_v[m_q]->get(index);
         minv = std::min(minv, v);
         maxv = std::max(maxv, v);
+      }
     }
     maxv = m_lastMaxV + MAX_ROLLING_MULTIPLIER * (maxv - m_lastMaxV); // adapted from rolling EMA equation
-    //std::cout << "maxv=" << std::setprecision(3) << maxv << " ";
 
     for (size_t y = 0; y < m_height; ++y) {
         for (size_t x = 0; x < m_width; ++x) {
@@ -290,7 +389,8 @@ void GrayScottDrawer::draw(int* colIndices) {
             GSType v = m_v[m_q]->get(x2 + y2 * m_width);
 
             v = mapValue(v, minv, maxv, minv, 1.0);
-            colIndices[x + y * m_width] = v * (m_palSize - 1);
+	    size_t index = x + y * m_width;
+            colIndices[index] = v * (m_palSize - 1);
         }
     }
 

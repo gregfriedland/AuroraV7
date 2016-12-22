@@ -233,8 +233,9 @@ class Array2DNeon {
  public:
  	Array2DNeon(size_t width, size_t height)
  	: m_width(width), m_height(height) {
- 		m_data = new NEON_TYPE[width * height / REGISTER_N];
- 	}
+            m_numVectors = width * height / REGISTER_N;
+	    m_data = new NEON_TYPE[m_numVectors];
+       }
 
  	~Array2DNeon() {
  		delete[] m_data;
@@ -271,7 +272,7 @@ class Array2DNeon {
 
 	  T tmp[REGISTER_N * 2];
 	  vst1q_f32(tmp, m_data[index / REGISTER_N]);
-	  vst1q_f32(tmp + REGISTER_N, m_data[index / REGISTER_N + 1]);
+	  vst1q_f32(tmp + REGISTER_N, m_data[(index / REGISTER_N + 1) % m_numVectors]);
 	  return vld1q_f32(tmp + remainder);
 	}
 
@@ -297,7 +298,9 @@ class Array2DNeon {
  protected:
  	size_t m_width, m_height;
  	NEON_TYPE* m_data;
+	size_t m_numVectors;
 };
+
 #endif
 
 template <typename T>

@@ -3,7 +3,7 @@
     "height": 96,
     "gamma": 3.0,
     "paletteSize": 4096,
-    "fps": 30,
+    "fps": 100,
     "startDrawer": "GrayScott",
     "drawers": ["GrayScott"],
     "drawerChangeInterval": 200000,
