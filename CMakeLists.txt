@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.0)
 project(AuroraV6)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pg")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 #-mcpu=cortex-a53 -march=armv8-a+crc -mtune=cortex-a53 -mfpu=neon-fp-armv8 -mfloat-abi=hard -mvectorize-with-neon-quad -mhard-float -funsafe-math-optimizations")
 
 find_package(OpenCV REQUIRED)
@@ -25,7 +25,6 @@ if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
   add_subdirectory(raspicam)
 
   file(GLOB RPI_RGB_MATRIX_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/lib/*.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/lib/*.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/lib/*.c
@@ -33,9 +32,10 @@ if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
   add_executable(${PROJECT_NAME} ${SRCS} ${RPI_RGB_MATRIX_SRCS})
   target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${CMAKE_CURRENT_BINARY_DIR}/raspicam/src/libraspicam_cv.so)
   target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/json/src ${CMAKE_CURRENT_SOURCE_DIR}/raspicam/src ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/include)
-
-  add_executable(neon_test neon_test.cpp)
-  target_compile_options(neon_test PUBLIC -mfp16-format=alternative -mfp16-format -mfpu=neon-fp16)
+  target_compile_options(${PROJECT_NAME} PUBLIC -mfp16-format=alternative -mfpu=neon-fp16 -mfloat-abi=hard)
+  
+  #add_executable(neon_test src/neon_test.cpp)
+  #target_compile_options(neon_test PUBLIC -mfp16-format=alternative -mfpu=neon-fp16 -mfloat-abi=hard)
 else()
   add_executable(${PROJECT_NAME} ${SRCS})
 

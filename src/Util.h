@@ -10,6 +10,10 @@
 #include <cassert>
 #include <ostream>
 
+#ifdef __arm__
+  #include <arm_neon.h>
+#endif
+
 using namespace std::chrono;
 
 
@@ -223,6 +227,7 @@ class Array2D {
  	T* m_data;
 };
 
+#ifdef __arm__
 template <typename T, typename NEON_TYPE, int REGISTER_N>
 class Array2DNeon {
  public:
@@ -235,24 +240,32 @@ class Array2DNeon {
  		delete[] m_data;
  	}
 
- 	T get(size_t index) {
+ 	T get(size_t index) const {
  		T out[REGISTER_N];
- 		vst1_f32(out, m_data[index / REGISTER_N]);
+ 		vst1q_f32(out, m_data[index / REGISTER_N]);
  		return out[index % REGISTER_N];
  	}
 
  	void set1(size_t index, T val) {
  		T tmp[REGISTER_N];
- 		vst1_f32(tmp, m_data[index / REGISTER_N]);
+ 		vst1q_f32(tmp, m_data[index / REGISTER_N]);
  		tmp[index % REGISTER_N] = val;
  		m_data[index / REGISTER_N] = vld1_f32(tmp);
  	}
 
  	void setN(size_t indexN, T val) {
- 		m_data[indexN] = vdup_n_f32(val);
+ 		m_data[indexN] = vdupq_n_f32(val);
+ 	}
+
+ 	void setN(size_t indexN, const NEON_TYPE& val) {
+  	    m_data[indexN] = val;
  	}
 
  	NEON_TYPE& getN(size_t indexN) {
+		return m_data[indexN];
+ 	}
+
+ 	const NEON_TYPE& getN(size_t indexN) const {
 		return m_data[indexN];
  	}
 
@@ -278,6 +291,7 @@ class Array2DNeon {
  	size_t m_width, m_height;
  	NEON_TYPE* m_data;
 };
+#endif
 
 template <typename T>
 void convolve(const Array2D<T>* convArr, const Array2D<T>* inputArr, Array2D<T>* outputArr) {

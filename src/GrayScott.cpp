@@ -11,10 +11,10 @@
 #define ISLAND_SIZE 20
 
 #ifdef __arm__
-    #define vmul vmulq_f32;
-    #define vadd vaddq_f32;
-    #define vsub vsubq_f32;
-    #define vdup vdupq_f32;
+    #define vmul(x, y) vmulq_f32(x, y)
+    #define vadd(x, y) vaddq_f32(x, y)
+    #define vsub(x, y) vsubq_f32(x, y)
+    #define vdup(x) vdupq_n_f32(x)
     GSTypeN fourN = vdup(4);
     GSTypeN oneN = vdup(1);
 #endif
@@ -55,7 +55,7 @@ GrayScottDrawer::~GrayScottDrawer() {
 void GrayScottDrawer::reset() {
 #ifdef __arm__
     for (size_t q = 0; q < 2; ++q) {
-        for (size_t y = 0; i < m_width * m_height; i += VEC_N) {
+        for (size_t i = 0; i < m_width * m_height / VEC_N; ++i) {
             m_u[q]->setN(i, 1.0);
             m_v[q]->setN(i, 0.0);
         }
@@ -69,8 +69,8 @@ void GrayScottDrawer::reset() {
 
         assert(ISLAND_SIZE % VEC_N == 0);
         for (size_t y = iy; y < iy + ISLAND_SIZE; ++y) {
-            for (size_t x = ix; x < ix + ISLAND_SIZE; x += VEC_N) {
-                size_t index = x + y * m_width;
+	  for (size_t x = ix; x < (ix + ISLAND_SIZE) / VEC_N; x += VEC_N) {
+                size_t index = x + y * m_width / VEC_N;
                 m_u[m_q]->setN(index, 0.5);
                 m_v[m_q]->setN(index, 0.25);
             }
@@ -180,11 +180,11 @@ void GrayScottDrawer::reset() {
 
 #ifdef __arm__
 GSTypeN laplacian(const GSArrayType& arr, size_t indexN, size_t width) {
-    const GSTypeN& curr = array.getN(indexN);
-    const GSTypeN& left = array.getN(indexN - 1);
-    const GSTypeN& right = array.getN(indexN + 1);
-    const GSTypeN& bottom = array.getN(indexN - width);
-    const GSTypeN& top = array.getN(indexN + width);
+    const GSTypeN& curr = arr.getN(indexN);
+    const GSTypeN& left = arr.getN(indexN - 1);
+    const GSTypeN& right = arr.getN(indexN + 1);
+    const GSTypeN& bottom = arr.getN(indexN - width);
+    const GSTypeN& top = arr.getN(indexN + width);
 
     GSTypeN sum = vadd(left, right);
     sum = vadd(sum, bottom);
@@ -202,30 +202,30 @@ void GrayScottDrawer::draw(int* colIndices) {
     float32x4_t four_n = vdup(4);
 
     for (size_t f = 0; f < speed; ++f) {
-        for (size_t y = 0; y < m_height; ++y) {
-            for (size_t xN = 0; xN < m_width / VEC_N; ++xN) {
-                size_t indexN = y * m_width + xN;
+        for (size_t y = 4; y < m_height-4; ++y) {
+            for (size_t xN = 1; xN < m_width / VEC_N - 1; ++xN) {
+                size_t indexN = y * m_width / VEC_N + xN;
                 const GSTypeN& u = m_u[m_q]->getN(indexN);
                 const GSTypeN& v = m_v[m_q]->getN(indexN);
 
                 // get vector of floats for curr, left, right, top, bottom
-                GSTypeN d2u = laplacian(*m_u[m_q], indexN, m_width);
-                GSTypeN d2v = laplacian(*m_v[m_q], indexN, m_width);
+                GSTypeN d2u = laplacian(*m_u[m_q], indexN, m_width / VEC_N);
+                GSTypeN d2v = laplacian(*m_v[m_q], indexN, m_width / VEC_N);
 
                 // uvv = u*v*v
                 GSTypeN uvv = vmul(u, vmul(v, v));
 
                 // uOut[curr] = u + dt * du * d2u;
                 // uOut[curr] += dt * (-d2 + F * (1 - u));
-                GSType uRD = vadd(u, vmul(vmul(m_dt, m_du), d2u));
+                GSTypeN uRD = vadd(u, vmul(vmul(m_dt, m_du), d2u));
                 uRD = vadd(uRD, vmul(m_dt, vsub(vmul(m_F, vsub(oneN, u)), uvv)));
-                m_u[1-m_q]->setN(uRD);
+                m_u[1-m_q]->setN(indexN, uRD);
 
                 // vOut[curr] = v + dt * dv * d2v;
                 // vOut[curr] += dt * (d2 - (F + k) * v);
-                GSType vRD = vadd(v, vmul(vmul(m_dt, m_dv), d2v));
+                GSTypeN vRD = vadd(v, vmul(vmul(m_dt, m_dv), d2v));
                 vRD = vadd(vRD, vmul(m_dt, vsub(uvv, vmul(vadd(m_F, m_k), v))));
-                m_v[1-m_q]->setN(vRD);
+                m_v[1-m_q]->setN(indexN, vRD);
             }
         }
         m_q = 1 - m_q;

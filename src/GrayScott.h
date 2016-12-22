@@ -4,14 +4,16 @@
 #include "Drawer.h"
 #include "Camera.h"
 #include "Util.h"
+
+using GSType = float;
+
 #ifdef __arm__
     #include <arm_neon.h>
     using GSTypeN = float32x4_t;
     #define VEC_N 4
+    using GSArrayType = Array2DNeon<GSType,GSTypeN,VEC_N>;
 #endif
 
-
-using GSType = float;
 
 class GrayScottDrawer : public Drawer {
 public:
@@ -25,7 +27,6 @@ public:
 
  private:
 #ifdef __arm__
-    using GSArrayType = Array2DNeon<GSType,GSTypeN,VEC_N>;
     GSArrayType *m_u[2], *m_v[2];
     GSTypeN m_F, m_k, m_du, m_dv, m_dt;
 #else
