@@ -7,8 +7,8 @@
 #include <algorithm>
 
 #define MAX_ROLLING_MULTIPLIER (2.0 / (35 * 5 + 1))
-#define NUM_INIT_ISLANDS 5
-#define ISLAND_SIZE 20
+#define NUM_INIT_ISLANDS 1
+#define ISLAND_SIZE 10
 
 #ifdef __arm__
     #define vmul(x, y) vmulq_f32(x, y)
@@ -55,7 +55,7 @@ GrayScottDrawer::~GrayScottDrawer() {
 void GrayScottDrawer::reset() {
 #ifdef __arm__
     for (size_t q = 0; q < 2; ++q) {
-        for (size_t i = 0; i < m_width * m_height / VEC_N; ++i) {
+        for (size_t i = 0; i < m_width * m_height; i += VEC_N) {
             m_u[q]->setN(i, 1.0);
             m_v[q]->setN(i, 0.0);
         }
@@ -69,8 +69,8 @@ void GrayScottDrawer::reset() {
 
         assert(ISLAND_SIZE % VEC_N == 0);
         for (size_t y = iy; y < iy + ISLAND_SIZE; ++y) {
-	  for (size_t x = ix; x < (ix + ISLAND_SIZE) / VEC_N; x += VEC_N) {
-                size_t index = x + y * m_width / VEC_N;
+	  for (size_t x = ix; x < ix + ISLAND_SIZE; x += VEC_N) {
+	    size_t index = x + y * m_width;
                 m_u[m_q]->setN(index, 0.5);
                 m_v[m_q]->setN(index, 0.25);
             }
@@ -179,12 +179,12 @@ void GrayScottDrawer::reset() {
 
 
 #ifdef __arm__
-GSTypeN laplacian(const GSArrayType& arr, size_t indexN, size_t width) {
-    const GSTypeN& curr = arr.getN(indexN);
-    const GSTypeN& left = arr.getN(indexN - 1);
-    const GSTypeN& right = arr.getN(indexN + 1);
-    const GSTypeN& bottom = arr.getN(indexN - width);
-    const GSTypeN& top = arr.getN(indexN + width);
+GSTypeN laplacian(const GSArrayType& arr, size_t index, size_t width) {
+    GSTypeN curr = arr.getN(index);
+    GSTypeN left = arr.getN(index - 1);
+    GSTypeN right = arr.getN(index + 1);
+    GSTypeN bottom = arr.getN(index - width);
+    GSTypeN top = arr.getN(index + width);
 
     GSTypeN sum = vadd(left, right);
     sum = vadd(sum, bottom);
@@ -201,16 +201,18 @@ void GrayScottDrawer::draw(int* colIndices) {
 
     float32x4_t four_n = vdup(4);
 
-    for (size_t f = 0; f < speed; ++f) {
-        for (size_t y = 4; y < m_height-4; ++y) {
-            for (size_t xN = 1; xN < m_width / VEC_N - 1; ++xN) {
-                size_t indexN = y * m_width / VEC_N + xN;
-                const GSTypeN& u = m_u[m_q]->getN(indexN);
-                const GSTypeN& v = m_v[m_q]->getN(indexN);
+    //std::cout << *m_v[m_q] << std::endl;
 
-                // get vector of floats for curr, left, right, top, bottom
-                GSTypeN d2u = laplacian(*m_u[m_q], indexN, m_width / VEC_N);
-                GSTypeN d2v = laplacian(*m_v[m_q], indexN, m_width / VEC_N);
+    for (size_t f = 0; f < speed; ++f) {
+        for (size_t y = 1; y < m_height - 1; ++y) {
+            for (size_t x = 4; x < m_width - 4; x += VEC_N) {
+                size_t index = y * m_width + x;
+                GSTypeN u = m_u[m_q]->getN(index);
+                GSTypeN v = m_v[m_q]->getN(index);
+
+                // get vector of floats for laplacian transform
+                GSTypeN d2u = laplacian(*m_u[m_q], index, m_width);
+                GSTypeN d2v = laplacian(*m_v[m_q], index, m_width);
 
                 // uvv = u*v*v
                 GSTypeN uvv = vmul(u, vmul(v, v));
@@ -219,13 +221,13 @@ void GrayScottDrawer::draw(int* colIndices) {
                 // uOut[curr] += dt * (-d2 + F * (1 - u));
                 GSTypeN uRD = vadd(u, vmul(vmul(m_dt, m_du), d2u));
                 uRD = vadd(uRD, vmul(m_dt, vsub(vmul(m_F, vsub(oneN, u)), uvv)));
-                m_u[1-m_q]->setN(indexN, uRD);
+                m_u[1-m_q]->setN(index, uRD);
 
                 // vOut[curr] = v + dt * dv * d2v;
                 // vOut[curr] += dt * (d2 - (F + k) * v);
                 GSTypeN vRD = vadd(v, vmul(vmul(m_dt, m_dv), d2v));
                 vRD = vadd(vRD, vmul(m_dt, vsub(uvv, vmul(vadd(m_F, m_k), v))));
-                m_v[1-m_q]->setN(indexN, vRD);
+                m_v[1-m_q]->setN(index, vRD);
             }
         }
         m_q = 1 - m_q;
@@ -238,7 +240,8 @@ void GrayScottDrawer::draw(int* colIndices) {
     size_t speed = m_settings["speed"] * m_scale;
 
     for (size_t f = 0; f < speed; ++f) {
-        auto& uIn = *m_u[m_q];
+
+      auto& uIn = *m_u[m_q];
         auto& vIn = *m_v[m_q];
         auto& uOut = *m_u[1-m_q];
         auto& vOut = *m_v[1-m_q];
@@ -270,7 +273,7 @@ void GrayScottDrawer::draw(int* colIndices) {
         m_q = 1 - m_q;
     }
 #endif
-
+    
     GSType minv = 100, maxv = 0;
     for (size_t i = 0; i < m_width * m_height; ++i) {
         const GSType& v = m_v[m_q]->get(i);

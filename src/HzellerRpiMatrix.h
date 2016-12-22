@@ -22,7 +22,7 @@ class HzellerRpiMatrix : public Matrix {
         options.rows = 32;
         options.chain_length = width / 32;
         options.parallel = height / 32;
-        options.show_refresh_rate = true;
+        options.show_refresh_rate = false;
 
         m_matrix = CreateMatrixFromOptions(options, runtime);
         if (m_matrix == NULL) {

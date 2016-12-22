@@ -250,24 +250,30 @@ class Array2DNeon {
  		T tmp[REGISTER_N];
  		vst1q_f32(tmp, m_data[index / REGISTER_N]);
  		tmp[index % REGISTER_N] = val;
- 		m_data[index / REGISTER_N] = vld1_f32(tmp);
+ 		m_data[index / REGISTER_N] = vld1q_f32(tmp);
  	}
 
- 	void setN(size_t indexN, T val) {
- 		m_data[indexN] = vdupq_n_f32(val);
+ 	void setN(size_t index, T val) {
+	  assert(index % REGISTER_N == 0);
+	  m_data[index / REGISTER_N] = vdupq_n_f32(val);
  	}
 
- 	void setN(size_t indexN, const NEON_TYPE& val) {
-  	    m_data[indexN] = val;
+ 	void setN(size_t index, const NEON_TYPE& val) {
+	  assert(index % REGISTER_N == 0);
+	  m_data[index / REGISTER_N] = val;
  	}
 
- 	NEON_TYPE& getN(size_t indexN) {
-		return m_data[indexN];
- 	}
+ 	NEON_TYPE getN(size_t index) const {
+	  size_t remainder = index % REGISTER_N;
+	  if (remainder == 0) {
+	    return m_data[index / REGISTER_N];
+	  }
 
- 	const NEON_TYPE& getN(size_t indexN) const {
-		return m_data[indexN];
- 	}
+	  T tmp[REGISTER_N * 2];
+	  vst1q_f32(tmp, m_data[index / REGISTER_N]);
+	  vst1q_f32(tmp + REGISTER_N, m_data[index / REGISTER_N + 1]);
+	  return vld1q_f32(tmp + remainder);
+	}
 
  	size_t width() const {
  		return m_width;
@@ -277,16 +283,17 @@ class Array2DNeon {
  		return m_height;
  	}
 
-	// friend std::ostream& operator <<(std::ostream& os, const Array2D<T>& arr) {
- // 		for (size_t x = 0; x < arr.m_width; ++x) {
- // 			for (size_t y = 0; y < arr.m_height; ++y) {
- // 				os << std::setprecision(3) << std::setw(4) << arr.get(x, y) << " ";
- // 			}
- // 			os << std::endl;
- // 		}
- // 		return os;
-	// }
-	
+	friend std::ostream& operator <<(std::ostream& os, const Array2DNeon<T,NEON_TYPE,REGISTER_N>& arr) {
+	  for (size_t y = 0; y < arr.m_height; ++y) {
+	    for (size_t x = 0; x < arr.m_width; ++x) {
+	      size_t i = x + y * arr.m_width;
+	      os << std::setw(4) << std::round(arr.get(i) * 100.0) / 100.0 << " ";
+	    }
+	    os << std::endl;
+	  }
+	  return os;
+	}
+
  protected:
  	size_t m_width, m_height;
  	NEON_TYPE* m_data;
