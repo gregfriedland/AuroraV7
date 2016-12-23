@@ -26,7 +26,7 @@ GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize)
     m_settings.insert(std::make_pair("speed",10));
     m_settings.insert(std::make_pair("colorSpeed",0));
     m_settings.insert(std::make_pair("params",1));
-    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(10,10)));
+    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(30,30)));
     m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,0)));
     m_settingsRanges.insert(std::make_pair("params", std::make_pair(0,0)));
 

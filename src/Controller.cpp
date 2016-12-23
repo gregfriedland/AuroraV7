@@ -174,19 +174,26 @@ void Controller::loop(int interval) {
             }
         }
 
-        // update drawer
-        while (m_currDrawer->isPaused()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        m_currDrawer->draw(m_colIndices);
+	// block until current frame is ready
+	if (m_drawFuture.valid()) {
+	  m_drawFuture.get();
+	}
 
-        // update matrix
+        // update output matrix
         for (int y = 0; y < m_settings.m_height; y++) {
             for (int x = 0; x < m_settings.m_width; x++) {
                 Color24 col = m_palettes.get(m_currPalIndex, m_colIndices[x + y * m_settings.m_width]);
                 m_matrix->setPixel(x, y, col.r, col.g, col.b);
             }
         }
+
+        // start draw() in background
+	m_drawFuture = std::async(std::launch::async, [this](){
+	    while (m_currDrawer->isPaused()) {
+	      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	    }
+	    m_currDrawer->draw(m_colIndices);
+	  });
         m_matrix->update();
     });
 }

@@ -13,6 +13,7 @@
 #include <iostream>
 #include <thread>
 #include <string>
+#include <future>
 
 typedef enum {
     HZELLER_RPI_MATRIX,
@@ -81,6 +82,7 @@ private:
     FrameTimer m_frameTimer;
     bool m_stop;
     std::thread m_thread;
+    std::future<void> m_drawFuture;
 };
 
 #endif
