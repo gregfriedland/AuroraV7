@@ -40,10 +40,12 @@ void Camera::init() {
 void Camera::start(unsigned int interval) {
     init();
 
-    std::cout << "Starting camera with dims " << m_settings.m_camWidth << "x" << m_settings.m_camHeight << "\n";
     m_stop = false;
     auto run = [=]() {
-        while (!m_stop) {
+      std::cout << "Starting camera with dims " << m_settings.m_camWidth << "x" << 
+        m_settings.m_camHeight << " on thread " << std::this_thread::get_id() << std::endl;
+
+      while (!m_stop) {
             loop(interval);
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }

@@ -21,14 +21,14 @@
 #define vprint(name, v) { GSType arr[VEC_N]; vst1q_f32(arr, v); std::cout << name << ": "; for (size_t i=0; i < VEC_N; ++i) { std::cout << arr[i] << " "; }; std::cout << std::endl; }
 #endif
 
-GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* camera)
-: Drawer("GrayScott", width, height, palSize), m_colorIndex(0), m_camera(camera) {
+GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize)
+: Drawer("GrayScott", width, height, palSize), m_colorIndex(0) {
     m_settings.insert(std::make_pair("speed",10));
     m_settings.insert(std::make_pair("colorSpeed",0));
     m_settings.insert(std::make_pair("params",1));
-    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(5,10)));
-    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,10)));
-    m_settingsRanges.insert(std::make_pair("params", std::make_pair(0,8)));
+    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(10,10)));
+    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,0)));
+    m_settingsRanges.insert(std::make_pair("params", std::make_pair(0,0)));
 
 #ifdef __arm__
     for (size_t q = 0; q < 2; ++q) {
@@ -198,24 +198,25 @@ GSTypeN laplacian(const GSArrayType& arr, size_t index, size_t width) {
 #endif
 
 template <bool CHECK_BOUNDS>
-GSTypeN laplacian(const GSArrayType& arr, int x, int y) {
+inline GSTypeN laplacian(const GSArrayType& arr, int x, int y) {
+  //  asm (""); // to prevent inlining
   GSTypeN curr, left, right, bottom, top;
   
   if (CHECK_BOUNDS) {
     size_t w = arr.width();
     size_t h = arr.height();
-    curr = arr.getN<true>(y * w + x);
-    left = arr.getN<true>(y * w + (x - 1 + w) % w);
-    right = arr.getN<true>(y * w + (x + 1) % w);
-    bottom = arr.getN<true>(((y - 1 + h) % h) * w + x);
-    top = arr.getN<true>(((y + 1) % h) * w + x);
+    curr = arr.getN<0,true>(y * w + x);
+    left = arr.getN<3,true>(y * w + (x - 1 + w) % w);
+    right = arr.getN<1,true>(y * w + (x + 1) % w);
+    bottom = arr.getN<0,true>(((y - 1 + h) % h) * w + x);
+    top = arr.getN<0,true>(((y + 1) % h) * w + x);
   } else {
     size_t index = x + y * arr.width();
-    curr = arr.getN(index);
-    left = arr.getN(index - 1);
-    right = arr.getN(index + 1);
-    bottom = arr.getN(index - arr.width());
-    top = arr.getN(index + arr.width());
+    curr = arr.getN<0,false>(index);
+    left = arr.getN<3,false>(index - 1);
+    right = arr.getN<1,false>(index + 1);
+    bottom = arr.getN<0,false>(index - arr.width());
+    top = arr.getN<0,false>(index + arr.width());
   }
 
 #if 0
@@ -237,12 +238,13 @@ GSTypeN laplacian(const GSArrayType& arr, int x, int y) {
 }
 
 template <bool CHECK_BOUNDS>
-void updateUV(GSArrayType *u[], GSArrayType *v[], bool q, size_t x, size_t y,
+inline void updateUV(GSArrayType *u[], GSArrayType *v[], bool q, size_t x, size_t y,
 	      const GSTypeN& dt, const GSTypeN& du, const GSTypeN& dv, const GSTypeN& F,
 	      const GSTypeN& k) {
+  //  asm (""); // to prevent inlining
   size_t index = y * u[q]->width() + x;
-  GSTypeN currU = u[q]->getN<CHECK_BOUNDS>(index);
-  GSTypeN currV = v[q]->getN<CHECK_BOUNDS>(index);
+  GSTypeN currU = u[q]->getN<0,CHECK_BOUNDS>(index);
+  GSTypeN currV = v[q]->getN<0,CHECK_BOUNDS>(index);
   
   // get vector of floats for laplacian transform
   GSTypeN d2u = laplacian<CHECK_BOUNDS>(*u[q], x, y);
@@ -378,26 +380,32 @@ void GrayScottDrawer::draw(int* colIndices) {
     }
 #endif
     
-    GSType minv = 100, maxv = 0;
+    GSType maxv = 0;
     for (size_t y = 0; y < m_height; ++y) {
-      for (size_t x = 0; x < m_width; ++x) {
+      for (size_t x = 0; x < m_width; x += VEC_N) {
 	size_t index = y * m_width + x;
-        const GSType& v = m_v[m_q]->get(index);
-        minv = std::min(minv, v);
-        maxv = std::max(maxv, v);
+	GSType vec[VEC_N];
+	vst1q_f32(vec, m_v[m_q]->getN<0,false>(index));
+	for (size_t i = 0; i < VEC_N; ++i) {
+	  maxv = std::max(maxv, vec[i]);
+	}
       }
     }
     maxv = m_lastMaxV + MAX_ROLLING_MULTIPLIER * (maxv - m_lastMaxV); // adapted from rolling EMA equation
 
     for (size_t y = 0; y < m_height; ++y) {
-        for (size_t x = 0; x < m_width; ++x) {
-            size_t x2 = x * zoom;
-            size_t y2 = y * zoom;
-            GSType v = m_v[m_q]->get(x2 + y2 * m_width);
-
-            v = mapValue(v, minv, maxv, minv, 1.0);
-	    size_t index = x + y * m_width;
+        for (size_t x = 0; x < m_width; x += VEC_N) {
+	  size_t index = y * m_width + x;
+	  GSType vec[VEC_N];
+	  vst1q_f32(vec, m_v[m_q]->getN<0,false>(index));
+	  
+	  for (size_t i = 0; i < VEC_N; ++i) {
+	    size_t x2 = x + i;
+	    
+            GSType v = mapValue(vec[i], 0.0, maxv, 0.0, 1.0);
+	    size_t index = x2 + y * m_width;
             colIndices[index] = v * (m_palSize - 1);
+	  }
         }
     }
 

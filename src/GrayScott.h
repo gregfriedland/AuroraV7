@@ -2,8 +2,8 @@
 #define GrayScott_H
 
 #include "Drawer.h"
-#include "Camera.h"
 #include "Util.h"
+#include "Array2D.h"
 
 using GSType = float;
 
@@ -17,7 +17,7 @@ using GSType = float;
 
 class GrayScottDrawer : public Drawer {
 public:
-    GrayScottDrawer(int width, int height, int palSize, Camera* camera);
+    GrayScottDrawer(int width, int height, int palSize);
 
     ~GrayScottDrawer();
 
@@ -35,7 +35,6 @@ public:
 #endif
     bool m_q;
     int m_colorIndex;
-    Camera* m_camera;
     GSType m_lastMaxV;
     GSType m_scale;
 };

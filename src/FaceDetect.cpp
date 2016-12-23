@@ -44,10 +44,9 @@ FaceDetect::FaceDetect(Camera* camera)
 // }
 
 void FaceDetect::start(unsigned int interval) {
-    std::cout << "Starting face detection\n";
     m_stop = false;
-
     auto run = [=]() {
+        std::cout << "Face detection started on thread " << std::this_thread::get_id() << std::endl;
         while (!m_stop) {
             loop(interval);
             std::this_thread::sleep_for(std::chrono::milliseconds(1));

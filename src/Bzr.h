@@ -4,6 +4,7 @@
 #include "Drawer.h"
 #include "Camera.h"
 #include "Util.h"
+#include "Array2D.h"
 
 
 class BzrDrawer : public Drawer {

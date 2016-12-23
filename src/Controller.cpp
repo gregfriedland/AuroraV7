@@ -92,7 +92,7 @@ void Controller::init() {
         m_drawers.insert(std::make_pair("Bzr", new BzrDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
     }
     if (std::find(m_settings.m_drawers.begin(), m_settings.m_drawers.end(), "GrayScott") != m_settings.m_drawers.end()) {
-        m_drawers.insert(std::make_pair("GrayScott", new GrayScottDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+        m_drawers.insert(std::make_pair("GrayScott", new GrayScottDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
     }
     if (m_camera != NULL)
         m_drawers.insert(std::make_pair("Video", new VideoDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
@@ -104,9 +104,9 @@ void Controller::init() {
 }
 
 void Controller::start(int interval) {
-    std::cout << "Controller started\n";
     m_stop = false;
     auto run = [=]() {
+      std::cout << "Controller started on thread " << std::this_thread::get_id() << std::endl;
         while (!m_stop) {
             loop(interval);
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -131,6 +131,10 @@ void Controller::stop() {
 void Controller::loop(int interval) {
     static unsigned long lastUpdate = 0;
     m_frameTimer.tick(interval, [=]() {
+	static int i = 0;
+	if (++i >= 200) {
+	  exit(0);
+	}
         m_fpsCounter.tick();
 
         // auto diff = millis() - lastUpdate;

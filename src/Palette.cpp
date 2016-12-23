@@ -13,6 +13,7 @@ int Palettes::size() {
     return m_baseColors.size() / m_baseColorsPerPalette;
 }
 
+#if 0
 Color24 Palettes::get(int paletteIndex, int gradientIndex) {
     assert(paletteIndex < size());
 
@@ -35,3 +36,4 @@ Color24 Palettes::get(int paletteIndex, int gradientIndex) {
 
     return Color24(m_gammaTable[r], m_gammaTable[g], m_gammaTable[b]); 
 }
+#endif

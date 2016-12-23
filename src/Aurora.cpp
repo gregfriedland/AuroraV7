@@ -81,12 +81,24 @@ int main(int argc, char** argv) {
     settings.m_baseColorsPerPalette = BASE_COLORS_PER_PALETTE;
     controller = new Controller(matrix, settings, baseColors, camera, faceDetect);
 
+    //#ifdef __arm__
+    //    std::cout << "Main thread " << std::this_thread::get_id() << std::endl;
+    //    controller->start(1000 / settings.m_fps);
+    //    int i  = 0;
+    //    while (true) {
+    //      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    //      if (++i >= 5000) {
+    //	exit(0);
+    //      }
+    //    }
+    //#else    
     // do it in the main thread so we can optionally display the opencv window
     while (true) {
         controller->loop(1000 / settings.m_fps);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-      
+    //#endif
+    
     delete matrix;
     delete camera;
     delete faceDetect;
