@@ -3,7 +3,7 @@ Description = V6 Driver for Aurora led matrix pattern generator
 After       = syslog.target
 
 [Service]
-ExecStart   = /home/pi/AuroraV6/build/AuroraV6 /home/pi/AuroraV6/machinations-64x32.json
+ExecStart   = /home/pi/AuroraV6/build/AuroraV6 /home/pi/AuroraV6/machinations-192x96.json
 Type        = simple
 PIDFile     = /run/aurorav6.pid
 WorkingDirectory = /home/pi/AuroraV6/build

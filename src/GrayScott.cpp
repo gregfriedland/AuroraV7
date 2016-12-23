@@ -26,9 +26,9 @@ GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, Camera* cam
     m_settings.insert(std::make_pair("speed",10));
     m_settings.insert(std::make_pair("colorSpeed",0));
     m_settings.insert(std::make_pair("params",1));
-    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(10,10)));//5,25)));
-    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,0)));//,10)));
-    m_settingsRanges.insert(std::make_pair("params", std::make_pair(0,0)));//8)));
+    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(5,10)));
+    m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,10)));
+    m_settingsRanges.insert(std::make_pair("params", std::make_pair(0,8)));
 
 #ifdef __arm__
     for (size_t q = 0; q < 2; ++q) {
@@ -110,44 +110,44 @@ void GrayScottDrawer::reset() {
         case 1:
             F = 0.026;
             k = 0.051;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(20)));
+            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
             break;
         case 2:
             F = 0.026;
             k = 0.052;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(20)));
+            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
             break;
         case 3:
             F = 0.022;
             k = 0.048;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(20)));
+            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
             break;
         case 4:
             F = 0.018;
             k = 0.045;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(20)));
+            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
             break;
         case 5:
             F = 0.010;
             k = 0.033;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(20)));
+            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
             break;
 
         // sometimes end quickly on smaller panels
         case 6:
             F = 0.014;
             k = 0.041;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(20)));
+            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
             break;
         case 7:
             F = 0.006;
             k = 0.045;
-            scale = std::exp(randomFloat(std::log(0.6), std::log(10)));
+            scale = std::exp(randomFloat(std::log(0.6), std::log(5)));
             break;
         case 8:
             F = 0.010;
             k = 0.047;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(20)));
+            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
             break;
         // case 9:
         //     m_F = 0.006;

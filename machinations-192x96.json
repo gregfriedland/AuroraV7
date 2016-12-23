@@ -6,7 +6,7 @@
     "fps": 30,
     "startDrawer": "GrayScott",
     "drawers": ["GrayScott"],
-    "drawerChangeInterval": 200000,
+    "drawerChangeInterval": 30000,
     "camera": {
         "width": 1280,
         "height": 720,
