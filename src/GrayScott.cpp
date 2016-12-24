@@ -9,8 +9,17 @@
 #define MAX_ROLLING_MULTIPLIER (2.0 / (35 * 5 + 1))
 #define NUM_INIT_ISLANDS 5
 #define ISLAND_SIZE 20
+#define NEON_ASM
 
 #ifdef __arm__
+    SectionTimer updateUVIntTimer("updateUV-internal");
+    SectionTimer updateUVExtTimer("updateUV-external");
+    SectionTimer colorizeTimer("colorize");
+    SectionTimer laplacianBndsTimer("laplacianBnds");
+    SectionTimer laplacianNoBndsTimer("laplacianNoBnds");
+    SectionTimer laplacianBndsMathTimer("laplacianBndsMath");
+    SectionTimer laplacianNoBndsMathTimer("laplacianNoBndsMath");
+
     #define vmul(x, y) vmulq_f32(x, y)
     #define vadd(x, y) vaddq_f32(x, y)
     #define vsub(x, y) vsubq_f32(x, y)
@@ -203,6 +212,7 @@ inline GSTypeN laplacian(const GSArrayType& arr, int x, int y) {
   GSTypeN curr, left, right, bottom, top;
   
   if (CHECK_BOUNDS) {
+    laplacianBndsTimer.start();
     size_t w = arr.width();
     size_t h = arr.height();
     curr = arr.getN<0,true>(y * w + x);
@@ -210,13 +220,16 @@ inline GSTypeN laplacian(const GSArrayType& arr, int x, int y) {
     right = arr.getN<1,true>(y * w + (x + 1) % w);
     bottom = arr.getN<0,true>(((y - 1 + h) % h) * w + x);
     top = arr.getN<0,true>(((y + 1) % h) * w + x);
+    laplacianBndsTimer.end();
   } else {
+    laplacianNoBndsTimer.start();
     size_t index = x + y * arr.width();
     curr = arr.getN<0,false>(index);
     left = arr.getN<3,false>(index - 1);
     right = arr.getN<1,false>(index + 1);
     bottom = arr.getN<0,false>(index - arr.width());
     top = arr.getN<0,false>(index + arr.width());
+    laplacianNoBndsTimer.end();
   }
 
 #if 0
@@ -229,11 +242,24 @@ inline GSTypeN laplacian(const GSArrayType& arr, int x, int y) {
       vprint("  top:", top);
     }
 #endif
-    
+
+    if (CHECK_BOUNDS) {
+      laplacianBndsMathTimer.start();
+    } else {
+      laplacianNoBndsMathTimer.start();
+    }     
+
     GSTypeN sum = vadd(left, right);
     sum = vadd(sum, bottom);
     sum = vadd(sum, top);
     sum = vsub(sum, vmul(curr, fourN));
+
+    if (CHECK_BOUNDS) {
+      laplacianBndsMathTimer.end();
+    } else {
+      laplacianNoBndsMathTimer.end();
+    }     
+    
     return sum;
 }
 
@@ -242,13 +268,50 @@ inline void updateUV(GSArrayType *u[], GSArrayType *v[], bool q, size_t x, size_
 	      const GSTypeN& dt, const GSTypeN& du, const GSTypeN& dv, const GSTypeN& F,
 	      const GSTypeN& k) {
   //  asm (""); // to prevent inlining
-  size_t index = y * u[q]->width() + x;
-  GSTypeN currU = u[q]->getN<0,CHECK_BOUNDS>(index);
-  GSTypeN currV = v[q]->getN<0,CHECK_BOUNDS>(index);
-  
   // get vector of floats for laplacian transform
   GSTypeN d2u = laplacian<CHECK_BOUNDS>(*u[q], x, y);
   GSTypeN d2v = laplacian<CHECK_BOUNDS>(*v[q], x, y);
+
+  if (CHECK_BOUNDS) {
+    updateUVExtTimer.start();
+  } else {
+    updateUVIntTimer.start();
+  }
+
+  size_t index = y * u[q]->width() + x;
+  GSTypeN currU = u[q]->getN<0,CHECK_BOUNDS>(index);
+  GSTypeN currV = v[q]->getN<0,CHECK_BOUNDS>(index);
+
+#ifdef NEON_ASM
+  GSTypeN uRD, vRD;
+  asm(//"movl q8, %1\n\t" // q8 = currU
+      //"movl q9, %2\n\t" // q9 = currV
+      //"movl q10, %3\n\t" // q10 = d2u
+      //"movl q11, %4\n\t" // q11 = d2v
+
+      "vmul.f32 q12, %q1, %q1\n\t" // q12 = currV * currV
+      "vmul.f32 q12, q12, %q0\n\t" // q12 = currV * currV * currU 
+
+      "vmul.f32 q13, q5, %q3\n\t" // q13 = dt * du * d2u
+      "vadd.f32 q13, q13, %q0\n\t" // q13 = dt * du * d2u + currU
+
+      "vsub.f32 q14, q7, %q0\n\t" // q14 = 1 - u
+      "vmul.f32 q14, q14, q3\n\t" // q14 = F * (1-u)
+      "vsub.f32 q14, q14, q12\n\t" // q14 = F * (1-u) - u * v * v
+      "vmul.f32 q14, q14, q0\n\t" // q14 = dt * (F * (1-u) - u * v * v)
+      "vadd.f32 %q[uRD], q13, q14\n\t" // q13 = dt * du * d2u + currU + dt * (F * (1-u) - u*v*v)
+
+      "vmul.f32 q14, q6, %q3\n\t" // q14 = dt * dv * d2v
+      "vadd.f32 q14, %q1, q14\n\t" // q14 = dt * dv * d2v + currV
+
+      "vmul.f32 q15, q4, %q1\n\t" // q15 = (F + k) * currV
+      "vsub.f32 q15, q12, q15\n\t" // q15 = u * v * v - (F + k) * currV
+      "vmul.f32 q15, q0, q15\n\t" // q15 = dt * (u * v * v - (F + k) * currV)
+      "vadd.f32 %q[vRD], q14, q15\n\t" // q14 = dt * dv * d2v + currV + dt * (u * v * v - (F + k) * currV)"
+      : [uRD]"=w"(uRD), [vRD]"=w"(vRD)
+      : "0"(currU), "1"(currV), "2"(d2u), "3"(d2v)
+      : "q12", "q13", "q14", "q15");
+#else
   
   // uvv = u*v*v
   GSTypeN uvv = vmul(currU, vmul(currV, currV));
@@ -257,12 +320,14 @@ inline void updateUV(GSArrayType *u[], GSArrayType *v[], bool q, size_t x, size_
   // uOut[curr] += dt * (-d2 + F * (1 - u));
   GSTypeN uRD = vadd(currU, vmul(vmul(dt, du), d2u));
   uRD = vadd(uRD, vmul(dt, vsub(vmul(F, vsub(oneN, currU)), uvv)));
-  u[1-q]->setN(index, uRD);
   
   // vOut[curr] = v + dt * dv * d2v;
   // vOut[curr] += dt * (d2 - (F + k) * v);
   GSTypeN vRD = vadd(currV, vmul(vmul(dt, dv), d2v));
   vRD = vadd(vRD, vmul(dt, vsub(uvv, vmul(vadd(F, k), currV))));
+#endif
+
+  u[1-q]->setN(index, uRD);
   v[1-q]->setN(index, vRD);  
 
 #if 0
@@ -277,27 +342,65 @@ inline void updateUV(GSArrayType *u[], GSArrayType *v[], bool q, size_t x, size_
 		  }
 		}
 #endif		
+
+  if (CHECK_BOUNDS) {
+    updateUVExtTimer.end();
+  } else {
+    updateUVIntTimer.end();
+  }
 }
 
 
 void GrayScottDrawer::draw(int* colIndices) {
-    Drawer::draw(colIndices);
+  if (m_frame == 100) {
+    updateUVIntTimer.printAndReset();
+    updateUVExtTimer.printAndReset();
+    colorizeTimer.printAndReset();
+    laplacianBndsTimer.printAndReset();
+    laplacianNoBndsTimer.printAndReset();
+    laplacianBndsMathTimer.printAndReset();
+    laplacianNoBndsMathTimer.printAndReset();
+  }
+  
+  Drawer::draw(colIndices);
 
     GSType zoom = 1;
     size_t speed = m_settings["speed"]; //m_scale;
+
+#ifdef NEON_ASM
+    // load constants into neon registers
+    asm("movl q0, %q0\n\t" // q0 = dt
+	"movl q1, %q1\n\t" // q1 = du
+	"movl q2, %q2\n\t" // q2 = dv
+	"movl q3, %q3\n\t" // q3 = F
+	"movl q4, %q4\n\t" // q4 = k
+
+	"vadd.f32 q4, q3, q4\n\t" // q4 = F + k
+	"vmul.f32 q5, q0, q1\n\t" // q5 = dt * du
+	"vmul.f32 q6, q0, q2\n\t" // q6 = dt * dv
+
+	"vmov.f32 q7, #1\n\t" // q7 = 1"
+	: /* no output */
+	: "0"(m_dt), "1"(m_du), "2"(m_dv), "3"(m_F), "4"(m_k)
+	: "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7"
+      );
+#endif
 
     for (size_t f = 0; f < speed; ++f) {
       //      	std::cout << *m_v[m_q] << std::endl;
 
 #if 1
+      updateUVIntTimer.start();
       for (size_t y = 1; y < m_height - 1; ++y) {
             for (size_t x = VEC_N; x < m_width - VEC_N; x += VEC_N) {
 	      updateUV<false>(m_u, m_v, m_q, x, y, m_dt, m_du, m_dv, m_F, m_k);
             }
         }
+      updateUVIntTimer.end();
 #endif
 #if 1
 	// borders are a special case
+        updateUVExtTimer.start();
         for (size_t y = 0; y < m_height; y += m_height - 1) {
   	    for (size_t x = 0; x < m_width; x += VEC_N) {
 	      updateUV<true>(m_u, m_v, m_q, x, y, m_dt, m_du, m_dv, m_F, m_k);
@@ -308,6 +411,7 @@ void GrayScottDrawer::draw(int* colIndices) {
 	      updateUV<true>(m_u, m_v, m_q, x, y, m_dt, m_du, m_dv, m_F, m_k);
 	    }
         }
+      updateUVExtTimer.end();
 #endif
 
 	m_q = 1 - m_q;
@@ -379,7 +483,9 @@ void GrayScottDrawer::draw(int* colIndices) {
         m_q = 1 - m_q;
     }
 #endif
-    
+
+    colorizeTimer.start();
+
     GSType maxv = 0;
     for (size_t y = 0; y < m_height; ++y) {
       for (size_t x = 0; x < m_width; x += VEC_N) {
@@ -416,4 +522,6 @@ void GrayScottDrawer::draw(int* colIndices) {
     }
     m_colorIndex += m_settings["colorSpeed"];
     m_lastMaxV = maxv;
+
+    colorizeTimer.end();
 }

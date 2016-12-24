@@ -7,7 +7,6 @@
 #include <thread>
 #include <mutex>
 #include <chrono>
-#include "threaded-canvas-manipulator.h"
 
 using namespace rgb_matrix;
 
@@ -42,7 +41,7 @@ class HzellerRpiMatrix : public Matrix {
     }
   
     virtual void update() {   
-      m_offscreenCanvas = m_matrix->SwapOnVSync(m_offscreenCanvas, 5);
+      m_offscreenCanvas = m_matrix->SwapOnVSync(m_offscreenCanvas);
     }
   
  private:
