@@ -170,12 +170,12 @@ class Array2DNeon {
 	    } else if (REM == 2) {
 	      out = vsetq_lane_f32(vgetq_lane_f32(v1, 2), out, 0);
 	      out = vsetq_lane_f32(vgetq_lane_f32(v1, 3), out, 1);
-	      out = vsetq_lane_f32(vgetq_lane_f32(v1, 0), out, 2);
+	      out = vsetq_lane_f32(vgetq_lane_f32(v2, 0), out, 2);
 	      out = vsetq_lane_f32(vgetq_lane_f32(v2, 1), out, 3);
 	    } else if (REM == 3) {
 	      out = vsetq_lane_f32(vgetq_lane_f32(v1, 3), out, 0);
-	      out = vsetq_lane_f32(vgetq_lane_f32(v1, 0), out, 1);
-	      out = vsetq_lane_f32(vgetq_lane_f32(v1, 1), out, 2);
+	      out = vsetq_lane_f32(vgetq_lane_f32(v2, 0), out, 1);
+	      out = vsetq_lane_f32(vgetq_lane_f32(v2, 1), out, 2);
 	      out = vsetq_lane_f32(vgetq_lane_f32(v2, 2), out, 3);
 	    }
 	    return out;
