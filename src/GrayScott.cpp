@@ -139,53 +139,96 @@ void GrayScottDrawer::reset() {
 #ifdef __arm__
 
 template <bool CHECK_BOUNDS>
-inline GSTypeN laplacian(const Array2D<GSType> *arr, int x, int y) {
+__attribute__ ((noinline))
+//inline
+GSTypeN laplacian(const Array2D<GSType> *arr, int x, int y, const GSTypeN& curr) {
   const GSType* raw = arr->rawData();
   size_t w = arr->width();
   size_t h = arr->height();
   size_t index = x + y * w;
   const GSType* pos = raw + index;
   
-  GSTypeN curr, left, right, top, bottom;
+  GSTypeN left, right, top, bottom;
   GSTypeN fourN = vdup(4);
-  curr = vld(pos);
-  
+
   if (CHECK_BOUNDS) {
+    GSTypeN sum;
     left = vld(raw + y * w + (x - 1 + w) % w);
     right = vld(raw + y * w + (x + 1) % w);
     top = vld(raw + ((y - 1 + h) % h) * w + x);
     bottom = vld(raw + ((y + 1) % h) * w + x);
+
+    sum = vadd(left, right);
+    sum = vadd(sum, bottom);
+    sum = vadd(sum, top);
+    sum = vsub(sum, vmul(curr, fourN));
+    return sum;
   } else {
+#if 1
+    GSTypeN sum;
     left = vld(pos - 1);
     right = vld(pos + 1);
     top = vld(pos - w);
     bottom = vld(pos + w);
+
+    sum = vadd(left, right);
+    sum = vadd(sum, bottom);
+    sum = vadd(sum, top);
+    sum = vsub(sum, vmul(curr, fourN));
+    return sum;
+#else
+    register GSTypeN sum asm("q13");
+    asm("mov r0, #4\n\t"
+	"vdup.32 q14, r0\n\t" // q14 = 4
+
+	// get addresses
+	"add r1, %[pos], r0\n\t" // r0 = u + 4
+	"sub r2, %[pos], r0\n\t" // r1 = u - 4
+	"add r3, %[pos], %[width]\n\t" // r2 = u + 4 * width
+	"sub r4, %[pos], %[width]\n\t" // r3 = u - 4 * width
+
+	// load into neon registers
+	"vld1.32 {q8}, [%[pos]]\n\t" // q8 = curr
+	"vld1.32 {q9}, [r1]\n\t" // q9 = right
+	"vld1.32 {q10}, [r2]\n\t" // q10 = left
+	"vld1.32 {q11}, [r3]\n\t" // q11 = top
+	"vld1.32 {q12}, [r4]\n\t" // q12 = bottom
+
+	// sum
+	"vadd.f32 q13, q9, q10\n\t" // q13 = right + left
+	"vadd.f32 q13, q13, q11\n\t"
+	"vadd.f32 q13, q13, q12\n\t"
+	"vmul.f32 q12, q14, q8\n\t" // q12 = curr * 4
+	"vsub.f32 q13, q13, q12\n\t"
+	: //[sum]"=g"(sum)
+	: [pos]"r"(pos), [width]"r"(w * 4)
+	: "r0", "r1", "r2", "r3", "r4", "q8", "q9", "q10", "q11", "q12", "q13", "q14");
+#endif
+    return sum;
   }
-   
-  GSTypeN sum = vadd(left, right);
-  sum = vadd(sum, bottom);
-  sum = vadd(sum, top);
-  sum = vsub(sum, vmul(curr, fourN));
-  return sum;
 }
 
 template <bool CHECK_BOUNDS>
-inline void updateUV(Array2D<GSType> *u[], Array2D<GSType> *v[], bool q, size_t x, size_t y,
-	      const GSTypeN& dt, const GSTypeN& du, const GSTypeN& dv, const GSTypeN& F,
-	      const GSTypeN& k) {
+__attribute__ ((noinline))
+//inline
+void updateUV(Array2D<GSType> *u[], Array2D<GSType> *v[],
+						bool q, size_t x, size_t y,
+						const GSTypeN& dt, const GSTypeN& du,
+						const GSTypeN& dv, const GSTypeN& F,
+						const GSTypeN& k) {
   const GSType* uIn = u[q]->rawData();
   const GSType* vIn = v[q]->rawData();
   GSType* uOut = u[1-q]->rawData();
   GSType* vOut = v[1-q]->rawData();
-  
-  // get vector of floats for laplacian transform
-  GSTypeN d2u = laplacian<CHECK_BOUNDS>(u[q], x, y);
-  GSTypeN d2v = laplacian<CHECK_BOUNDS>(v[q], x, y);
-  
+
   size_t index = y * u[q]->width() + x;
   GSTypeN currU = vld(uIn + index);
   GSTypeN currV = vld(vIn + index);
   GSTypeN oneN = vdup(1);
+
+  // get vector of floats for laplacian transform
+  GSTypeN d2u = laplacian<CHECK_BOUNDS>(u[q], x, y, currU);
+  GSTypeN d2v = laplacian<CHECK_BOUNDS>(v[q], x, y, currV);
   
   // uvv = u*v*v
   GSTypeN uvv = vmul(currU, vmul(currV, currV));
