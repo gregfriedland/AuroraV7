@@ -30,9 +30,9 @@ if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
     ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/lib/*.c
   )
   add_executable(${PROJECT_NAME} ${SRCS} ${RPI_RGB_MATRIX_SRCS})
-  target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${CMAKE_CURRENT_BINARY_DIR}/raspicam/src/libraspicam_cv.so -pg)
+  target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${CMAKE_CURRENT_BINARY_DIR}/raspicam/src/libraspicam_cv.so)
   target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/json/src ${CMAKE_CURRENT_SOURCE_DIR}/raspicam/src ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/include)
-  target_compile_options(${PROJECT_NAME} PUBLIC -mfpu=neon -mfloat-abi=hard -mtune=cortex-a53 -pg)
+  target_compile_options(${PROJECT_NAME} PUBLIC -mfpu=neon -mfloat-abi=hard -mtune=cortex-a53)
 #  target_link_libraries(${PROJECT_NAME} PUBLIC "-pg")
   
   #add_executable(neon_test src/neon_test.cpp)

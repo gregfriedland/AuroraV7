@@ -3,7 +3,7 @@
     "height": 96,
     "gamma": 3.0,
     "paletteSize": 4096,
-    "fps": 100,
+    "fps": 35,
     "startDrawer": "GrayScott",
     "drawers": ["GrayScott"],
     "drawerChangeInterval": 30000,
@@ -16,6 +16,6 @@
         "fps": 0,
         "videoDrawerTimeout": 10000
     },
-    "matrix": "Noop",
+    "matrix": "HzellerRpi",
     "serialDevice": ""
 }

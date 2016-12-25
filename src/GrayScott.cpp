@@ -9,6 +9,7 @@
 #define MAX_ROLLING_MULTIPLIER (2.0 / (35 * 5 + 1))
 #define NUM_INIT_ISLANDS 5
 #define ISLAND_SIZE 20
+#define MAX_SPEED 40 // determined empirically to allow 30fps
 
 #ifdef __arm__
     #define vmul(x, y) vmulq_f32(x, y)
@@ -26,9 +27,9 @@ GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize)
     m_settings.insert(std::make_pair("speed",10));
     m_settings.insert(std::make_pair("colorSpeed",0));
     m_settings.insert(std::make_pair("params",1));
-    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(30,30)));
+    m_settingsRanges.insert(std::make_pair("speed", std::make_pair(5,10)));
     m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(0,0)));
-    m_settingsRanges.insert(std::make_pair("params", std::make_pair(0,0)));
+    m_settingsRanges.insert(std::make_pair("params", std::make_pair(0,8)));
 
     for (size_t q = 0; q < 2; ++q) {
         m_u[q] = new Array2D<GSType>(width, height);
@@ -74,39 +75,39 @@ void GrayScottDrawer::reset() {
         case 0:
             F = 0.022;
             k = 0.049;
-            scale = 5;//std::exp(randomFloat(std::log(0.3), std::log(20)));
+            scale = std::exp(randomFloat(std::log(0.5), std::log(20)));
             break;
         case 1:
             F = 0.026;
             k = 0.051;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
+            scale = std::exp(randomFloat(std::log(0.5), std::log(20)));
             break;
         case 2:
             F = 0.026;
             k = 0.052;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
+            scale = std::exp(randomFloat(std::log(0.5), std::log(20)));
             break;
         case 3:
             F = 0.022;
             k = 0.048;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
+            scale = std::exp(randomFloat(std::log(0.5), std::log(20)));
             break;
         case 4:
             F = 0.018;
             k = 0.045;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
+            scale = std::exp(randomFloat(std::log(0.5), std::log(20)));
             break;
         case 5:
             F = 0.010;
             k = 0.033;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
+            scale = std::exp(randomFloat(std::log(0.5), std::log(20)));
             break;
 
         // sometimes end quickly on smaller panels
         case 6:
             F = 0.014;
             k = 0.041;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
+            scale = std::exp(randomFloat(std::log(0.5), std::log(5)));
             break;
         case 7:
             F = 0.006;
@@ -116,7 +117,7 @@ void GrayScottDrawer::reset() {
         case 8:
             F = 0.010;
             k = 0.047;
-            scale = std::exp(randomFloat(std::log(0.3), std::log(5)));
+            scale = std::exp(randomFloat(std::log(0.5), std::log(5)));
             break;
         // case 9:
         //     m_F = 0.006;
@@ -131,16 +132,17 @@ void GrayScottDrawer::reset() {
     m_dt = 1 / m_scale;
     m_F = F;
     m_k = k;
+    m_speed = std::min((size_t)MAX_SPEED, (size_t)(m_settings["speed"] * m_scale));
 
     std::cout << "GrayScott with param set #" << m_settings["params"] <<
-        std::setprecision(4) << " F=" << F << " k=" << k << " scale=" << m_scale << std::endl;
+      std::setprecision(4) << " F=" << F << " k=" << k << " scale=" << m_scale <<
+      " total speed=" << m_speed << std::endl;
 }
 
 #ifdef __arm__
 
 template <bool CHECK_BOUNDS>
-__attribute__ ((noinline))
-//inline
+inline
 GSTypeN laplacian(const Array2D<GSType> *arr, int x, int y, const GSTypeN& curr) {
   const GSType* raw = arr->rawData();
   size_t w = arr->width();
@@ -164,7 +166,6 @@ GSTypeN laplacian(const Array2D<GSType> *arr, int x, int y, const GSTypeN& curr)
     sum = vsub(sum, vmul(curr, fourN));
     return sum;
   } else {
-#if 1
     GSTypeN sum;
     left = vld(pos - 1);
     right = vld(pos + 1);
@@ -176,46 +177,16 @@ GSTypeN laplacian(const Array2D<GSType> *arr, int x, int y, const GSTypeN& curr)
     sum = vadd(sum, top);
     sum = vsub(sum, vmul(curr, fourN));
     return sum;
-#else
-    register GSTypeN sum asm("q13");
-    asm("mov r0, #4\n\t"
-	"vdup.32 q14, r0\n\t" // q14 = 4
-
-	// get addresses
-	"add r1, %[pos], r0\n\t" // r0 = u + 4
-	"sub r2, %[pos], r0\n\t" // r1 = u - 4
-	"add r3, %[pos], %[width]\n\t" // r2 = u + 4 * width
-	"sub r4, %[pos], %[width]\n\t" // r3 = u - 4 * width
-
-	// load into neon registers
-	"vld1.32 {q8}, [%[pos]]\n\t" // q8 = curr
-	"vld1.32 {q9}, [r1]\n\t" // q9 = right
-	"vld1.32 {q10}, [r2]\n\t" // q10 = left
-	"vld1.32 {q11}, [r3]\n\t" // q11 = top
-	"vld1.32 {q12}, [r4]\n\t" // q12 = bottom
-
-	// sum
-	"vadd.f32 q13, q9, q10\n\t" // q13 = right + left
-	"vadd.f32 q13, q13, q11\n\t"
-	"vadd.f32 q13, q13, q12\n\t"
-	"vmul.f32 q12, q14, q8\n\t" // q12 = curr * 4
-	"vsub.f32 q13, q13, q12\n\t"
-	: //[sum]"=g"(sum)
-	: [pos]"r"(pos), [width]"r"(w * 4)
-	: "r0", "r1", "r2", "r3", "r4", "q8", "q9", "q10", "q11", "q12", "q13", "q14");
-#endif
-    return sum;
   }
 }
 
 template <bool CHECK_BOUNDS>
-__attribute__ ((noinline))
-//inline
+inline
 void updateUV(Array2D<GSType> *u[], Array2D<GSType> *v[],
 						bool q, size_t x, size_t y,
 						const GSTypeN& dt, const GSTypeN& du,
 						const GSTypeN& dv, const GSTypeN& F,
-						const GSTypeN& k) {
+						const GSTypeN& F_k) {
   const GSType* uIn = u[q]->rawData();
   const GSType* vIn = v[q]->rawData();
   GSType* uOut = u[1-q]->rawData();
@@ -242,7 +213,7 @@ void updateUV(Array2D<GSType> *u[], Array2D<GSType> *v[],
   // vOut[curr] = v + dt * dv * d2v;
   // vOut[curr] += dt * (d2 - (F + k) * v);
   GSTypeN vRD = vadd(currV, vmul(vmul(dt, dv), d2v));
-  vRD = vadd(vRD, vmul(dt, vsub(uvv, vmul(vadd(F, k), currV))));
+  vRD = vadd(vRD, vmul(dt, vsub(uvv, vmul(F_k, currV))));
   vst(vOut + index, vRD);
 }
 
@@ -251,32 +222,31 @@ void GrayScottDrawer::draw(int* colIndices) {
     Drawer::draw(colIndices);
 
     GSType zoom = 1;
-    size_t speed = m_settings["speed"]; //m_scale;
 
     GSTypeN dt = vdup(m_dt);
     GSTypeN du = vdup(m_du);
     GSTypeN dv = vdup(m_dv);
     GSTypeN F = vdup(m_F);
-    GSTypeN k = vdup(m_k);
+    GSTypeN F_k = vadd(F, vdup(m_k));
     
-    for (size_t f = 0; f < speed; ++f) {
+    for (size_t f = 0; f < m_speed; ++f) {
       //      	std::cout << *m_v[m_q] << std::endl;
 
       for (size_t y = 1; y < m_height - 1; ++y) {
             for (size_t x = VEC_N; x < m_width - VEC_N; x += VEC_N) {
-	      updateUV<false>(m_u, m_v, m_q, x, y, dt, du, dv, F, k);
+	      updateUV<false>(m_u, m_v, m_q, x, y, dt, du, dv, F, F_k);
             }
         }
 
 	// borders are a special case
         for (size_t y = 0; y < m_height; y += m_height - 1) {
   	    for (size_t x = 0; x < m_width; x += VEC_N) {
-	      updateUV<true>(m_u, m_v, m_q, x, y, dt, du, dv, F, k);
+	      updateUV<true>(m_u, m_v, m_q, x, y, dt, du, dv, F, F_k);
 	    }
         }
         for (size_t y = 0; y < m_height; y += 1) {
   	    for (size_t x = 0; x < m_width; x += m_width - VEC_N) {
-	      updateUV<true>(m_u, m_v, m_q, x, y, dt, du, dv, F, k);
+	      updateUV<true>(m_u, m_v, m_q, x, y, dt, du, dv, F, F_k);
 	    }
         }
 
@@ -287,9 +257,8 @@ void GrayScottDrawer::draw(int* colIndices) {
     Drawer::draw(colIndices);
 
     GSType zoom = 1;
-    size_t speed = m_settings["speed"] * m_scale;
 
-    for (size_t f = 0; f < speed; ++f) {
+    for (size_t f = 0; f < m_speed; ++f) {
 
       auto& uIn = *m_u[m_q];
         auto& vIn = *m_v[m_q];

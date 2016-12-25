@@ -29,7 +29,8 @@ public:
     Array2D<GSType> *m_u[2], *m_v[2];
     GSType m_F, m_k, m_du, m_dv, m_dt;
     bool m_q;
-    int m_colorIndex;
+    size_t m_colorIndex;
+    size_t m_speed;
     GSType m_lastMaxV;
     GSType m_scale;
 };

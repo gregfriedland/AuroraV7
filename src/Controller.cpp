@@ -131,10 +131,10 @@ void Controller::stop() {
 void Controller::loop(int interval) {
     static unsigned long lastUpdate = 0;
     m_frameTimer.tick(interval, [=]() {
-	static int i = 0;
-	if (++i >= 200) {
-	  exit(0);
-	}
+	//static int i = 0;
+	//if (++i >= 200) {
+	//  exit(0);
+	//}
         m_fpsCounter.tick();
 
         // auto diff = millis() - lastUpdate;
