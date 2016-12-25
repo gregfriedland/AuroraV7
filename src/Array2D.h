@@ -83,7 +83,7 @@ class Array2D {
  		}
  	}
 
- 	const T* rawData() const {
+ 	T* rawData() const {
  		return m_data;
  	}
 

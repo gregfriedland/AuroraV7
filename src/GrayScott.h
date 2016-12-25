@@ -26,13 +26,8 @@ public:
     virtual void draw(int* colIndices);
 
  private:
-#ifdef __arm__
-    GSArrayType *m_u[2], *m_v[2];
-    GSTypeN m_F, m_k, m_du, m_dv, m_dt;
-#else
     Array2D<GSType> *m_u[2], *m_v[2];
     GSType m_F, m_k, m_du, m_dv, m_dt;
-#endif
     bool m_q;
     int m_colorIndex;
     GSType m_lastMaxV;
