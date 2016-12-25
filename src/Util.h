@@ -39,18 +39,14 @@ inline int mapValue(int x, int in_min, int in_max, int out_min, int out_max) {
 }
 
 inline unsigned long millis() {
+	/* struct timeval tv; */
+
+	/* gettimeofday(&tv, NULL); */
+
+	/* return (unsigned long)(tv.tv_sec) * 1000 + */
+    /* 	   (unsigned long)(tv.tv_usec) / 1000; */
 	return duration_cast< milliseconds >(
     	system_clock::now().time_since_epoch()).count();
-}
-
-inline unsigned long micros() {
-	return duration_cast< microseconds >(
-    	high_resolution_clock::now().time_since_epoch()).count();
-}
-
-inline unsigned long nanos() {
-	return duration_cast< nanoseconds >(
-    	high_resolution_clock::now().time_since_epoch()).count();
 }
 
 static unsigned long int startTime = millis();
@@ -71,36 +67,6 @@ inline float randomFloat(float min, float max) {
 	return std::uniform_real_distribution<>(min, max)(gen);
 }
 
-class SectionTimer {
- public:
- SectionTimer(const std::string& name)
-   : m_name(name), m_total(0), m_count(0), m_lastStart(0) {}
-
-  inline void start() {
-    m_lastStart = nanos();
-  }
-
-  inline void end() {
-    m_total += nanos() - m_lastStart;
-    ++m_count;
-  }
-
-  void printAndReset() {
-    std::cout << "SectionTimer " << m_name << ": total=" << std::setprecision(3) << m_total / 1000000000.0 <<
-      " per call=" << m_total / m_count << std::endl;
-    m_total = 0;
-    m_count = 0;
-  }
-
- private:
-    std::string m_name;
-    unsigned long m_total, m_lastStart;
-    size_t m_count;
-};
-    
-    
-
-  
 class IntervalTimer {
 public:
 	IntervalTimer(unsigned int interval) 
