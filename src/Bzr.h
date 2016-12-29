@@ -3,6 +3,7 @@
 
 #include "Drawer.h"
 #include "Camera.h"
+#include "Array2D.h"
 
 class BzrDrawer : public Drawer {
 public:
@@ -15,8 +16,8 @@ public:
     virtual void draw(int* colIndices);
 
  private:
-    int m_p, m_q, m_state;
-    float *m_a, *m_b, *m_c;
+    int m_q, m_state;
+    Array2D<float> *m_a[2], *m_b[2], *m_c[2];
     int m_colorIndex;
     Camera* m_camera;
 };
