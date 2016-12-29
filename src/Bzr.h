@@ -18,6 +18,7 @@ public:
  private:
     int m_q, m_state;
     Array2D<float> *m_a[2], *m_b[2], *m_c[2];
+    float m_ka, m_kb, m_kc;
     int m_colorIndex;
     Camera* m_camera;
 };

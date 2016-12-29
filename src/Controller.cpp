@@ -249,7 +249,7 @@ void Controller::changeDrawer(const std::vector<std::string>& names) {
 
 void Controller::randomizeSettings(Drawer* drawer) {
     drawer->setPaused(true);
-    m_currPalIndex = random2() % m_palettes.size();
+    m_currPalIndex = 380; //random2() % m_palettes.size();
     drawer->randomizeSettings();
 
     std::cout << "New palette=" << m_currPalIndex;
