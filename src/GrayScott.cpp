@@ -295,7 +295,7 @@ void GrayScottDrawer::draw(int* colIndices) {
     
     GSType maxv = 0;
     for (size_t y = 0; y < m_height; ++y) {
-      for (size_t x = 0; x < m_width; x += VEC_N) {
+      for (size_t x = 0; x < m_width; x += 1) {
 	size_t index = y * m_width + x;
 	maxv = std::max(maxv, m_v[m_q]->get(index));
       }

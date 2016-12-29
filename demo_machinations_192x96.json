@@ -4,8 +4,8 @@
     "gamma": 3.0,
     "paletteSize": 4096,
     "fps": 35,
-    "startDrawer": "GrayScott",
-    "drawers": ["GrayScott"],
+    "startDrawer": "Bzr",
+    "drawers": ["Bzr"],
     "drawerChangeInterval": 20000,
     "camera": {
         "width": 1280,
