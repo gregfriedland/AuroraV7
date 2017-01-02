@@ -3,6 +3,7 @@
 #include "AlienBlob.h"
 #include "Bzr.h"
 #include "GrayScott.h"
+#include "GinzburgLandau.h"
 #include "Off.h"
 #include "Video.h"
 #include "Util.h"
@@ -85,14 +86,16 @@ Controller::~Controller() {
 
 void Controller::init() {
     // create drawers and set start drawer
-    if (std::find(m_settings.m_drawers.begin(), m_settings.m_drawers.end(), "AlienBlob") != m_settings.m_drawers.end()) {
-        m_drawers.insert(std::make_pair("AlienBlob", new AlienBlobDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
-    }
-    if (std::find(m_settings.m_drawers.begin(), m_settings.m_drawers.end(), "Bzr") != m_settings.m_drawers.end()) {
-        m_drawers.insert(std::make_pair("Bzr", new BzrDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
-    }
-    if (std::find(m_settings.m_drawers.begin(), m_settings.m_drawers.end(), "GrayScott") != m_settings.m_drawers.end()) {
-        m_drawers.insert(std::make_pair("GrayScott", new GrayScottDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
+    for (auto& drawerName: m_settings.m_drawers) {
+        if (drawerName == "AlienBlob") {
+            m_drawers.insert(std::make_pair("AlienBlob", new AlienBlobDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+        } else if (drawerName == "Bzr") {
+            m_drawers.insert(std::make_pair("Bzr", new BzrDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
+        } else if (drawerName == "GrayScott") {
+            m_drawers.insert(std::make_pair("GrayScott", new GrayScottDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
+        } else if (drawerName == "GinzburgLandau") {
+            m_drawers.insert(std::make_pair("GinzburgLandau", new GinzburgLandauDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
+        }
     }
     if (m_camera != NULL)
         m_drawers.insert(std::make_pair("Video", new VideoDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));

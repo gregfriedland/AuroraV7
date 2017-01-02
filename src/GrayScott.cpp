@@ -78,7 +78,8 @@ GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize)
 }
 
 void GrayScottDrawer::reset() {
-    ReactionDiffusionDrawer::reset(1.0, 0, 0.5, 0.25);
+    ReactionDiffusionDrawer::resetToValues(1.0, 0, 0.5, 0.25);
+    setParams();
 }
 
 void GrayScottDrawer::setParams() {

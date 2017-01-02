@@ -13,6 +13,7 @@ SET(SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/src/Camera.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/Controller.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/FaceDetect.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/GinzburgLandau.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/GrayScott.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/Off.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/Palette.cpp
