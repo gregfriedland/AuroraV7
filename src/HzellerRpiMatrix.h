@@ -7,7 +7,7 @@
 #include <thread>
 #include <mutex>
 #include <chrono>
-#include "threaded-canvas-manipulator.h"
+#include <cstdlib>
 
 using namespace rgb_matrix;
 
@@ -25,6 +25,13 @@ class HzellerRpiMatrix : public Matrix {
         options.show_refresh_rate = false;
 
         m_matrix = CreateMatrixFromOptions(options, runtime);
+
+	// we use 'gamma' correction instead for the desired aesthetic
+	if (std::getenv("HZELLER_NO_CORRECTION")) {
+  	    std::cout << "Disabling HzellerRpi luminance correction\n";
+	    m_matrix->set_luminance_correct(false);
+	}
+	
         if (m_matrix == NULL) {
           std::cout << "Unable to create hzeller rpi matrix\n";
           exit(1);
