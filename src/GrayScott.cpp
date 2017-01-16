@@ -20,7 +20,7 @@ public:
         m_dv = RD_DUP(dv);
         m_F = RD_DUP(F);
         m_k = RD_DUP(k);
-        m_Fk = RD_ADD(F, k);
+        m_Fk = RD_ADD(m_F, m_k);
     }
 
     virtual void operator()(Array2D<float> *u[], Array2D<float> *v[],

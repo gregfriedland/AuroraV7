@@ -12,7 +12,7 @@
     using RDType = float32x4_t;
     #define RDTYPE_N 4
 
-    std::ostream& operator<<(std::ostream& os, const RDType& val) {
+    inline std::ostream& operator<<(std::ostream& os, const RDType& val) {
         float arr[RDTYPE_N];
         vst1q_f32(arr, val);
         for (size_t i=0; i < RDTYPE_N; ++i) {

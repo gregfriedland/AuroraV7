@@ -19,7 +19,7 @@ public:
         m_du = RD_DUP(du);
         m_dv = RD_DUP(dv);
         m_alpha = RD_DUP(alpha);
-        m_beta = RD_DUP(beta);
+        m_negBeta = RD_DUP(-beta);
         m_gamma = RD_DUP(gamma);
         m_delta = RD_DUP(gamma);
     }
@@ -43,36 +43,21 @@ public:
         RDType d2u = this->laplacian(u[q], x, y);
         RDType d2v = this->laplacian(v[q], x, y);
 
-        // uvv = u*v*v
-        // RDType uuvv = RD_ADD(RD_MUL(currU, currU), RD_MUL(currV, currV));
+        RDType uuvv = RD_ADD(RD_MUL(currU, currU), RD_MUL(currV, currV));
 
-        // RDType uDiff = RD_MUL(m_du, d2u);
-        // RDType uRxn1 = RD_SUB(RD_MUL(m_alpha, currU), RD_MUL(m_gamma, currV));
-        // RDType uRxn2 = RD_MUL(RD_SUB(RD_MUL(m_delta, currV), RD_MUL(-m_beta, currU)), uuvv);
-        // RDType uRD = RD_ADD(currU, RD_MUL(m_dt, RD_ADD(uDiff, RD_ADD(uRxn1, uRxn2))));
-        // uRD = RD_MAX(RD_DUP(-0.25f), RD_MIN(RD_DUP(0.25f), uRD));
-        // RD_STORE(uOut + index, uRD);
-
-        // RDType vDiff = RD_MUL(m_dv, d2v);
-        // RDType vRxn1 = RD_ADD(RD_MUL(m_alpha, currV), RD_MUL(m_gamma, currU));
-        // RDType vRxn2 = RD_MUL(RD_SUB(RD_MUL(-m_beta, currV), RD_MUL(m_delta, currU)), uuvv);
-        // RDType vRD = RD_ADD(currV, RD_MUL(m_dt, RD_ADD(vDiff, RD_ADD(vRxn1, vRxn2))));
-        // vRD = RD_MAX(RD_DUP(-0.25f), RD_MIN(RD_DUP(0.25f), vRD));
-        // RD_STORE(vOut + index, vRD);
-
-        float uuvv = currU * currU + currV * currV;
-        uOut[index] = currU + m_dt * (m_du * d2u + m_alpha * currU - m_gamma * currV +
-            (-m_beta * currU + m_delta * currV) * uuvv);
-        vOut[index] = currV + m_dt * (m_dv * d2v + m_alpha * currV + m_gamma * currU +
-            (-m_beta * currV - m_delta * currU) * uuvv);
-
-        // std::cout << "x=" << x << " y=" << y << " m_dt=" << m_dt << " m_F=" << m_F << " m_Fk=" << m_Fk << 
-        //     " d2u=" << d2u << " d2v=" << d2v <<
-        //     " uvv=" << uvv << " uRD=" << uRD << " vRD=" << vRD << std::endl;
+        RDType uRD = RD_SUB(RD_ADD(RD_MUL(m_du, d2u), RD_MUL(m_alpha, currU)), RD_MUL(m_gamma, currV));
+	uRD = RD_ADD(uRD, RD_MUL(RD_ADD(RD_MUL(m_delta, currV), RD_MUL(m_negBeta, currU)), uuvv));
+	uRD = RD_ADD(currU, RD_MUL(m_dt, uRD));
+	RD_STORE(uOut + index, uRD);
+	
+        RDType vRD = RD_ADD(RD_ADD(RD_MUL(m_dv, d2v), RD_MUL(m_alpha, currV)), RD_MUL(m_gamma, currU));
+	vRD = RD_ADD(vRD, RD_MUL(RD_SUB(RD_MUL(m_negBeta, currV), RD_MUL(m_delta, currU)), uuvv));
+	vRD = RD_ADD(currV, RD_MUL(m_dt, vRD));
+	RD_STORE(vOut + index, vRD);
     }
 
  private:
-    RDType m_dt, m_du, m_dv, m_alpha, m_beta, m_gamma, m_delta;
+    RDType m_dt, m_du, m_dv, m_alpha, m_negBeta, m_gamma, m_delta;
 };
 
 
@@ -94,7 +79,6 @@ void GinzburgLandauDrawer::reset() {
 }
 
 void GinzburgLandauDrawer::setParams() {
-    // params from http://mrob.com/pub/comp/xmorphia
     float alpha, beta, gamma, delta, scale;
     switch(m_settings["params"]) {
         case 0:

@@ -1,11 +1,11 @@
 {
     "width": 192,
     "height": 96,
-    "gamma": 3.0,
+    "gamma": 1.0,
     "paletteSize": 4096,
     "fps": 35,
-    "startDrawer": "GrayScott",
-    "drawers": ["GrayScott"],
+    "startDrawer": "GinzburgLandau",
+    "drawers": ["GinzburgLandau"],
     "drawerChangeInterval": 30000,
     "camera": {
         "width": 1280,
