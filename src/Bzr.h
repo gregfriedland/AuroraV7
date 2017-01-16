@@ -3,9 +3,7 @@
 
 #include "Drawer.h"
 #include "Camera.h"
-#include "Util.h"
 #include "Array2D.h"
-
 
 class BzrDrawer : public Drawer {
 public:
@@ -19,10 +17,9 @@ public:
 
  private:
  	size_t m_bzrWidth, m_bzrHeight;
- 	int m_q;
-    int m_state;
+    int m_q, m_state;
     Array2D<float> *m_a[2], *m_b[2], *m_c[2];
-    // Array2D<float> *m_convArr;
+    float m_ka, m_kb, m_kc;
     int m_colorIndex;
     Camera* m_camera;
 };

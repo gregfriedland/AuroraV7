@@ -96,9 +96,10 @@ class Array2D {
  	}
 
 	friend std::ostream& operator <<(std::ostream& os, const Array2D<T>& arr) {
- 		for (size_t x = 0; x < arr.m_width; ++x) {
- 			for (size_t y = 0; y < arr.m_height; ++y) {
- 				os << std::setprecision(3) << std::setw(4) << arr.get(x, y) << " ";
+		for (size_t y = 0; y < arr.m_height; ++y) {
+	 		for (size_t x = 0; x < arr.m_width; ++x) {
+	 			auto& val = arr.get(x, y);
+ 				os << std::setw(4) << std::round(val * 100) / 100 << " ";
  			}
  			os << std::endl;
  		}

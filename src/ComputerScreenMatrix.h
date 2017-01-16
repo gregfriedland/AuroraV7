@@ -7,7 +7,7 @@
 #include <iostream>
 
 #define WINDOW_NAME "Aurora"
-#define MIN_WINDOW_WIDTH 640
+#define MIN_WINDOW_WIDTH 1280
 
 class ComputerScreenMatrix : public Matrix {
  public:
