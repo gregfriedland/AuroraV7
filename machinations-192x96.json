@@ -5,11 +5,11 @@
     "paletteSize": 4096,
     "fps": 35,
     "startDrawer": "GinzburgLandau",
-    "drawers": ["GinzburgLandau"],
+    "drawers": ["GrayScott", "GinzburgLandau", "AlienBlob", "Bzr"],
     "drawerChangeInterval": 30000,
     "camera": {
-        "width": 1280,
-        "height": 720,
+        "width": 640,
+        "height": 480,
         "fps": 0
     },
     "faceDetection": {

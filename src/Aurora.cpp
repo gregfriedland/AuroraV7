@@ -14,6 +14,8 @@
 #include "ComputerScreenMatrix.h"
 #include "NoopMatrix.h"
 
+#include "raspicam_cv.h"
+
 Controller* controller = nullptr;
 bool interrupted = false;
 
@@ -41,6 +43,13 @@ int main(int argc, char** argv) {
     signal(SIGINT, sigHandler);
     signal(SIGKILL, sigHandler);
 
+    // start camera before matrix
+    Camera *camera = nullptr;
+    if (settings.m_cameraSettings.m_fps > 0) {
+        camera = new Camera(settings.m_cameraSettings);
+        camera->start(1000 / settings.m_cameraSettings.m_fps);
+    }
+
     // Create matrix
     Matrix* matrix = nullptr;
     switch(settings.m_matrixType) {
@@ -62,13 +71,6 @@ int main(int argc, char** argv) {
             std::cerr << "Matrix type not implemented\n";
             exit(1);
             break;
-    }
-
-	// start camera
-    Camera *camera = nullptr;
-    if (settings.m_cameraSettings.m_fps > 0) {
-        camera = new Camera(settings.m_cameraSettings);
-        camera->start(1000 / settings.m_cameraSettings.m_fps);
     }
 
     // start face detection

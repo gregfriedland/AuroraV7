@@ -103,7 +103,7 @@ void BzrDrawer::reset() {
 
 void BzrDrawer::draw(int* colIndices) {
     float speed = m_settings["speed"] / 100.0;
-    float zoom = m_settings["zoom"] / 100.0;
+    float zoom = 1;//m_settings["zoom"] / 100.0;
 
     int numStates = BZR_SPEED_MULTIPLIER - std::floor(std::pow(speed, 0.25) * (BZR_SPEED_MULTIPLIER-1));
 

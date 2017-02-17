@@ -7,7 +7,7 @@
 
 Camera::Camera(const CameraSettings& settings)
 : m_fpsCounter(30000, "Camera"), m_settings(settings) {
-    m_cam.set(CV_CAP_PROP_FORMAT, CV_8UC3);
+  //    m_cam.set(CV_CAP_PROP_FORMAT, CV_8UC3);
 
     m_cam.set(CV_CAP_PROP_FRAME_WIDTH, m_settings.m_camWidth);
     m_cam.set(CV_CAP_PROP_FRAME_HEIGHT, m_settings.m_camHeight);
@@ -28,6 +28,7 @@ float Camera::fps() const {
 
 void Camera::init() {
 #ifdef __arm__
+  std::cout << "Opening raspicam\n";
     if (!m_cam.open()) {
 #else
     if (!m_cam.open(0)) {
