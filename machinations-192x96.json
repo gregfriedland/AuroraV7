@@ -17,5 +17,6 @@
         "videoDrawerTimeout": 10000
     },
     "matrix": "HzellerRpi",
-    "serialDevice": ""
+    "serialDevice": "",
+    "findBeatsCmd": "/usr/local/bin/SpectralOnsetDetection -t 0.2 --num_onset_bins 1 online"
 }

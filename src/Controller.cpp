@@ -97,9 +97,9 @@ void Controller::init() {
         } else if (drawerName == "Bzr") {
             m_drawers.insert(std::make_pair("Bzr", new BzrDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_camera)));
         } else if (drawerName == "GrayScott") {
-            m_drawers.insert(std::make_pair("GrayScott", new GrayScottDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
+            m_drawers.insert(std::make_pair("GrayScott", new GrayScottDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_findBeats)));
         } else if (drawerName == "GinzburgLandau") {
-            m_drawers.insert(std::make_pair("GinzburgLandau", new GinzburgLandauDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
+            m_drawers.insert(std::make_pair("GinzburgLandau", new GinzburgLandauDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_findBeats)));
         } else if (drawerName == "BeatBouncer") {
             m_drawers.insert(std::make_pair("BeatBouncer", new BeatBouncerDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_findBeats)));
         }

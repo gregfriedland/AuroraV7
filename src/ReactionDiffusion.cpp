@@ -10,8 +10,8 @@
 #define NUM_INIT_ISLANDS 5
 #define ISLAND_SIZE 20
 
-ReactionDiffusionDrawer::ReactionDiffusionDrawer(const std::string& name, int width, int height, int palSize)
-: Drawer(name, width, height, palSize), m_colorIndex(0) {
+ReactionDiffusionDrawer::ReactionDiffusionDrawer(const std::string& name, int width, int height, int palSize, FindBeats* findBeats)
+: Drawer(name, width, height, palSize), m_colorIndex(0), m_findBeats(findBeats) {
     for (size_t q = 0; q < 2; ++q) {
         m_u[q] = new Array2D<float>(width, height);
         m_v[q] = new Array2D<float>(width, height);
@@ -68,9 +68,14 @@ void ReactionDiffusionDrawer::resetToValues(float bgU, float bgV, float fgU, flo
 void ReactionDiffusionDrawer::draw(int* colIndices) {
     Drawer::draw(colIndices);
 
+    auto onsets = m_findBeats->getOnsets();
+    bool onset = onsets.size() > 0 && onsets[0];
+    size_t speed = (onset ? 1 : 0.2) * m_speed;
+
+
     float zoom = 1;
 
-    for (size_t f = 0; f < m_speed; ++f) {
+    for (size_t f = 0; f < speed; ++f) {
        	// std::cout << *m_v[m_q] << std::endl;
 
         for (size_t y = 1; y < m_height - 1; ++y) {

@@ -4,6 +4,7 @@
 #include "Drawer.h"
 #include "Util.h"
 #include "Array2D.h"
+#include "FindBeats.h"
 #include <sstream>
 #include <ostream>
 
@@ -57,7 +58,7 @@ public:
 
 class ReactionDiffusionDrawer : public Drawer {
 public:
-    ReactionDiffusionDrawer(const std::string& name, int width, int height, int palSize);
+    ReactionDiffusionDrawer(const std::string& name, int width, int height, int palSize, FindBeats* findBeats);
 
     virtual ~ReactionDiffusionDrawer();
 
@@ -78,6 +79,7 @@ protected:
     float m_scale;
     UVUpdater<false>* m_uvUpdaterInternal;
     UVUpdater<true>* m_uvUpdaterBorder;
+    FindBeats* m_findBeats;
 };
 
 

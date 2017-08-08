@@ -6,7 +6,7 @@
 
 class GinzburgLandauDrawer : public ReactionDiffusionDrawer {
 public:
-    GinzburgLandauDrawer(int width, int height, int palSize);
+    GinzburgLandauDrawer(int width, int height, int palSize, FindBeats* findBeats);
 
     virtual void reset();
 

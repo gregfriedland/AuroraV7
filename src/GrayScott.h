@@ -2,11 +2,12 @@
 #define GrayScott_H
 
 #include "ReactionDiffusion.h"
+#include "FindBeats.h"
 
 
 class GrayScottDrawer : public ReactionDiffusionDrawer {
 public:
-    GrayScottDrawer(int width, int height, int palSize);
+    GrayScottDrawer(int width, int height, int palSize, FindBeats* findBeats);
 
     virtual void reset();
 

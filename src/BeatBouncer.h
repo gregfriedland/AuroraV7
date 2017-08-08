@@ -7,7 +7,7 @@
 class BeatBouncerDrawer : public Drawer {
 public:
     BeatBouncerDrawer(int width, int height, int palSize, FindBeats* findBeats)
-    : Drawer("BeatBouncer", width, height, palSize), m_findBeats(findBeats), m_lastOnsetTime(0)
+    : Drawer("BeatBouncer", width, height, palSize), m_findBeats(findBeats)
     {}
 
     virtual void reset() {}
@@ -21,9 +21,7 @@ public:
             	colIndices[x + y * m_width] = 0;
         }
 
-    	auto onsets = m_findBeats->getOnsets(m_lastOnsetTime);
-    	if (millis() - m_lastOnsetTime > 250)
-    		return;
+    	auto onsets = m_findBeats->getOnsets();
 
     	for (size_t i = 0; i < onsets.size(); ++i) {
 		    for (size_t x = i * m_width / onsets.size(); x < (i + 1) * m_width / onsets.size(); x++) {
@@ -35,7 +33,6 @@ public:
 
 protected:
 	FindBeats* m_findBeats;
-	unsigned long m_lastOnsetTime;
 };
 
 #endif

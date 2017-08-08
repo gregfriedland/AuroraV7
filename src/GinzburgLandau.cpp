@@ -61,8 +61,8 @@ public:
 };
 
 
-GinzburgLandauDrawer::GinzburgLandauDrawer(int width, int height, int palSize)
-: ReactionDiffusionDrawer("GinzburgLandau", width, height, palSize) {
+GinzburgLandauDrawer::GinzburgLandauDrawer(int width, int height, int palSize, FindBeats* findBeats)
+: ReactionDiffusionDrawer("GinzburgLandau", width, height, palSize, findBeats) {
     m_colorIndex = 0;
     m_settings.insert(std::make_pair("speed",10));
     m_settings.insert(std::make_pair("colorSpeed",0));
