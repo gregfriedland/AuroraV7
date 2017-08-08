@@ -2,6 +2,7 @@
 #include "Palette.h"
 #include "AlienBlob.h"
 #include "Bzr.h"
+#include "BeatBouncer.h"
 #include "GrayScott.h"
 #include "GinzburgLandau.h"
 #include "Off.h"
@@ -52,6 +53,8 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
         m_faceVideoDrawerTimeout = j["faceDetection"]["videoDrawerTimeout"];
         m_device = j["serialDevice"];
 
+        m_findBeatsCmd = j["findBeatsCmd"];
+
         m_cameraSettings.m_camWidth = j["camera"]["width"];
         m_cameraSettings.m_camHeight = j["camera"]["height"];
         m_cameraSettings.m_screenWidth = j["width"];
@@ -63,9 +66,11 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
     }
 }
 
-Controller::Controller(Matrix* matrix, const ControllerSettings& settings, const std::vector<int>& baseColors,
-                       Camera* camera, FaceDetect* faceDetect)
+Controller::Controller(Matrix* matrix, const ControllerSettings& settings,
+                       const std::vector<int>& baseColors, Camera* camera,
+                       FaceDetect* faceDetect, FindBeats* findBeats)
 : m_matrix(matrix), m_settings(settings), m_camera(camera), m_faceDetect(faceDetect),
+  m_findBeats(findBeats),
   m_palettes(m_settings.m_palSize, baseColors, m_settings.m_baseColorsPerPalette, m_settings.m_gamma),
   m_currDrawer(NULL), m_fpsCounter(2000, "Controller"),
   m_drawerChangeTimer(m_settings.m_drawerChangeInterval) {
@@ -95,6 +100,8 @@ void Controller::init() {
             m_drawers.insert(std::make_pair("GrayScott", new GrayScottDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
         } else if (drawerName == "GinzburgLandau") {
             m_drawers.insert(std::make_pair("GinzburgLandau", new GinzburgLandauDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize)));
+        } else if (drawerName == "BeatBouncer") {
+            m_drawers.insert(std::make_pair("BeatBouncer", new BeatBouncerDrawer(m_settings.m_width, m_settings.m_height, m_settings.m_palSize, m_findBeats)));
         }
     }
     if (m_camera != NULL)

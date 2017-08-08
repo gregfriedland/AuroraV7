@@ -4,8 +4,8 @@
     "gamma": 3.0,
     "paletteSize": 4096,
     "fps": 35,
-    "startDrawer": "GinzburgLandau",
-    "drawers": ["GinzburgLandau"],
+    "startDrawer": "BeatBouncer",
+    "drawers": ["BeatBouncer"],
     "drawerChangeInterval": 20000,
     "camera": {
         "width": 1280,
@@ -17,5 +17,6 @@
         "videoDrawerTimeout": 10000
     },
     "matrix": "ComputerScreen",
-    "serialDevice": ""
+    "serialDevice": "",
+    "findBeatsCmd": "/usr/local/bin/SpectralOnsetDetection -t 0.2 online"
 }

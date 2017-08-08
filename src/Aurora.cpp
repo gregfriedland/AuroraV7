@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <thread>
 #include "Matrix.h"
+#include "FindBeats.h"
 #ifdef __arm__
     #include "HzellerRpiMatrix.h"
     #include "SerialMatrix.h"
@@ -80,8 +81,14 @@ int main(int argc, char** argv) {
         faceDetect->start(1000 / settings.m_faceDetectFps);
     }
 
+    FindBeats *findBeats = nullptr;
+    if (settings.m_findBeatsCmd.size() > 0) {
+        findBeats = new FindBeats(settings.m_findBeatsCmd);
+        findBeats->start();
+    }
+
     settings.m_baseColorsPerPalette = BASE_COLORS_PER_PALETTE;
-    controller = new Controller(matrix, settings, baseColors, camera, faceDetect);
+    controller = new Controller(matrix, settings, baseColors, camera, faceDetect, findBeats);
 
     // do it in the main thread so we can optionally display the opencv window
     while (true) {

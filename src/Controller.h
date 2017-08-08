@@ -7,6 +7,7 @@
 #include "Camera.h"
 #include "Matrix.h"
 #include "FaceDetect.h"
+#include "FindBeats.h"
 
 #include <map>
 #include <vector>
@@ -39,12 +40,15 @@ struct ControllerSettings {
     int m_baseColorsPerPalette;
     int m_faceVideoDrawerTimeout;
     int m_faceDetectFps;
+    std::string m_findBeatsCmd;
     CameraSettings m_cameraSettings;
 };
 
 class Controller {
 public:
-    Controller(Matrix* matrix, const ControllerSettings& settings, const std::vector<int>& baseColors, Camera* camera, FaceDetect* faceDetect);
+    Controller(Matrix* matrix, const ControllerSettings& settings,
+        const std::vector<int>& baseColors, Camera* camera,
+        FaceDetect* faceDetect, FindBeats* findBeats);
 
     ~Controller();
 
@@ -70,6 +74,7 @@ private:
 
     Camera* m_camera;
     FaceDetect* m_faceDetect;
+    FindBeats* m_findBeats;
 
     std::map<std::string,Drawer*> m_drawers;
     Drawer* m_currDrawer;
