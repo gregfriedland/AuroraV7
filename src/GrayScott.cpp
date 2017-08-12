@@ -118,7 +118,7 @@ void GrayScottDrawer::setParams() {
         case 5:
             F = 0.010;
             k = 0.033;
-            scale = std::exp(randomFloat(std::log(0.5), std::log(20)));
+            scale = std::exp(randomFloat(std::log(0.5), std::log(10)));
             break;
 
         // sometimes end quickly on smaller panels

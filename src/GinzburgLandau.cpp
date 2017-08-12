@@ -7,7 +7,7 @@
 #define MAX_ROLLING_MULTIPLIER (2.0 / (35 * 5 + 1))
 #define NUM_INIT_ISLANDS 5
 #define ISLAND_SIZE 20
-#define MAX_SPEED 30 // determined empirically to allow 30fps
+#define MAX_SPEED 7 // determined empirically to allow 30fps
 
 
 template <bool CHECK_BOUNDS>
