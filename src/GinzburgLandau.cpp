@@ -14,6 +14,10 @@ template <bool CHECK_BOUNDS>
 class GinzburgLandauUVUpdater : public UVUpdater<CHECK_BOUNDS> {
 public:    
     GinzburgLandauUVUpdater(float dt, float du, float dv, float alpha, float beta, float gamma, float delta) {
+        setParams(dt, du, dv, alpha, beta, gamma, delta);
+    }
+
+    void setParams(float dt, float du, float dv, float alpha, float beta, float gamma, float delta) {
         m_dt = RD_DUP(dt);
         // std::cout << "m_dt=" << m_dt << std::endl;
         m_du = RD_DUP(du);
@@ -107,10 +111,15 @@ void GinzburgLandauDrawer::setParams() {
       std::setprecision(4) << " alpha=" << alpha << " beta=" << beta << " gamma=" << gamma <<
       " delta=" << delta << " scale=" << m_scale << " totalspeed=" << m_speed << " dt=" << dt << std::endl;
 
-    auto* updater1 = m_uvUpdaterInternal;
-    auto* updater2 = m_uvUpdaterBorder;
-    m_uvUpdaterInternal = new GinzburgLandauUVUpdater<false>(dt, du, dv, alpha, beta, gamma, delta);
-    m_uvUpdaterBorder = new GinzburgLandauUVUpdater<true>(dt, du, dv, alpha, beta, gamma, delta);
-    delete updater1;
-    delete updater2;
+    if (m_uvUpdaterBorder == nullptr) {
+        m_uvUpdaterBorder = new GinzburgLandauUVUpdater<true>(dt, du, dv, alpha, beta, gamma, delta);
+    } else {
+        dynamic_cast<GinzburgLandauUVUpdater<true>*>(m_uvUpdaterBorder)->setParams(dt, du, dv, alpha, beta, gamma, delta);
+    }
+
+    if (m_uvUpdaterInternal == nullptr) {
+        m_uvUpdaterInternal = new GinzburgLandauUVUpdater<false>(dt, du, dv, alpha, beta, gamma, delta);
+    } else {
+        dynamic_cast<GinzburgLandauUVUpdater<false>*>(m_uvUpdaterInternal)->setParams(dt, du, dv, alpha, beta, gamma, delta);
+    }
 }

@@ -4,7 +4,7 @@
     "gamma": 3.0,
     "paletteSize": 4096,
     "fps": 35,
-    "startDrawer": "GrayScott",
+    "startDrawer": "GinzburgLandau",
     "drawers": ["GrayScott", "GinzburgLandau"],
     "drawerChangeInterval": 20000,
     "camera": {
@@ -18,5 +18,5 @@
     },
     "matrix": "ComputerScreen",
     "serialDevice": "",
-    "findBeatsCmd": "/usr/local/bin/SpectralOnsetDetection -t 0.2 --num_onset_bins 1 online"
+    "findBeatsCmd": ""
 }

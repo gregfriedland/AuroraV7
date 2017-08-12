@@ -14,13 +14,17 @@ template <bool CHECK_BOUNDS>
 class GrayScottUVUpdater : public UVUpdater<CHECK_BOUNDS> {
 public:    
     GrayScottUVUpdater(float dt, float du, float dv, float F, float k) {
+        setParams(dt, du, dv, F, k);
+    }
+
+    void setParams(float dt, float du, float dv, float F, float k) {
         m_dt = RD_DUP(dt);
         // std::cout << "m_dt=" << m_dt << std::endl;
         m_du = RD_DUP(du);
         m_dv = RD_DUP(dv);
         m_F = RD_DUP(F);
         m_k = RD_DUP(k);
-        m_Fk = RD_ADD(m_F, m_k);
+        m_Fk = RD_ADD(m_F, m_k);        
     }
 
     virtual void operator()(Array2D<float> *u[], Array2D<float> *v[],
@@ -150,8 +154,15 @@ void GrayScottDrawer::setParams() {
       std::setprecision(4) << " F=" << F << " k=" << k << " scale=" << m_scale <<
       " totalspeed=" << m_speed << " dt=" << dt << std::endl;
 
-    delete m_uvUpdaterInternal;
-    delete m_uvUpdaterBorder;
-    m_uvUpdaterInternal = new GrayScottUVUpdater<false>(dt, du, dv, F, k);
-    m_uvUpdaterBorder = new GrayScottUVUpdater<true>(dt, du, dv, F, k);
+    if (m_uvUpdaterBorder == nullptr) {
+        m_uvUpdaterBorder = new GrayScottUVUpdater<true>(dt, du, dv, F, k);
+    } else {
+        dynamic_cast<GrayScottUVUpdater<true>*>(m_uvUpdaterBorder)->setParams(dt, du, dv, F, k);
+    }
+
+    if (m_uvUpdaterInternal == nullptr) {
+        m_uvUpdaterInternal = new GrayScottUVUpdater<false>(dt, du, dv, F, k);
+    } else {
+        dynamic_cast<GrayScottUVUpdater<false>*>(m_uvUpdaterInternal)->setParams(dt, du, dv, F, k);
+    }
 }

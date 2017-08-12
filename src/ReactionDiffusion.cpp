@@ -29,6 +29,9 @@ ReactionDiffusionDrawer::~ReactionDiffusionDrawer() {
         delete[] m_u[q];
         delete[] m_v[q];
     }
+
+    delete m_uvUpdaterBorder;
+    delete m_uvUpdaterInternal;
 }
 
 void ReactionDiffusionDrawer::resetRandom(float low, float high) {
@@ -68,10 +71,12 @@ void ReactionDiffusionDrawer::resetToValues(float bgU, float bgV, float fgU, flo
 void ReactionDiffusionDrawer::draw(int* colIndices) {
     Drawer::draw(colIndices);
 
-    auto onsets = m_findBeats->getOnsets();
-    bool onset = onsets.size() > 0 && onsets[0];
-    size_t speed = (onset ? 1 : 0.2) * m_speed;
-
+    size_t speed = m_speed;
+    if (m_findBeats != nullptr) {
+        auto onsets = m_findBeats->getOnsets();
+        bool onset = onsets.size() > 0 && onsets[0];
+        speed = (onset ? 3 : 0.2) * m_speed;
+    }
 
     float zoom = 1;
 
