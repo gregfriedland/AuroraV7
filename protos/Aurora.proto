@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package aurora;
+
+service Aurora {
+	rpc SendFrame(Frame) returns (Empty) {}
+}
+
+message Frame {
+  bytes pixels = 1;
+}
+
+message Empty {
+}

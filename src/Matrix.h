@@ -9,6 +9,8 @@ class Matrix {
     virtual ~Matrix() {}
     virtual void setPixel(size_t x, size_t y, unsigned char r, unsigned char g, unsigned char b) = 0;
     virtual void update() = 0;
+    size_t width() const { return m_width; }
+    size_t height() const { return m_height; }
 
  protected:
     size_t m_width, m_height;

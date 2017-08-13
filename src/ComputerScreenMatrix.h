@@ -34,6 +34,7 @@ class ComputerScreenMatrix : public Matrix {
     }
 
 	virtual void update() {	
+		std::cout << "Updating computer screen" << std::endl;
         cv::imshow(WINDOW_NAME, m_img);
         cv::waitKey(1);            
 	}
