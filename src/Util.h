@@ -11,10 +11,6 @@
 #include <ostream>
 #include <sstream>
 
-#ifdef __arm__
-  #include <arm_neon.h>
-#endif
-
 using namespace std::chrono;
 
 

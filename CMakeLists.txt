@@ -18,7 +18,6 @@ SET(SRCS_MATRIX
   ${CMAKE_CURRENT_SOURCE_DIR}/src/Palette.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/Serial.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/Util.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/md5.cpp  
 )
 
 SET(SRCS_PATTERN_GEN
@@ -36,7 +35,6 @@ SET(SRCS_PATTERN_GEN
   ${CMAKE_CURRENT_SOURCE_DIR}/src/Serial.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/Util.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/Video.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/md5.cpp  
 )
 
 if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm") 
@@ -48,16 +46,34 @@ if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
     ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/lib/*.c
   )
 
-  add_executable(AuroraV6-matrix ${SRCS_MATRIX} ${RPI_RGB_MATRIX_SRCS} ${PROTO_SRCS} ${PROTO_HDRS} ${GRPC_SRCS} ${GRPC_HDRS})
-  target_link_libraries(AuroraV6-matrix ${OpenCV_LIBS} ${CMAKE_CURRENT_BINARY_DIR}/raspicam/src/libraspicam_cv.so)
+  add_executable(AuroraV6-matrix
+    ${SRCS_MATRIX}
+    ${RPI_RGB_MATRIX_SRCS}
+    ${PROTO_SRCS}
+    ${PROTO_HDRS}
+    ${GRPC_SRCS}
+    ${GRPC_HDRS}
+  )
+  target_link_libraries(AuroraV6-matrix
+      ${OpenCV_LIBS}
+      ${CMAKE_CURRENT_BINARY_DIR}/raspicam/src/libraspicam_cv.so
+      ${PROTOBUF_LIBRARIES}
+      ${GRPC_LIBRARIES}
+  )
   target_include_directories(AuroraV6-matrix PRIVATE
       ${CMAKE_CURRENT_BINARY_DIR}
       ${CMAKE_CURRENT_SOURCE_DIR}/json/src
       ${CMAKE_CURRENT_SOURCE_DIR}/raspicam/src
       ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/include
-      ${CMAKE_CURRENT_SOURCE_DIR}/asio/asio/include)
-
-  add_executable(AuroraV6-patterngen ${SRCS_PATTERN_GEN} ${PROTO_SRCS} ${PROTO_HDRS} ${GRPC_SRCS} ${GRPC_HDRS})
+  )
+  add_executable(AuroraV6-patterngen
+      ${SRCS_PATTERN_GEN}
+      ${RPI_RGB_MATRIX_SRCS}
+      ${PROTO_SRCS}
+      ${PROTO_HDRS}
+      ${GRPC_SRCS}
+      ${GRPC_HDRS}
+  )
   target_link_libraries(AuroraV6-patterngen
       ${OpenCV_LIBS}
       ${CMAKE_CURRENT_BINARY_DIR}/raspicam/src/libraspicam_cv.so
@@ -68,7 +84,7 @@ if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
       ${CMAKE_CURRENT_BINARY_DIR}
       ${CMAKE_CURRENT_SOURCE_DIR}/json/src
       ${CMAKE_CURRENT_SOURCE_DIR}/raspicam/src
-      ${CMAKE_CURRENT_SOURCE_DIR}/asio/asio/include
+      ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix/include
   )
   target_compile_options(AuroraV6-patterngen PUBLIC -mfpu=neon -mfloat-abi=hard -mtune=cortex-a53)
 else()
@@ -81,7 +97,6 @@ else()
   target_include_directories(AuroraV6-matrix PRIVATE
       ${CMAKE_CURRENT_BINARY_DIR}
       ${CMAKE_CURRENT_SOURCE_DIR}/json/src
-      ${CMAKE_CURRENT_SOURCE_DIR}/asio/asio/include
   )
 
   add_executable(AuroraV6-patterngen ${SRCS_PATTERN_GEN} ${PROTO_SRCS} ${PROTO_HDRS} ${GRPC_SRCS} ${GRPC_HDRS})
@@ -93,7 +108,7 @@ else()
   target_include_directories(AuroraV6-patterngen PRIVATE
       ${CMAKE_CURRENT_BINARY_DIR}
       ${CMAKE_CURRENT_SOURCE_DIR}/json/src
-      ${CMAKE_CURRENT_SOURCE_DIR}/asio/asio/include)
+  )
 endif()
 
 

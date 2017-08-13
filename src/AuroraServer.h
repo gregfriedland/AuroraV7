@@ -21,7 +21,7 @@ public:
   	}
 
 	Status SendFrame(ServerContext* context, const Frame* frame, Empty* empty) override {
-		std::cout << "Receiving frame (" << frame->pixels().size() << ")" << std::endl;
+	    //std::cout << "Receiving frame (" << frame->pixels().size() << ")" << std::endl;
 	    m_matrix->update();
 
 	    if (frame->pixels().size() != m_matrix->width() * m_matrix->height() * 3) {
@@ -43,6 +43,3 @@ public:
 protected:
 	Matrix* m_matrix;
 };
-
-void runServer() {
-}

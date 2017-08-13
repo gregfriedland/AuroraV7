@@ -180,6 +180,7 @@ void Controller::loop(int interval) {
                 m_matrix->setPixel(x, y, col.r, col.g, col.b);
             }
         }
+        m_matrix->update();
 
         // start draw() in background
 	m_drawFuture = std::async(std::launch::async, [this](){
@@ -188,7 +189,6 @@ void Controller::loop(int interval) {
 	    }
 	    m_currDrawer->draw(m_colIndices);
 	  });
-        m_matrix->update();
     });
 }
 

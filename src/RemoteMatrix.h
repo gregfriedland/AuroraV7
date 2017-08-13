@@ -21,8 +21,8 @@ class RemoteMatrix : public Matrix {
 	virtual void setPixel(size_t x, size_t y, unsigned char r, unsigned char g, unsigned char b) {
         size_t index = (y * m_width + x) * 3;
         m_data[index] = r;
-        m_data[index + 1] = r;
-        m_data[index + 2] = r;
+        m_data[index + 1] = g;
+        m_data[index + 2] = b;
     }
 
 	virtual void update() {
