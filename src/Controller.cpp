@@ -24,21 +24,6 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
         json j;
         ifs >> j;
 
-        std::string matrixType = j["matrix"];
-        if (matrixType == "HzellerRpi") {
-            m_matrixType = HZELLER_RPI_MATRIX;
-        } else if (matrixType == "Serial") {
-            m_matrixType = SERIAL_MATRIX;
-        } else if (matrixType == "ComputerScreen") {
-            m_matrixType = COMPUTER_SCREEN_MATRIX;
-        } else if (matrixType == "Noop") {
-            m_matrixType = NOOP_MATRIX;
-        } else {
-            std::cerr << "Invalid matrix type in json file: " << matrixType << 
-                ". Must be one of: 'HzellerRpi', 'Serial', or 'Computer'" << std::endl;
-            exit(1);            
-        }
-
         m_width = j["width"];
         m_height = j["height"];
         m_gamma = j["gamma"];
@@ -51,7 +36,6 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
         m_drawerChangeInterval = j["drawerChangeInterval"];
         m_faceDetectFps = j["faceDetection"]["fps"];
         m_faceVideoDrawerTimeout = j["faceDetection"]["videoDrawerTimeout"];
-        m_device = j["serialDevice"];
 
         m_findBeatsCmd = j["findBeatsCmd"];
 
@@ -60,7 +44,7 @@ ControllerSettings::ControllerSettings(const std::string& configFilename) {
         m_cameraSettings.m_screenWidth = j["width"];
         m_cameraSettings.m_screenHeight = j["height"];
         m_cameraSettings.m_fps = j["camera"]["fps"];
-    } catch(std::exception e) {
+    } catch(std::domain_error& e) {
         std::cerr << "Error while parsing json config file: " << e.what() << std::endl;
         exit(1);
     }

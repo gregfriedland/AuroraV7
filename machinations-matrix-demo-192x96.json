@@ -1,0 +1,10 @@
+{
+    "width": 192,
+    "height": 96,
+    "gamma": 1.0,
+    "paletteSize": 4096,
+    "fps": 35,
+    "matrix": "ComputerScreen",
+    "serialDevice": "",
+    "networkPort": 7000
+}

@@ -17,6 +17,8 @@ class ComputerScreenMatrix : public Matrix {
         std::cout << "Creating video window\n";
         cv::namedWindow(WINDOW_NAME, CV_WINDOW_AUTOSIZE);
 	    m_img = cv::Mat(height * m_pixelMultiplier, width * m_pixelMultiplier, CV_8UC3);
+        cv::imshow(WINDOW_NAME, m_img);
+        cv::waitKey(1);            
 	}
 
 	virtual void setPixel(size_t x, size_t y, unsigned char r, unsigned char g, unsigned char b) {

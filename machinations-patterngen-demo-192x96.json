@@ -1,0 +1,25 @@
+{
+    "width": 192,
+    "height": 96,
+    "gamma": 1.0,
+    "paletteSize": 4096,
+    "fps": 35,
+    "startDrawer": "GinzburgLandau",
+    "drawers": ["GrayScott", "GinzburgLandau"],
+    "drawerChangeInterval": 30000,
+    "camera": {
+        "width": 640,
+        "height": 480,
+        "fps": 0
+    },
+    "faceDetection": {
+        "fps": 0,
+        "videoDrawerTimeout": 10000
+    },
+    "matrix": "Remote",
+    "remote": {
+        "host": "127.0.0.1",
+        "port": 7000
+    },
+    "findBeatsCmd": ""
+}

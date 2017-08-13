@@ -1,11 +1,15 @@
+// Aurora for generating patterns and sending results to a Matrix
+
+#include <signal.h>
+#include <unistd.h>
+#include <thread>
+#include <fstream>
+
 #include "Controller.h"
 #include "Colors.h"
 #include "Camera.h"
 #include "FaceDetect.h"
 #include "Util.h"
-#include <signal.h>
-#include <unistd.h>
-#include <thread>
 #include "Matrix.h"
 #include "FindBeats.h"
 #ifdef __arm__
@@ -14,7 +18,9 @@
     #include "raspicam_cv.h"
 #endif
 #include "ComputerScreenMatrix.h"
+#include "RemoteMatrix.h"
 #include "NoopMatrix.h"
+#include "json.hpp"
 
 
 Controller* controller = nullptr;
@@ -40,9 +46,9 @@ int main(int argc, char** argv) {
         exit(1);
     }
     ControllerSettings settings(argv[1]);
-
-    signal(SIGINT, sigHandler);
-    signal(SIGKILL, sigHandler);
+    std::ifstream ifs(argv[1]);
+    nlohmann::json j;
+    ifs >> j;
 
     // start camera before matrix
     Camera *camera = nullptr;
@@ -53,25 +59,22 @@ int main(int argc, char** argv) {
 
     // Create matrix
     Matrix* matrix = nullptr;
-    switch(settings.m_matrixType) {
+    std::string matrixType = j["matrix"];
+    if (matrixType == "ComputerScreen") {
+        matrix = new ComputerScreenMatrix(j["width"], j["height"]);
+    } else if (matrixType == "Noop") {
+        matrix = new NoopMatrix(j["width"], j["height"]);
+    } else if (matrixType == "Remote") {
+        matrix = new RemoteMatrix(j["width"], j["height"], j["remote"]["host"], j["remote"]["port"]);
 #ifdef __arm__
-        case HZELLER_RPI_MATRIX:
-            matrix = new HzellerRpiMatrix(settings.m_width, settings.m_height);
-            break;
-        case SERIAL_MATRIX:
-            matrix = new SerialMatrix(settings.m_width, settings.m_height, settings.m_device);
-            break;
+    } else if (matrixType == "HzellerRpi") {
+        matrix = new HzellerRpiMatrix(j["width"], j["height"]);
+    } else if (matrixType == "Serial") {
+        matrix = new SerialMatrix(j["width"], j["height"], j["serialDevice"]);
 #endif
-        case COMPUTER_SCREEN_MATRIX:
-            matrix = new ComputerScreenMatrix(settings.m_width, settings.m_height);
-            break;
-        case NOOP_MATRIX:
-            matrix = new NoopMatrix(settings.m_width, settings.m_height);
-            break;
-        default:
-            std::cerr << "Matrix type not implemented\n";
-            exit(1);
-            break;
+    } else {
+        std::cerr << "Matrix type '" << j["matrix"] << "' not implemented\n";
+        exit(1);
     }
 
     // start face detection

@@ -9,6 +9,7 @@
 #include <array>
 #include <cassert>
 #include <ostream>
+#include <sstream>
 
 #ifdef __arm__
   #include <arm_neon.h>
@@ -16,6 +17,29 @@
 
 using namespace std::chrono;
 
+
+inline std::string hexToBytes(const std::string& hex) {
+  std::string bytes;
+
+  for (unsigned int i = 0; i < hex.length(); i += 2) {
+    std::string byteString = hex.substr(i, 2);
+    char byte = (char) strtol(byteString.c_str(), NULL, 16);
+    bytes.push_back(byte);
+  }
+
+  return bytes;
+}
+
+
+inline std::string bytesToHex(const std::string& bytes) {
+	std::stringstream ss;
+	ss << std::hex << std::setfill('0');
+	for (int i = 0; i < 32; ++i)
+	{
+	    ss << std::setw(2) << static_cast<unsigned>(bytes[i]);
+	}
+	return ss.str();
+}
 
 struct Color24 {
     Color24(int col) 
