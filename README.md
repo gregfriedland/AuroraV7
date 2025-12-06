@@ -19,31 +19,13 @@ The project consists of two binaries:
 
 ### Ubuntu/Debian (Raspberry Pi or Linux)
 
+Run the dependency installation script:
+
 ```bash
-# Update package list
-sudo apt-get update
-
-# Install build tools and dependencies
-sudo apt-get install -y \
-    cmake \
-    build-essential \
-    pkg-config \
-    libopencv-dev \
-    libgrpc-dev \
-    libgrpc++-dev \
-    libprotobuf-dev \
-    protobuf-compiler \
-    protobuf-compiler-grpc \
-    nlohmann-json3-dev
-
-# Install GStreamer (for libcamera support on Pi 5)
-sudo apt-get install -y \
-    gstreamer1.0-tools \
-    gstreamer1.0-plugins-base \
-    gstreamer1.0-plugins-good \
-    libgstreamer1.0-dev \
-    libgstreamer-plugins-base1.0-dev
+sudo ./install/install-deps.sh
 ```
+
+This installs cmake, build-essential, OpenCV, gRPC, Protocol Buffers, nlohmann/json, and GStreamer.
 
 ### rpi-rgb-led-matrix Library (Raspberry Pi only)
 
