@@ -126,21 +126,38 @@ else()
 endif()
 
 #------------------------------------------------------------------------------
-# Find rpi-rgb-led-matrix library (from submodule or system)
+# Build rpi-rgb-led-matrix from submodule (ARM only)
 #------------------------------------------------------------------------------
-# First check if the submodule library exists (built from external/rpi-rgb-led-matrix)
-if(EXISTS "${RGB_MATRIX_DIR}/lib/librgbmatrix.a" OR EXISTS "${RGB_MATRIX_DIR}/lib/librgbmatrix.so")
-    set(RGB_MATRIX_LIB ${RGB_MATRIX_DIR}/lib/librgbmatrix.a)
-    message(STATUS "Found rpi-rgb-led-matrix in submodule: ${RGB_MATRIX_LIB}")
-    set(HAS_RGB_MATRIX TRUE)
+if(IS_ARM AND EXISTS "${RGB_MATRIX_DIR}/Makefile")
+    # Build the library from submodule if not already built
+    if(NOT EXISTS "${RGB_MATRIX_DIR}/lib/librgbmatrix.a")
+        message(STATUS "Building rpi-rgb-led-matrix from submodule...")
+        execute_process(
+            COMMAND make -j4
+            WORKING_DIRECTORY ${RGB_MATRIX_DIR}
+            RESULT_VARIABLE RGB_MATRIX_BUILD_RESULT
+        )
+        if(NOT RGB_MATRIX_BUILD_RESULT EQUAL 0)
+            message(WARNING "Failed to build rpi-rgb-led-matrix")
+        endif()
+    endif()
+
+    if(EXISTS "${RGB_MATRIX_DIR}/lib/librgbmatrix.a")
+        set(RGB_MATRIX_LIB ${RGB_MATRIX_DIR}/lib/librgbmatrix.a)
+        message(STATUS "Using rpi-rgb-led-matrix from submodule: ${RGB_MATRIX_LIB}")
+        set(HAS_RGB_MATRIX TRUE)
+    else()
+        message(STATUS "rpi-rgb-led-matrix build failed")
+        set(HAS_RGB_MATRIX FALSE)
+    endif()
 else()
-    # Fall back to system library
+    # Non-ARM or submodule not present - try system library
     find_library(RGB_MATRIX_LIB rgbmatrix)
     if(RGB_MATRIX_LIB)
         message(STATUS "Found rpi-rgb-led-matrix system library: ${RGB_MATRIX_LIB}")
         set(HAS_RGB_MATRIX TRUE)
     else()
-        message(STATUS "rpi-rgb-led-matrix not found - build it with: cd external/rpi-rgb-led-matrix && make")
+        message(STATUS "rpi-rgb-led-matrix not found (not on ARM or submodule missing)")
         set(HAS_RGB_MATRIX FALSE)
     endif()
 endif()

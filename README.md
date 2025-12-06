@@ -37,14 +37,8 @@ cd AuroraV7
 # Or if already cloned, initialize submodules
 git submodule update --init --recursive
 
-# Build rpi-rgb-led-matrix (Raspberry Pi only)
-cd external/rpi-rgb-led-matrix
-make -j4
-cd ../..
-
-# Create build directory and build
-mkdir -p build
-cd build
+# Build (CMake will automatically build rpi-rgb-led-matrix on ARM)
+mkdir -p build && cd build
 cmake ..
 make -j4
 ```
