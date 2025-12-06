@@ -124,35 +124,26 @@ sudo make install
 
 ## Systemd Service
 
-To run AuroraMatrix as a system service:
+Use the setup script to install the systemd service:
 
 ```bash
-# Create service file
-sudo tee /etc/systemd/system/aurorav7.service << EOF
-[Unit]
-Description=AuroraV7 LED Matrix Driver
-After=network.target
+# Full setup (installs deps, builds, configures service)
+sudo ./install/setup-rpi5-ubuntu.sh
 
-[Service]
-ExecStart=/home/debian/AuroraV7/build/AuroraMatrix /home/debian/AuroraV7/config/your-config.json
-Type=simple
-WorkingDirectory=/home/debian/AuroraV7/build
-Nice=-20
-User=root
-Restart=on-failure
-RestartSec=5
+# With custom config file
+sudo ./install/setup-rpi5-ubuntu.sh --config /path/to/config.json
 
-[Install]
-WantedBy=multi-user.target
-EOF
+# Don't start service automatically
+sudo ./install/setup-rpi5-ubuntu.sh --no-start
+```
 
-# Enable and start
-sudo systemctl daemon-reload
-sudo systemctl enable aurorav7
-sudo systemctl start aurorav7
-
-# View logs
-sudo journalctl -u aurorav7 -f
+Service commands:
+```bash
+sudo systemctl status aurorav7   # Check status
+sudo systemctl start aurorav7    # Start service
+sudo systemctl stop aurorav7     # Stop service
+sudo systemctl restart aurorav7  # Restart service
+sudo journalctl -u aurorav7 -f   # View logs
 ```
 
 ## Dependencies
