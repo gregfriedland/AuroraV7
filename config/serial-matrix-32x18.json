@@ -4,8 +4,8 @@
     "gamma": 2.5,
     "paletteSize": 1024,
     "fps": 40,
-    "startDrawer": "GinzburgLandau",
-    "drawers": ["GrayScott", "GinzburgLandau", "AlienBlob", "Bzr"],
+    "startDrawer": "AlienBlob",
+    "drawers": ["AlienBlob"],
     "drawerChangeInterval": 30000,
     "camera": {
         "width": 640,
