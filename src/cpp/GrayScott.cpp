@@ -76,7 +76,9 @@ GrayScottDrawer::GrayScottDrawer(int width, int height, int palSize, FindBeats* 
     m_settings.insert(std::make_pair("params",1));
     m_settingsRanges.insert(std::make_pair("speed", std::make_pair(5,10)));
     m_settingsRanges.insert(std::make_pair("colorSpeed", std::make_pair(5,15)));
-    m_settingsRanges.insert(std::make_pair("params", std::make_pair(0,8)));
+    // Skip param sets 6-8 on small panels (they end quickly)
+    int maxParams = (width < 64 || height < 64) ? 5 : 8;
+    m_settingsRanges.insert(std::make_pair("params", std::make_pair(0, maxParams)));
 
     reset();
 }
