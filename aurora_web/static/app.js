@@ -129,8 +129,8 @@ class AuroraPaint {
             if (this.decayRate > 0) {
                 // Calculate alpha for fade overlay
                 // At 60fps, deltaTime ~= 0.0167
-                // decayRate of 1 should fade noticeably, 10 should fade fast
-                const fadeAlpha = Math.min(0.5, this.decayRate * deltaTime * 3);
+                // decayRate of 1 = slow fade, 10 = fast fade
+                const fadeAlpha = Math.min(0.5, this.decayRate * deltaTime * 0.3);
 
                 if (fadeAlpha > 0.001) {
                     this.ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
