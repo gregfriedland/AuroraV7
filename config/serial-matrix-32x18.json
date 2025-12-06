@@ -4,8 +4,8 @@
     "gamma": 2.5,
     "paletteSize": 4096,
     "fps": 40,
-    "startDrawer": "AlienBlob",
-    "drawers": ["AlienBlob"],
+    "startDrawer": "Bzr",
+    "drawers": ["Bzr"],
     "drawerChangeInterval": 30000,
     "camera": {
         "width": 640,
