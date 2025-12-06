@@ -7,8 +7,9 @@
 #include <algorithm>
 
 #define MAX_ROLLING_MULTIPLIER (2.0 / (35 * 5 + 1))
-#define NUM_INIT_ISLANDS 5
-#define ISLAND_SIZE 20
+// Scale islands based on panel size - use smaller islands for smaller panels
+#define BASE_ISLAND_SIZE 20
+#define BASE_PANEL_SIZE 192  // reference panel width for scaling
 
 ReactionDiffusionDrawer::ReactionDiffusionDrawer(const std::string& name, int width, int height, int palSize, FindBeats* findBeats)
 : Drawer(name, width, height, palSize), m_colorIndex(0), m_findBeats(findBeats) {
@@ -54,11 +55,20 @@ void ReactionDiffusionDrawer::resetToValues(float bgU, float bgV, float fgU, flo
         }
     }
 
-    for (size_t i = 0; i < NUM_INIT_ISLANDS; ++i) {
-        size_t ix = random2() % (m_width - ISLAND_SIZE);
-        size_t iy = random2() % (m_height - ISLAND_SIZE);
-        for (size_t x = ix; x < ix + ISLAND_SIZE; ++x) {
-            for (size_t y = iy; y < iy + ISLAND_SIZE; ++y) {
+    // Scale island size based on panel dimensions
+    float scaleFactor = std::min((float)m_width, (float)m_height) / BASE_PANEL_SIZE;
+    size_t islandSize = std::max(3, (int)(BASE_ISLAND_SIZE * scaleFactor));
+    size_t numIslands = std::max(2, (int)(5 * scaleFactor));
+
+    // Ensure islands fit on the panel
+    if (islandSize >= m_width) islandSize = m_width / 4;
+    if (islandSize >= m_height) islandSize = m_height / 4;
+
+    for (size_t i = 0; i < numIslands; ++i) {
+        size_t ix = random2() % (m_width - islandSize);
+        size_t iy = random2() % (m_height - islandSize);
+        for (size_t x = ix; x < ix + islandSize; ++x) {
+            for (size_t y = iy; y < iy + islandSize; ++y) {
                 size_t index = x + y * m_width;
                 m_u[m_q]->get(index) = fgU;
                 m_v[m_q]->get(index) = fgV;
