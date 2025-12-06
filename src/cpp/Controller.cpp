@@ -11,7 +11,7 @@
 #include <iostream>
 #include <stdlib.h>
 #include <thread>
-#include <highgui.h>
+#include <opencv2/highgui.hpp>
 #include "json.hpp"
 #include <fstream>
 
