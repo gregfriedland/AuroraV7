@@ -15,7 +15,7 @@
 #endif
 #include "ComputerScreenMatrix.h"
 #include "NoopMatrix.h"
-#include "json.hpp"
+#include <nlohmann/json.hpp>
 #include "AuroraServer.h"
 
 

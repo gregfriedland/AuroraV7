@@ -53,10 +53,6 @@ apt-get install -y \
     protobuf-compiler \
     protobuf-compiler-grpc
 
-# Install nlohmann/json
-log_info "Installing nlohmann/json..."
-apt-get install -y nlohmann-json3-dev
-
 # Install GStreamer (for libcamera support on Pi 5)
 log_info "Installing GStreamer..."
 apt-get install -y \
@@ -73,6 +69,6 @@ apt-get install -y gstreamer1.0-libcamera 2>/dev/null || true
 log_info "Dependencies installed successfully!"
 log_info ""
 log_info "Next steps:"
-log_info "  1. Install rpi-rgb-led-matrix (see README.md)"
-log_info "  2. Download json.hpp: curl -sL https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp -o src/cpp/json.hpp"
-log_info "  3. Build: mkdir build && cd build && cmake .. && make -j4"
+log_info "  1. Initialize submodules: git submodule update --init --recursive"
+log_info "  2. Build rpi-rgb-led-matrix: cd external/rpi-rgb-led-matrix && make -j4"
+log_info "  3. Build AuroraV7: mkdir build && cd build && cmake .. && make -j4"

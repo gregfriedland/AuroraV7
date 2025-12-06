@@ -1,0 +1,6 @@
+[submodule "external/rpi-rgb-led-matrix"]
+	path = external/rpi-rgb-led-matrix
+	url = https://github.com/hzeller/rpi-rgb-led-matrix.git
+[submodule "external/nlohmann-json"]
+	path = external/nlohmann-json
+	url = https://github.com/nlohmann/json.git

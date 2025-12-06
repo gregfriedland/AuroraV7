@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <thread>
 #include <opencv2/highgui.hpp>
-#include "json.hpp"
+#include <nlohmann/json.hpp>
 #include <fstream>
 
 using json = nlohmann::json;

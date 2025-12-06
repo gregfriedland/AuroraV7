@@ -19,7 +19,7 @@
 #include "ComputerScreenMatrix.h"
 #include "RemoteMatrix.h"
 #include "NoopMatrix.h"
-#include "json.hpp"
+#include <nlohmann/json.hpp>
 
 
 Controller* controller = nullptr;

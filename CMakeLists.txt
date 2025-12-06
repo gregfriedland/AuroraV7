@@ -15,6 +15,12 @@ pkg_check_modules(GRPC REQUIRED grpc++)
 # Check for GStreamer (needed for libcamera backend on Pi 5)
 pkg_check_modules(GSTREAMER gstreamer-1.0)
 
+#------------------------------------------------------------------------------
+# Submodule paths
+#------------------------------------------------------------------------------
+set(NLOHMANN_JSON_DIR ${CMAKE_SOURCE_DIR}/external/nlohmann-json)
+set(RGB_MATRIX_DIR ${CMAKE_SOURCE_DIR}/external/rpi-rgb-led-matrix)
+
 # Include directories
 include_directories(
     ${CMAKE_SOURCE_DIR}/src/cpp
@@ -22,11 +28,14 @@ include_directories(
     ${OpenCV_INCLUDE_DIRS}
     ${GRPC_INCLUDE_DIRS}
     ${Protobuf_INCLUDE_DIRS}
+    ${NLOHMANN_JSON_DIR}/include
+    ${RGB_MATRIX_DIR}/include
     /usr/local/include
 )
 
 # Link directories
 link_directories(
+    ${RGB_MATRIX_DIR}/lib
     /usr/local/lib
     ${GRPC_LIBRARY_DIRS}
 )
@@ -117,15 +126,23 @@ else()
 endif()
 
 #------------------------------------------------------------------------------
-# Find rpi-rgb-led-matrix library (optional, only available on Pi)
+# Find rpi-rgb-led-matrix library (from submodule or system)
 #------------------------------------------------------------------------------
-find_library(RGB_MATRIX_LIB rgbmatrix)
-if(RGB_MATRIX_LIB)
-    message(STATUS "Found rpi-rgb-led-matrix library")
+# First check if the submodule library exists (built from external/rpi-rgb-led-matrix)
+if(EXISTS "${RGB_MATRIX_DIR}/lib/librgbmatrix.a" OR EXISTS "${RGB_MATRIX_DIR}/lib/librgbmatrix.so")
+    set(RGB_MATRIX_LIB ${RGB_MATRIX_DIR}/lib/librgbmatrix.a)
+    message(STATUS "Found rpi-rgb-led-matrix in submodule: ${RGB_MATRIX_LIB}")
     set(HAS_RGB_MATRIX TRUE)
 else()
-    message(STATUS "rpi-rgb-led-matrix not found - AuroraMatrix will not be built")
-    set(HAS_RGB_MATRIX FALSE)
+    # Fall back to system library
+    find_library(RGB_MATRIX_LIB rgbmatrix)
+    if(RGB_MATRIX_LIB)
+        message(STATUS "Found rpi-rgb-led-matrix system library: ${RGB_MATRIX_LIB}")
+        set(HAS_RGB_MATRIX TRUE)
+    else()
+        message(STATUS "rpi-rgb-led-matrix not found - build it with: cd external/rpi-rgb-led-matrix && make")
+        set(HAS_RGB_MATRIX FALSE)
+    endif()
 endif()
 
 #------------------------------------------------------------------------------

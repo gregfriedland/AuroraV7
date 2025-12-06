@@ -25,47 +25,26 @@ Run the dependency installation script:
 sudo ./install/install-deps.sh
 ```
 
-This installs cmake, build-essential, OpenCV, gRPC, Protocol Buffers, nlohmann/json, and GStreamer.
-
-### rpi-rgb-led-matrix Library (Raspberry Pi only)
-
-```bash
-# Clone the library
-cd ~/src
-mkdir -p ~/src
-git clone https://github.com/hzeller/rpi-rgb-led-matrix.git
-
-# Build
-cd rpi-rgb-led-matrix
-make -j4
-
-# Install headers and library
-sudo cp lib/librgbmatrix.* /usr/local/lib/
-sudo cp -r include/* /usr/local/include/
-sudo ldconfig
-```
-
-### json.hpp Header
-
-Download the nlohmann/json single-header library:
-
-```bash
-curl -sL https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp \
-    -o src/cpp/json.hpp
-```
+This installs cmake, build-essential, OpenCV, gRPC, Protocol Buffers, and GStreamer.
 
 ## Building
 
 ```bash
-# Clone the repository
-git clone https://github.com/gregfriedland/AuroraV7.git
+# Clone the repository with submodules
+git clone --recursive https://github.com/gregfriedland/AuroraV7.git
 cd AuroraV7
 
-# Create build directory
+# Or if already cloned, initialize submodules
+git submodule update --init --recursive
+
+# Build rpi-rgb-led-matrix (Raspberry Pi only)
+cd external/rpi-rgb-led-matrix
+make -j4
+cd ../..
+
+# Create build directory and build
 mkdir -p build
 cd build
-
-# Configure and build
 cmake ..
 make -j4
 ```
@@ -184,8 +163,11 @@ sudo journalctl -u aurorav7 -f
 
 ## Dependencies
 
+### Submodules (included)
 - [rpi-rgb-led-matrix](https://github.com/hzeller/rpi-rgb-led-matrix) - LED matrix driver
-- [raspicam](https://github.com/cedricve/raspicam) - Raspberry Pi camera library (Pi 4 and earlier)
+- [nlohmann/json](https://github.com/nlohmann/json) - JSON for Modern C++
+
+### System packages
 - [OpenCV](https://opencv.org/) - Computer vision library
 - [gRPC](https://grpc.io/) - Remote procedure call framework
-- [nlohmann/json](https://github.com/nlohmann/json) - JSON for Modern C++
+- [raspicam](https://github.com/cedricve/raspicam) - Raspberry Pi camera library (Pi 4 and earlier, optional)
