@@ -79,7 +79,7 @@ fi
 
 # Set default config file
 if [[ -z "${CONFIG_FILE}" ]]; then
-    CONFIG_FILE="${AURORA_DIR}/config/matrix-192x96.json"
+    CONFIG_FILE="${AURORA_DIR}/config/serial-matrix-192x96.json"
 fi
 
 NUM_CORES=$(nproc)
