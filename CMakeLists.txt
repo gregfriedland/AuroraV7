@@ -135,6 +135,8 @@ endif()
 if(HAS_RGB_MATRIX)
     add_executable(AuroraMatrix
         src/cpp/AuroraMatrix.cpp
+        src/cpp/Serial.cpp
+        src/cpp/Util.cpp
         ${PROTO_SRCS}
     )
 
