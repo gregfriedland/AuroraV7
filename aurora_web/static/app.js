@@ -143,7 +143,7 @@ class AuroraPaint {
                 // Calculate decay multiplier
                 // decayRate of 1 = slow fade, 10 = fast fade
                 // Using exponential decay: value *= e^(-rate * dt)
-                const decayMultiplier = Math.exp(-this.decayRate * deltaTime * 2.0);
+                const decayMultiplier = Math.exp(-this.decayRate * deltaTime * 0.2);
 
                 // Apply decay to all pixels in float buffer
                 for (let i = 0; i < this.floatBuffer.length; i++) {
