@@ -15,7 +15,6 @@
 #ifdef __arm__
     #include "HzellerRpiMatrix.h"
     #include "SerialMatrix.h"
-    #include "raspicam_cv.h"
 #endif
 #include "ComputerScreenMatrix.h"
 #include "RemoteMatrix.h"

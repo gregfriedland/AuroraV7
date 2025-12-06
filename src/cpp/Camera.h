@@ -10,7 +10,12 @@
 #include <mutex>
 #include <sstream>
 
-#ifdef __arm__
+// Camera backend selection:
+// - USE_RASPICAM: Use raspicam library (Pi 4 and earlier with legacy camera)
+// - USE_LIBCAMERA: Use libcamera via OpenCV GStreamer pipeline (Pi 5, newer Pi OS)
+// - Neither: Use standard OpenCV VideoCapture (desktop, webcam)
+
+#ifdef USE_RASPICAM
     #include <raspicam_cv.h>
 #endif
 
@@ -55,10 +60,13 @@ public:
 
     void registerNewFrameCallback(std::function<void()> func);
 
+    // Returns the camera backend name for logging
+    static std::string backendName();
+
 private:
     bool m_stop;
     CameraSettings m_settings;
-#ifdef __arm__	
+#ifdef USE_RASPICAM
     raspicam::RaspiCam_Cv m_cam;
 #else
     cv::VideoCapture m_cam;
@@ -70,6 +78,10 @@ private:
     std::mutex m_mutex;
     ImageProcSettings m_imageProcSettings;
     std::function<void()> m_newFrameCallback;
+
+#ifdef USE_LIBCAMERA
+    std::string buildGStreamerPipeline() const;
+#endif
 };
 
 #endif
