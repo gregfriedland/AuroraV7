@@ -11,7 +11,7 @@ class AuroraPaint {
         this.matrixHeight = 18;
         this.scale = 10;  // Display scale
         this.color = [255, 255, 255];
-        this.radius = 3;
+        this.radius = 1;
         this.isDrawing = false;
         this.lastPos = null;
         this.decayRate = 0;  // 0 = no decay
@@ -129,8 +129,8 @@ class AuroraPaint {
             if (this.decayRate > 0) {
                 // Calculate alpha for fade overlay
                 // At 60fps, deltaTime ~= 0.0167
-                // decayRate of 1 = slow fade, 10 = fast fade
-                const fadeAlpha = Math.min(0.5, this.decayRate * deltaTime * 0.3);
+                // decayRate of 0.5+ should be visible, 10 = fast fade
+                const fadeAlpha = Math.min(0.5, this.decayRate * deltaTime * 2.0);
 
                 if (fadeAlpha > 0.001) {
                     this.ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
