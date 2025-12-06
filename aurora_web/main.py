@@ -41,7 +41,7 @@ def load_config(config_path: str = "aurora_web/config.yaml") -> dict:
 
     # Default config if file doesn't exist
     return {
-        "server": {"host": "0.0.0.0", "port": 8000},
+        "server": {"host": "0.0.0.0", "port": 80},
         "matrix": {
             "width": 32,
             "height": 18,
@@ -233,4 +233,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=80)

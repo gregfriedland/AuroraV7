@@ -46,7 +46,7 @@ sudo systemctl restart aurora-web
 echo ""
 echo "=== Aurora Web installed! ==="
 echo ""
-echo "Access at: http://$(hostname -I | awk '{print $1}'):8000"
+echo "Access at: http://$(hostname -I | awk '{print $1}')"
 echo ""
 echo "Commands:"
 echo "  sudo systemctl status aurora-web    # Check status"
