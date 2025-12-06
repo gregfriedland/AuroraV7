@@ -58,14 +58,14 @@ class AuroraPaint {
 
     updateCanvasSize() {
         const container = document.getElementById('canvas-container');
-        // Account for padding (1.5rem = ~24px on each side)
-        const maxWidth = container.clientWidth - 60;
-        const maxHeight = container.clientHeight - 60;
+        // Account for padding (3% on each side = 6% total)
+        const maxWidth = container.clientWidth * 0.94;
+        const maxHeight = container.clientHeight * 0.94;
 
         // Calculate scale to fit container while maintaining aspect ratio
         const scaleX = maxWidth / this.matrixWidth;
         const scaleY = maxHeight / this.matrixHeight;
-        this.scale = Math.min(scaleX, scaleY, 40);  // Max scale of 40
+        this.scale = Math.floor(Math.min(scaleX, scaleY));
 
         this.canvas.width = this.matrixWidth * this.scale;
         this.canvas.height = this.matrixHeight * this.scale;
