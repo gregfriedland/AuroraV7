@@ -3,7 +3,7 @@
 
 #include "Matrix.h"
 #include <iostream>
-#include <highgui.h>
+#include <opencv2/highgui.hpp>
 #include <iostream>
 
 #define WINDOW_NAME "Aurora"
