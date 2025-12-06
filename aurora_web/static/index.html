@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Aurora - Finger Paint</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Aurora Paint</h1>
+            <span id="status" class="status">Connecting...</span>
+        </header>
+
+        <main>
+            <div id="canvas-container">
+                <canvas id="paint-canvas"></canvas>
+            </div>
+
+            <div id="controls">
+                <div class="control-group">
+                    <label>Color</label>
+                    <div id="color-picker">
+                        <div class="color-swatch" data-color="255,255,255" style="background: #fff"></div>
+                        <div class="color-swatch" data-color="255,0,0" style="background: #f00"></div>
+                        <div class="color-swatch" data-color="255,127,0" style="background: #ff7f00"></div>
+                        <div class="color-swatch" data-color="255,255,0" style="background: #ff0"></div>
+                        <div class="color-swatch" data-color="0,255,0" style="background: #0f0"></div>
+                        <div class="color-swatch" data-color="0,255,255" style="background: #0ff"></div>
+                        <div class="color-swatch" data-color="0,0,255" style="background: #00f"></div>
+                        <div class="color-swatch" data-color="255,0,255" style="background: #f0f"></div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Brush Size: <span id="brush-size-label">3</span></label>
+                    <input type="range" id="brush-size" min="1" max="10" value="3">
+                </div>
+
+                <div class="control-group">
+                    <label>Fade Rate: <span id="decay-label">0</span></label>
+                    <input type="range" id="decay-rate" min="0" max="100" value="0">
+                </div>
+
+                <div class="control-group">
+                    <button id="clear-btn" class="btn">Clear Canvas</button>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <span id="fps-display">FPS: --</span>
+            <span id="matrix-info">Matrix: --x--</span>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

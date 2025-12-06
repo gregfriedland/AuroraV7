@@ -1,0 +1,14 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+matrix:
+  width: 32
+  height: 18
+  serial_device: "/dev/ttyACM0"
+  layout_left_to_right: true
+  fps: 40
+  gamma: 2.5
+
+canvas:
+  decay_rate: 0.0  # 0 = permanent paint, >0 = fade rate per second

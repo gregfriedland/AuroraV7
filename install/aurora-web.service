@@ -1,0 +1,22 @@
+[Unit]
+Description=Aurora Web - LED Matrix Finger Paint Server
+After=network.target
+
+[Service]
+Type=simple
+User=debian
+WorkingDirectory=/home/debian/AuroraV7
+ExecStart=/usr/bin/python3 -m uvicorn aurora_web.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Give access to serial port
+SupplementaryGroups=dialout
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
