@@ -5,6 +5,6 @@
     "paletteSize": 4096,
     "fps": 35,
     "matrix": "Serial",
-    "serialDevice": "/dev/ttyUSB0",
+    "serialDevice": "/dev/ttyACM0",
     "networkPort": 50051
 }
