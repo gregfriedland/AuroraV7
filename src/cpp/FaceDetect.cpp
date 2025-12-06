@@ -2,6 +2,10 @@
 #include "Util.h"
 #include <thread>
 
+#ifndef FACE_CASCADE_FILE
+#define FACE_CASCADE_FILE "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
+#endif
+
 
 void FaceDetect::loop(unsigned int interval) {
     m_frameTimer.tick(interval, [=]() {
@@ -20,7 +24,7 @@ void FaceDetect::loop(unsigned int interval) {
         // cout << "Detecting faces...\n";
         unsigned long startTime = millis();
         m_faceCascade.detectMultiScale(gray, faces, 1.1, 3,
-                                       0|CV_HAAR_SCALE_IMAGE,
+                                       0|cv::CASCADE_SCALE_IMAGE,
                                        cv::Size(50, 50));
         // cout << "done in " << millis() - startTime << "ms\n";
         if (faces.size() > 0) {

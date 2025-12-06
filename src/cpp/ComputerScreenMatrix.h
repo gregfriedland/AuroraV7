@@ -15,7 +15,7 @@ class ComputerScreenMatrix : public Matrix {
 		m_pixelMultiplier = std::ceil((float)MIN_WINDOW_WIDTH / width);
 
         std::cout << "Creating video window\n";
-        cv::namedWindow(WINDOW_NAME, CV_WINDOW_AUTOSIZE);
+        cv::namedWindow(WINDOW_NAME, cv::WINDOW_AUTOSIZE);
 	    m_img = cv::Mat(height * m_pixelMultiplier, width * m_pixelMultiplier, CV_8UC3);
         cv::imshow(WINDOW_NAME, m_img);
         cv::waitKey(1);            
