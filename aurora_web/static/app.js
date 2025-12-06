@@ -14,6 +14,8 @@ class AuroraPaint {
         this.radius = 3;
         this.isDrawing = false;
         this.lastPos = null;
+        this.decayRate = 0;  // 0 = no decay
+        this.lastFrameTime = 0;
 
         this.init();
     }
@@ -22,6 +24,7 @@ class AuroraPaint {
         this.setupCanvas();
         this.setupControls();
         this.connect();
+        this.startFadeLoop();
     }
 
     setupCanvas() {
@@ -102,6 +105,7 @@ class AuroraPaint {
         const decayLabel = document.getElementById('decay-label');
         decayInput.addEventListener('input', () => {
             const rate = parseFloat(decayInput.value) / 10;  // 0-10 range
+            this.decayRate = rate;
             decayLabel.textContent = rate.toFixed(1);
             this.sendMessage({ type: 'set_decay', rate: rate });
         });
@@ -110,6 +114,31 @@ class AuroraPaint {
         document.getElementById('clear-btn').addEventListener('click', () => {
             this.clearCanvas();
         });
+    }
+
+    startFadeLoop() {
+        const fade = (timestamp) => {
+            if (this.lastFrameTime === 0) {
+                this.lastFrameTime = timestamp;
+            }
+
+            const deltaTime = (timestamp - this.lastFrameTime) / 1000;  // Convert to seconds
+            this.lastFrameTime = timestamp;
+
+            // Apply fade if decay rate > 0
+            if (this.decayRate > 0) {
+                // Calculate alpha for fade overlay
+                // decayRate of 10 should fade completely in ~1 second
+                const fadeAlpha = Math.min(1, this.decayRate * deltaTime * 0.5);
+
+                this.ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            }
+
+            requestAnimationFrame(fade);
+        };
+
+        requestAnimationFrame(fade);
     }
 
     connect() {
