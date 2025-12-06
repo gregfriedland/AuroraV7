@@ -24,7 +24,7 @@ class AuroraPaint {
         this.setupCanvas();
         this.setupControls();
         this.connect();
-        this.startFadeLoop();
+        this.startRenderLoop();
     }
 
     setupCanvas() {
@@ -116,8 +116,8 @@ class AuroraPaint {
         });
     }
 
-    startFadeLoop() {
-        const fade = (timestamp) => {
+    startRenderLoop() {
+        const render = (timestamp) => {
             if (this.lastFrameTime === 0) {
                 this.lastFrameTime = timestamp;
             }
@@ -135,10 +135,41 @@ class AuroraPaint {
                 this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
             }
 
-            requestAnimationFrame(fade);
+            // Send canvas frame to server at ~20fps
+            this.frameSendCounter = (this.frameSendCounter || 0) + 1;
+            if (this.frameSendCounter >= 3) {  // Every 3rd frame (~20fps from 60fps)
+                this.frameSendCounter = 0;
+                this.sendCanvasFrame();
+            }
+
+            requestAnimationFrame(render);
         };
 
-        requestAnimationFrame(fade);
+        requestAnimationFrame(render);
+    }
+
+    sendCanvasFrame() {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+        // Sample canvas at matrix resolution
+        const frameData = new Uint8Array(this.matrixWidth * this.matrixHeight * 3);
+
+        for (let y = 0; y < this.matrixHeight; y++) {
+            for (let x = 0; x < this.matrixWidth; x++) {
+                // Sample center of each "pixel"
+                const canvasX = Math.floor((x + 0.5) * this.scale);
+                const canvasY = Math.floor((y + 0.5) * this.scale);
+
+                const pixel = this.ctx.getImageData(canvasX, canvasY, 1, 1).data;
+                const idx = (y * this.matrixWidth + x) * 3;
+                frameData[idx] = pixel[0];     // R
+                frameData[idx + 1] = pixel[1]; // G
+                frameData[idx + 2] = pixel[2]; // B
+            }
+        }
+
+        // Send as binary
+        this.ws.send(frameData.buffer);
     }
 
     connect() {

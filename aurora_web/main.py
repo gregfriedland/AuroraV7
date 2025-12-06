@@ -1,6 +1,7 @@
 """Aurora Web - FastAPI application for LED matrix finger paint.
 
 Phase 1 MVP: Finger paint only, no pattern drawers.
+Browser is source of truth - handles fading locally and sends frames to server.
 """
 
 import asyncio
@@ -17,17 +18,18 @@ from fastapi.responses import FileResponse
 import numpy as np
 
 from aurora_web.core.serial_process import SerialOutputManager
-from aurora_web.core.palette import Palette
-from aurora_web.inputs.canvas_feed import CanvasFeed
 
 
 # Global state
 config: dict = {}
 serial_manager: Optional[SerialOutputManager] = None
-canvas_feed: Optional[CanvasFeed] = None
-palette: Optional[Palette] = None
 render_task: Optional[asyncio.Task] = None
 connected_clients: set[WebSocket] = set()
+
+# Frame from browser (source of truth)
+browser_frame: Optional[np.ndarray] = None
+browser_frame_lock = asyncio.Lock()
+frame_num: int = 0
 
 
 def load_config(config_path: str = "aurora_web/config.yaml") -> dict:
@@ -48,43 +50,46 @@ def load_config(config_path: str = "aurora_web/config.yaml") -> dict:
             "gamma": 2.5,
             "layout_left_to_right": True,
         },
-        "canvas": {"decay_rate": 0.0},
     }
 
 
 async def render_loop():
-    """Main render loop - sends canvas to LED matrix at target FPS."""
-    global canvas_feed, serial_manager, palette
+    """Main render loop - sends browser frame to LED matrix."""
+    global browser_frame, serial_manager, frame_num
 
-    target_fps = config.get("matrix", {}).get("fps", 40)
+    matrix_cfg = config.get("matrix", {})
+    width = matrix_cfg.get("width", 32)
+    height = matrix_cfg.get("height", 18)
+    target_fps = matrix_cfg.get("fps", 40)
     frame_time = 1.0 / target_fps
-    frame_num = 0
+    local_frame_num = 0
     last_time = time.perf_counter()
+
+    # Default black frame
+    black_frame = np.zeros((height, width, 3), dtype=np.uint8)
 
     while True:
         frame_start = time.perf_counter()
         delta_time = frame_start - last_time
         last_time = frame_start
 
-        if canvas_feed and serial_manager:
-            # Update canvas (apply decay)
-            canvas_feed.update(delta_time)
-
-            # Get RGB frame from canvas
-            rgb = canvas_feed.get_rgb_frame()
+        if serial_manager:
+            # Use browser frame if available, otherwise black
+            async with browser_frame_lock:
+                rgb = browser_frame if browser_frame is not None else black_frame
 
             # Send to serial
             serial_manager.send_frame(rgb)
 
-            frame_num += 1
+            local_frame_num += 1
 
             # Broadcast status to clients every 30 frames
-            if frame_num % 30 == 0 and connected_clients:
+            if local_frame_num % 30 == 0 and connected_clients:
                 actual_fps = 1.0 / max(delta_time, 0.001)
                 status = {
                     "type": "status",
                     "fps": round(actual_fps, 1),
-                    "frame": frame_num,
+                    "frame": local_frame_num,
                 }
                 await broadcast(json.dumps(status))
 
@@ -111,19 +116,13 @@ async def broadcast(message: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
-    global config, serial_manager, canvas_feed, palette, render_task
+    global config, serial_manager, render_task
 
     # Load config
     config = load_config()
     matrix_cfg = config.get("matrix", {})
     width = matrix_cfg.get("width", 32)
     height = matrix_cfg.get("height", 18)
-
-    # Initialize components
-    canvas_feed = CanvasFeed(width, height)
-    canvas_feed.set_decay(config.get("canvas", {}).get("decay_rate", 0.0))
-
-    palette = Palette(size=4096)
 
     # Start serial output process
     serial_manager = SerialOutputManager(
@@ -183,57 +182,46 @@ async def get_config():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time paint input."""
+    """WebSocket endpoint for real-time frame data from browser."""
+    global browser_frame
+
     await websocket.accept()
     connected_clients.add(websocket)
+
+    matrix_cfg = config.get("matrix", {})
+    width = matrix_cfg.get("width", 32)
+    height = matrix_cfg.get("height", 18)
+    expected_size = width * height * 3
 
     # Send initial config
     await websocket.send_text(json.dumps({
         "type": "config",
-        "width": config.get("matrix", {}).get("width", 32),
-        "height": config.get("matrix", {}).get("height", 18),
+        "width": width,
+        "height": height,
     }))
 
     try:
         while True:
-            data = await websocket.receive_text()
-            msg = json.loads(data)
-            msg_type = msg.get("type")
+            # Can receive either text (JSON) or binary (frame data)
+            message = await websocket.receive()
 
-            if msg_type == "touch_start":
-                x, y = msg.get("x", 0.5), msg.get("y", 0.5)
-                color = tuple(msg.get("color", [255, 255, 255]))
-                radius = msg.get("radius", 2)
-                if canvas_feed:
-                    canvas_feed.touch_start(x, y, color=color, radius=radius)
+            if "bytes" in message:
+                # Binary frame data from browser
+                data = message["bytes"]
+                if len(data) == expected_size:
+                    # Convert to numpy array
+                    frame = np.frombuffer(data, dtype=np.uint8).reshape(height, width, 3)
+                    async with browser_frame_lock:
+                        browser_frame = frame.copy()
 
-            elif msg_type == "touch_move":
-                x, y = msg.get("x", 0.5), msg.get("y", 0.5)
-                if canvas_feed:
-                    canvas_feed.touch_move(x, y)
+            elif "text" in message:
+                # JSON message (for backward compatibility / other commands)
+                msg = json.loads(message["text"])
+                msg_type = msg.get("type")
 
-            elif msg_type == "touch_end":
-                if canvas_feed:
-                    canvas_feed.touch_end()
-
-            elif msg_type == "clear_canvas":
-                if canvas_feed:
-                    canvas_feed.clear()
-
-            elif msg_type == "set_color":
-                color = msg.get("color", [255, 255, 255])
-                if canvas_feed:
-                    canvas_feed.set_color(*color)
-
-            elif msg_type == "set_radius":
-                radius = msg.get("radius", 2)
-                if canvas_feed:
-                    canvas_feed.set_radius(radius)
-
-            elif msg_type == "set_decay":
-                rate = msg.get("rate", 0)
-                if canvas_feed:
-                    canvas_feed.set_decay(rate)
+                if msg_type == "clear_canvas":
+                    async with browser_frame_lock:
+                        browser_frame = np.zeros((height, width, 3), dtype=np.uint8)
 
     except WebSocketDisconnect:
         pass
