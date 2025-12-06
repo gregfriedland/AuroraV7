@@ -19,11 +19,19 @@ if systemctl list-unit-files | grep -q aurorav7.service; then
     echo "Old service removed."
 fi
 
-# Install Python dependencies
+# Install uv if not present
+if ! command -v uv &> /dev/null; then
+    echo "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
+# Create venv and install Python dependencies
 echo ""
 echo "Installing Python dependencies..."
-python3 -m pip install --user --break-system-packages fastapi "uvicorn[standard]" websockets pyyaml numpy pyserial 2>/dev/null || \
-python3 -m pip install --user fastapi "uvicorn[standard]" websockets pyyaml numpy pyserial
+cd "$SCRIPT_DIR/.."
+uv venv --python 3.11 2>/dev/null || uv venv
+uv pip install fastapi "uvicorn[standard]" websockets pyyaml numpy pyserial
 
 # Copy service file
 echo ""
