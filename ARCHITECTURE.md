@@ -1030,3 +1030,89 @@ users_db: "./users.yaml"
 - **NumPy vectorized**: All drawer operations use vectorized numpy (no Python loops)
 - **Async I/O**: Audio/video capture runs in background tasks
 - **Target**: 40fps stable on Raspberry Pi 4/5
+
+## Migration Path
+
+### Phase 1: Finger Paint Only (MVP)
+
+Standalone Python web server with finger paint - no C++ integration.
+
+**Scope:**
+- FastAPI web server with static file serving
+- WebSocket for real-time touch input
+- CanvasFeed for paint buffer management
+- Separate serial process for output
+- Simple web UI with canvas + color picker + brush size
+
+**Files to create:**
+```
+aurora_web/
+├── main.py              # FastAPI app entry point
+├── core/
+│   ├── serial_process.py    # Separate process for serial
+│   ├── shared_frame.py      # Shared memory buffer
+│   └── palette.py           # Simple gradient palette
+├── inputs/
+│   └── canvas_feed.py       # Touch/paint handling
+├── static/
+│   ├── index.html           # Finger paint UI
+│   ├── app.js               # WebSocket + canvas logic
+│   └── style.css
+└── config.yaml
+```
+
+**Deliverable:** User can open browser, draw with finger/mouse, see it on LED matrix in real-time.
+
+**No:**
+- No pattern drawers
+- No audio/video input
+- No custom drawer editor
+- No user profiles
+
+---
+
+### Phase 2: Basic Pattern Drawers
+
+Port 1-2 simple drawers to Python.
+
+**Scope:**
+- Drawer base class with InputContext
+- Port AlienBlob (Perlin noise - simplest)
+- Drawer selection in web UI
+- Settings sliders (auto-generated from schema)
+
+---
+
+### Phase 3: All Drawers + Audio
+
+Port remaining drawers, add audio reactivity.
+
+**Scope:**
+- Port Bzr, GrayScott, GinzburgLandau
+- AudioFeed with beat detection
+- Audio reactivity in drawers
+- Drawer auto-rotation
+
+---
+
+### Phase 4: Custom Drawers + Users
+
+Full feature set.
+
+**Scope:**
+- Custom drawer YAML format
+- Code editor in web UI (CodeMirror)
+- User profiles
+- Save/load custom drawers
+- VideoFeed (optional)
+
+---
+
+### Phase 5: Retire C++
+
+Remove C++ pattern generator, single Python codebase.
+
+**Scope:**
+- Update systemd service to run Python
+- Archive C++ code
+- Update documentation
