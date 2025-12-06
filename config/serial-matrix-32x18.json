@@ -2,7 +2,7 @@
     "width": 32,
     "height": 18,
     "gamma": 2.5,
-    "paletteSize": 1024,
+    "paletteSize": 4096,
     "fps": 40,
     "startDrawer": "Bzr",
     "drawers": ["Bzr"],
