@@ -22,8 +22,8 @@ fi
 # Install Python dependencies
 echo ""
 echo "Installing Python dependencies..."
-pip3 install --user --break-system-packages fastapi "uvicorn[standard]" websockets pyyaml numpy pyserial 2>/dev/null || \
-pip3 install --user fastapi "uvicorn[standard]" websockets pyyaml numpy pyserial
+python3 -m pip install --user --break-system-packages fastapi "uvicorn[standard]" websockets pyyaml numpy pyserial 2>/dev/null || \
+python3 -m pip install --user fastapi "uvicorn[standard]" websockets pyyaml numpy pyserial
 
 # Copy service file
 echo ""
