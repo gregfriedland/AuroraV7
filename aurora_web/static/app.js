@@ -1,5 +1,6 @@
 /**
  * Aurora Paint - WebSocket client and canvas drawing logic
+ * Uses float buffer for smooth fading without quantization artifacts
  */
 
 class AuroraPaint {
@@ -17,6 +18,9 @@ class AuroraPaint {
         this.decayRate = 0;  // 0 = no decay
         this.lastFrameTime = 0;
 
+        // Float buffer for smooth fading (stores RGB values at matrix resolution)
+        this.floatBuffer = null;
+
         this.init();
     }
 
@@ -25,6 +29,11 @@ class AuroraPaint {
         this.setupControls();
         this.connect();
         this.startRenderLoop();
+    }
+
+    initFloatBuffer() {
+        // Initialize float buffer with zeros (black)
+        this.floatBuffer = new Float32Array(this.matrixWidth * this.matrixHeight * 3);
     }
 
     setupCanvas() {
@@ -73,9 +82,13 @@ class AuroraPaint {
         this.canvas.width = this.matrixWidth * this.scale;
         this.canvas.height = this.matrixHeight * this.scale;
 
-        // Redraw
-        this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        // Initialize or preserve float buffer
+        if (!this.floatBuffer) {
+            this.initFloatBuffer();
+        }
+
+        // Render buffer to canvas
+        this.renderBufferToCanvas();
     }
 
     setupControls() {
@@ -125,18 +138,21 @@ class AuroraPaint {
             const deltaTime = (timestamp - this.lastFrameTime) / 1000;  // Convert to seconds
             this.lastFrameTime = timestamp;
 
-            // Apply fade if decay rate > 0
-            if (this.decayRate > 0) {
-                // Calculate alpha for fade overlay
-                // At 60fps, deltaTime ~= 0.0167
-                // decayRate of 0.5+ should be visible, 10 = fast fade
-                const fadeAlpha = Math.min(0.5, this.decayRate * deltaTime * 2.0);
+            // Apply fade to float buffer if decay rate > 0
+            if (this.decayRate > 0 && this.floatBuffer) {
+                // Calculate decay multiplier
+                // decayRate of 1 = slow fade, 10 = fast fade
+                // Using exponential decay: value *= e^(-rate * dt)
+                const decayMultiplier = Math.exp(-this.decayRate * deltaTime * 2.0);
 
-                if (fadeAlpha > 0.001) {
-                    this.ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
-                    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                // Apply decay to all pixels in float buffer
+                for (let i = 0; i < this.floatBuffer.length; i++) {
+                    this.floatBuffer[i] *= decayMultiplier;
                 }
             }
+
+            // Render float buffer to canvas
+            this.renderBufferToCanvas();
 
             // Send canvas frame to server at ~20fps
             this.frameSendCounter = (this.frameSendCounter || 0) + 1;
@@ -151,24 +167,47 @@ class AuroraPaint {
         requestAnimationFrame(render);
     }
 
-    sendCanvasFrame() {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    renderBufferToCanvas() {
+        if (!this.floatBuffer) return;
 
-        // Sample canvas at matrix resolution
+        // Create ImageData at canvas resolution
+        const imageData = this.ctx.createImageData(this.canvas.width, this.canvas.height);
+        const data = imageData.data;
+
+        // Render each matrix pixel as a scaled block
+        for (let my = 0; my < this.matrixHeight; my++) {
+            for (let mx = 0; mx < this.matrixWidth; mx++) {
+                const bufIdx = (my * this.matrixWidth + mx) * 3;
+                const r = Math.round(Math.min(255, Math.max(0, this.floatBuffer[bufIdx])));
+                const g = Math.round(Math.min(255, Math.max(0, this.floatBuffer[bufIdx + 1])));
+                const b = Math.round(Math.min(255, Math.max(0, this.floatBuffer[bufIdx + 2])));
+
+                // Fill the scaled block
+                for (let sy = 0; sy < this.scale; sy++) {
+                    for (let sx = 0; sx < this.scale; sx++) {
+                        const canvasX = mx * this.scale + sx;
+                        const canvasY = my * this.scale + sy;
+                        const canvasIdx = (canvasY * this.canvas.width + canvasX) * 4;
+                        data[canvasIdx] = r;
+                        data[canvasIdx + 1] = g;
+                        data[canvasIdx + 2] = b;
+                        data[canvasIdx + 3] = 255;  // Alpha
+                    }
+                }
+            }
+        }
+
+        this.ctx.putImageData(imageData, 0, 0);
+    }
+
+    sendCanvasFrame() {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.floatBuffer) return;
+
+        // Convert float buffer to uint8 for sending
         const frameData = new Uint8Array(this.matrixWidth * this.matrixHeight * 3);
 
-        for (let y = 0; y < this.matrixHeight; y++) {
-            for (let x = 0; x < this.matrixWidth; x++) {
-                // Sample center of each "pixel"
-                const canvasX = Math.floor((x + 0.5) * this.scale);
-                const canvasY = Math.floor((y + 0.5) * this.scale);
-
-                const pixel = this.ctx.getImageData(canvasX, canvasY, 1, 1).data;
-                const idx = (y * this.matrixWidth + x) * 3;
-                frameData[idx] = pixel[0];     // R
-                frameData[idx + 1] = pixel[1]; // G
-                frameData[idx + 2] = pixel[2]; // B
-            }
+        for (let i = 0; i < this.floatBuffer.length; i++) {
+            frameData[i] = Math.round(Math.min(255, Math.max(0, this.floatBuffer[i])));
         }
 
         // Send as binary
@@ -206,6 +245,7 @@ class AuroraPaint {
             case 'config':
                 this.matrixWidth = msg.width;
                 this.matrixHeight = msg.height;
+                this.initFloatBuffer();
                 this.updateCanvasSize();
                 document.getElementById('matrix-info').textContent =
                     `Matrix: ${msg.width}x${msg.height}`;
@@ -242,8 +282,8 @@ class AuroraPaint {
         const pos = this.getCanvasPos(event);
         this.lastPos = pos;
 
-        // Draw locally
-        this.drawPoint(pos.x, pos.y);
+        // Draw to float buffer
+        this.drawPointToBuffer(pos.x, pos.y);
 
         // Send to server
         this.sendMessage({
@@ -260,9 +300,9 @@ class AuroraPaint {
 
         const pos = this.getCanvasPos(event);
 
-        // Draw locally
+        // Draw to float buffer
         if (this.lastPos) {
-            this.drawLine(this.lastPos.x, this.lastPos.y, pos.x, pos.y);
+            this.drawLineToBuffer(this.lastPos.x, this.lastPos.y, pos.x, pos.y);
         }
         this.lastPos = pos;
 
@@ -282,43 +322,75 @@ class AuroraPaint {
         this.sendMessage({ type: 'touch_end' });
     }
 
-    drawPoint(x, y) {
-        const px = x * this.matrixWidth;
-        const py = y * this.matrixHeight;
+    // Draw a filled circle to the float buffer at matrix resolution
+    drawPointToBuffer(x, y) {
+        if (!this.floatBuffer) return;
 
-        this.ctx.fillStyle = `rgb(${this.color.join(',')})`;
-        this.ctx.beginPath();
-        this.ctx.arc(
-            px * this.scale,
-            py * this.scale,
-            this.radius * this.scale,
-            0,
-            Math.PI * 2
-        );
-        this.ctx.fill();
+        const cx = x * this.matrixWidth;
+        const cy = y * this.matrixHeight;
+
+        // Draw filled circle
+        for (let my = 0; my < this.matrixHeight; my++) {
+            for (let mx = 0; mx < this.matrixWidth; mx++) {
+                const dx = mx + 0.5 - cx;
+                const dy = my + 0.5 - cy;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist <= this.radius) {
+                    const idx = (my * this.matrixWidth + mx) * 3;
+                    this.floatBuffer[idx] = this.color[0];
+                    this.floatBuffer[idx + 1] = this.color[1];
+                    this.floatBuffer[idx + 2] = this.color[2];
+                }
+            }
+        }
     }
 
-    drawLine(x1, y1, x2, y2) {
-        const px1 = x1 * this.matrixWidth * this.scale;
-        const py1 = y1 * this.matrixHeight * this.scale;
-        const px2 = x2 * this.matrixWidth * this.scale;
-        const py2 = y2 * this.matrixHeight * this.scale;
+    // Draw a line to the float buffer using Bresenham-style interpolation
+    drawLineToBuffer(x1, y1, x2, y2) {
+        if (!this.floatBuffer) return;
 
-        this.ctx.strokeStyle = `rgb(${this.color.join(',')})`;
-        this.ctx.lineWidth = this.radius * this.scale * 2;
-        this.ctx.lineCap = 'round';
-        this.ctx.beginPath();
-        this.ctx.moveTo(px1, py1);
-        this.ctx.lineTo(px2, py2);
-        this.ctx.stroke();
+        // Convert to matrix coordinates
+        const mx1 = x1 * this.matrixWidth;
+        const my1 = y1 * this.matrixHeight;
+        const mx2 = x2 * this.matrixWidth;
+        const my2 = y2 * this.matrixHeight;
 
-        // Also draw end point
-        this.drawPoint(x2, y2);
+        // Calculate distance and step count
+        const dx = mx2 - mx1;
+        const dy = my2 - my1;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const steps = Math.max(1, Math.ceil(dist * 2));  // 2 samples per pixel
+
+        // Draw points along the line
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const cx = mx1 + dx * t;
+            const cy = my1 + dy * t;
+
+            // Draw filled circle at this point
+            for (let my = 0; my < this.matrixHeight; my++) {
+                for (let mx = 0; mx < this.matrixWidth; mx++) {
+                    const pdx = mx + 0.5 - cx;
+                    const pdy = my + 0.5 - cy;
+                    const pdist = Math.sqrt(pdx * pdx + pdy * pdy);
+
+                    if (pdist <= this.radius) {
+                        const idx = (my * this.matrixWidth + mx) * 3;
+                        this.floatBuffer[idx] = this.color[0];
+                        this.floatBuffer[idx + 1] = this.color[1];
+                        this.floatBuffer[idx + 2] = this.color[2];
+                    }
+                }
+            }
+        }
     }
 
     clearCanvas() {
-        this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        if (this.floatBuffer) {
+            this.floatBuffer.fill(0);
+        }
+        this.renderBufferToCanvas();
         this.sendMessage({ type: 'clear_canvas' });
     }
 }
