@@ -27,10 +27,14 @@ LED matrix control software with a Python web interface for pattern generation, 
 git clone https://github.com/gregfriedland/AuroraV7.git
 cd AuroraV7
 
+# Install uv (fast Python package manager)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.local/bin/env
+
 # Create virtual environment and install dependencies
-python3 -m venv .venv
+uv venv .venv
 source .venv/bin/activate
-pip install -e .
+uv pip install -e .
 
 # Install systemd service
 sudo ./install/install-aurora-web.sh
@@ -43,14 +47,13 @@ sudo ./install/install-aurora-web.sh
 git clone https://github.com/gregfriedland/AuroraV7.git
 cd AuroraV7
 
-# Create virtual environment
-python3 -m venv .venv
+# Install uv if not already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.local/bin/env
+
+# Create virtual environment and install
+uv venv .venv
 source .venv/bin/activate
-
-# Install dependencies
-pip install -e .
-
-# Or install with uv (faster)
 uv pip install -e .
 ```
 
