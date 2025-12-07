@@ -1,7 +1,7 @@
-"""Aurora Web - FastAPI application for LED matrix finger paint.
+"""Aurora Web - FastAPI application for LED matrix visualization.
 
-Phase 1 MVP: Finger paint only, no pattern drawers.
-Browser is source of truth - handles fading locally and sends frames to server.
+Supports both finger paint mode (browser-sourced frames) and
+pattern mode (server-generated frames from drawers).
 """
 
 import asyncio
@@ -18,18 +18,20 @@ from fastapi.responses import FileResponse
 import numpy as np
 
 from aurora_web.core.serial_process import SerialOutputManager
+from aurora_web.core.drawer_manager import DrawerManager
+from aurora_web.drawers import OffDrawer, AlienBlobDrawer
 
 
 # Global state
 config: dict = {}
 serial_manager: Optional[SerialOutputManager] = None
+drawer_manager: Optional[DrawerManager] = None
 render_task: Optional[asyncio.Task] = None
 connected_clients: set[WebSocket] = set()
 
-# Frame from browser (source of truth)
+# Frame from browser (used in paint mode)
 browser_frame: Optional[np.ndarray] = None
 browser_frame_lock = asyncio.Lock()
-frame_num: int = 0
 
 
 def load_config(config_path: str = "aurora_web/config.yaml") -> dict:
@@ -54,29 +56,24 @@ def load_config(config_path: str = "aurora_web/config.yaml") -> dict:
 
 
 async def render_loop():
-    """Main render loop - sends browser frame to LED matrix."""
-    global browser_frame, serial_manager, frame_num
+    """Main render loop - sends frames to LED matrix."""
+    global browser_frame, serial_manager, drawer_manager
 
     matrix_cfg = config.get("matrix", {})
-    width = matrix_cfg.get("width", 32)
-    height = matrix_cfg.get("height", 18)
     target_fps = matrix_cfg.get("fps", 40)
     frame_time = 1.0 / target_fps
     local_frame_num = 0
     last_time = time.perf_counter()
-
-    # Default black frame
-    black_frame = np.zeros((height, width, 3), dtype=np.uint8)
 
     while True:
         frame_start = time.perf_counter()
         delta_time = frame_start - last_time
         last_time = frame_start
 
-        if serial_manager:
-            # Use browser frame if available, otherwise black
+        if serial_manager and drawer_manager:
+            # Get current frame based on mode
             async with browser_frame_lock:
-                rgb = browser_frame if browser_frame is not None else black_frame
+                rgb = drawer_manager.get_frame(browser_frame)
 
             # Send to serial
             serial_manager.send_frame(rgb)
@@ -90,6 +87,8 @@ async def render_loop():
                     "type": "status",
                     "fps": round(actual_fps, 1),
                     "frame": local_frame_num,
+                    "mode": drawer_manager.mode,
+                    "drawer": drawer_manager.active_drawer.name if drawer_manager.active_drawer else None,
                 }
                 await broadcast(json.dumps(status))
 
@@ -116,13 +115,23 @@ async def broadcast(message: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
-    global config, serial_manager, render_task
+    global config, serial_manager, drawer_manager, render_task
 
     # Load config
     config = load_config()
     matrix_cfg = config.get("matrix", {})
     width = matrix_cfg.get("width", 32)
     height = matrix_cfg.get("height", 18)
+
+    # Initialize drawer manager
+    drawer_manager = DrawerManager(width, height)
+
+    # Register drawers
+    drawer_manager.register_drawer(OffDrawer(width, height))
+    drawer_manager.register_drawer(AlienBlobDrawer(width, height))
+
+    # Set default drawer
+    drawer_manager.set_active_drawer("AlienBlob")
 
     # Start serial output process
     serial_manager = SerialOutputManager(
@@ -139,6 +148,7 @@ async def lifespan(app: FastAPI):
     render_task = asyncio.create_task(render_loop())
 
     print(f"[Aurora Web] Started - {width}x{height} matrix")
+    print(f"[Aurora Web] Drawers: {list(drawer_manager.drawers.keys())}")
 
     yield
 
@@ -180,10 +190,26 @@ async def get_config():
     }
 
 
+@app.get("/api/drawers")
+async def get_drawers():
+    """Get list of available drawers."""
+    if drawer_manager:
+        return {"drawers": drawer_manager.get_drawer_list()}
+    return {"drawers": []}
+
+
+@app.get("/api/status")
+async def get_status():
+    """Get current status."""
+    if drawer_manager:
+        return drawer_manager.get_status()
+    return {"mode": "paint", "active_drawer": None, "drawers": []}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time frame data from browser."""
-    global browser_frame
+    """WebSocket endpoint for real-time communication."""
+    global browser_frame, drawer_manager
 
     await websocket.accept()
     connected_clients.add(websocket)
@@ -194,34 +220,87 @@ async def websocket_endpoint(websocket: WebSocket):
     expected_size = width * height * 3
 
     # Send initial config
-    await websocket.send_text(json.dumps({
+    init_msg = {
         "type": "config",
         "width": width,
         "height": height,
-    }))
+    }
+
+    # Add drawer info
+    if drawer_manager:
+        init_msg["mode"] = drawer_manager.mode
+        init_msg["drawers"] = drawer_manager.get_drawer_list()
+        init_msg["active_drawer"] = drawer_manager.active_drawer.name if drawer_manager.active_drawer else None
+
+    await websocket.send_text(json.dumps(init_msg))
 
     try:
         while True:
-            # Can receive either text (JSON) or binary (frame data)
             message = await websocket.receive()
 
             if "bytes" in message:
-                # Binary frame data from browser
+                # Binary frame data from browser (paint mode)
                 data = message["bytes"]
                 if len(data) == expected_size:
-                    # Convert to numpy array
                     frame = np.frombuffer(data, dtype=np.uint8).reshape(height, width, 3)
                     async with browser_frame_lock:
                         browser_frame = frame.copy()
 
             elif "text" in message:
-                # JSON message (for backward compatibility / other commands)
+                # JSON message
                 msg = json.loads(message["text"])
                 msg_type = msg.get("type")
 
                 if msg_type == "clear_canvas":
                     async with browser_frame_lock:
                         browser_frame = np.zeros((height, width, 3), dtype=np.uint8)
+
+                elif msg_type == "set_mode":
+                    # Switch between paint and pattern mode
+                    mode = msg.get("mode", "paint")
+                    if drawer_manager:
+                        drawer_manager.set_mode(mode)
+                        # Notify all clients
+                        await broadcast(json.dumps({
+                            "type": "mode_changed",
+                            "mode": mode
+                        }))
+
+                elif msg_type == "set_drawer":
+                    # Set active drawer
+                    drawer_name = msg.get("drawer")
+                    if drawer_manager and drawer_name:
+                        if drawer_manager.set_active_drawer(drawer_name):
+                            # Send updated settings
+                            await websocket.send_text(json.dumps({
+                                "type": "drawer_changed",
+                                "drawer": drawer_name,
+                                "settings": drawer_manager.active_drawer.get_settings_info()
+                            }))
+
+                elif msg_type == "set_drawer_settings":
+                    # Update drawer settings
+                    settings = msg.get("settings", {})
+                    if drawer_manager:
+                        drawer_manager.update_drawer_settings(settings)
+
+                elif msg_type == "randomize_drawer":
+                    # Randomize drawer settings
+                    if drawer_manager and drawer_manager.active_drawer:
+                        drawer_manager.active_drawer.randomize_settings()
+                        await websocket.send_text(json.dumps({
+                            "type": "drawer_changed",
+                            "drawer": drawer_manager.active_drawer.name,
+                            "settings": drawer_manager.active_drawer.get_settings_info()
+                        }))
+
+                elif msg_type == "get_drawers":
+                    # Return list of drawers
+                    if drawer_manager:
+                        await websocket.send_text(json.dumps({
+                            "type": "drawers_list",
+                            "drawers": drawer_manager.get_drawer_list()
+                        }))
 
     except WebSocketDisconnect:
         pass

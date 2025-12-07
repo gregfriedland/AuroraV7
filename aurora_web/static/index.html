@@ -3,48 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Aurora - Finger Paint</title>
+    <title>Aurora - LED Matrix</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <div id="app">
         <header>
-            <h1>Aurora Paint</h1>
+            <h1>Aurora</h1>
             <span id="status" class="status">Connecting...</span>
         </header>
 
         <main>
+            <!-- Mode Toggle -->
+            <div id="mode-toggle" class="mode-toggle">
+                <button id="mode-paint" class="mode-btn active">Paint</button>
+                <button id="mode-pattern" class="mode-btn">Pattern</button>
+            </div>
+
+            <!-- Canvas Container (visible in paint mode) -->
             <div id="canvas-container">
                 <canvas id="paint-canvas"></canvas>
             </div>
 
+            <!-- Pattern Info (visible in pattern mode) -->
+            <div id="pattern-info" class="pattern-info hidden">
+                <div class="pattern-display">
+                    <span class="pattern-label">Current Pattern:</span>
+                    <span id="current-pattern-name">--</span>
+                </div>
+            </div>
+
             <div id="controls">
-                <div class="control-group">
-                    <label>Color</label>
-                    <div id="color-picker">
-                        <div class="color-swatch" data-color="255,255,255" style="background: #fff"></div>
-                        <div class="color-swatch" data-color="255,0,0" style="background: #f00"></div>
-                        <div class="color-swatch" data-color="255,127,0" style="background: #ff7f00"></div>
-                        <div class="color-swatch" data-color="255,255,0" style="background: #ff0"></div>
-                        <div class="color-swatch" data-color="0,255,0" style="background: #0f0"></div>
-                        <div class="color-swatch" data-color="0,255,255" style="background: #0ff"></div>
-                        <div class="color-swatch" data-color="0,0,255" style="background: #00f"></div>
-                        <div class="color-swatch" data-color="255,0,255" style="background: #f0f"></div>
+                <!-- Paint Controls -->
+                <div id="paint-controls">
+                    <div class="control-group">
+                        <label>Color</label>
+                        <div id="color-picker">
+                            <div class="color-swatch" data-color="255,255,255" style="background: #fff"></div>
+                            <div class="color-swatch" data-color="255,0,0" style="background: #f00"></div>
+                            <div class="color-swatch" data-color="255,127,0" style="background: #ff7f00"></div>
+                            <div class="color-swatch" data-color="255,255,0" style="background: #ff0"></div>
+                            <div class="color-swatch" data-color="0,255,0" style="background: #0f0"></div>
+                            <div class="color-swatch" data-color="0,255,255" style="background: #0ff"></div>
+                            <div class="color-swatch" data-color="0,0,255" style="background: #00f"></div>
+                            <div class="color-swatch" data-color="255,0,255" style="background: #f0f"></div>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Brush Size: <span id="brush-size-label">1</span></label>
+                        <input type="range" id="brush-size" min="1" max="10" value="1">
+                    </div>
+
+                    <div class="control-group">
+                        <label>Fade Rate: <span id="decay-label">0</span></label>
+                        <input type="range" id="decay-rate" min="0" max="100" value="0">
+                    </div>
+
+                    <div class="control-group">
+                        <button id="clear-btn" class="btn">Clear Canvas</button>
                     </div>
                 </div>
 
-                <div class="control-group">
-                    <label>Brush Size: <span id="brush-size-label">1</span></label>
-                    <input type="range" id="brush-size" min="1" max="10" value="1">
-                </div>
+                <!-- Pattern Controls -->
+                <div id="pattern-controls" class="hidden">
+                    <div class="control-group">
+                        <label>Pattern</label>
+                        <select id="drawer-select" class="drawer-select">
+                            <option value="">-- Select Pattern --</option>
+                        </select>
+                    </div>
 
-                <div class="control-group">
-                    <label>Fade Rate: <span id="decay-label">0</span></label>
-                    <input type="range" id="decay-rate" min="0" max="100" value="0">
-                </div>
+                    <div id="drawer-settings">
+                        <!-- Dynamic drawer settings will be added here -->
+                    </div>
 
-                <div class="control-group">
-                    <button id="clear-btn" class="btn">Clear Canvas</button>
+                    <div class="control-group">
+                        <button id="randomize-btn" class="btn">Randomize</button>
+                    </div>
                 </div>
             </div>
         </main>
