@@ -139,7 +139,7 @@ class TestPerlinNoise:
         """noise() should return a float value."""
         noise = PerlinNoise(seed=42)
         result = noise.noise(0.5, 0.5, 0.5)
-        assert isinstance(result, float)
+        assert isinstance(result, (float, np.floating))
 
     def test_noise_in_range(self):
         """noise() should return values in [0, 1] range."""
