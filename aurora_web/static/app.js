@@ -173,6 +173,7 @@ class AuroraApp {
     }
 
     updatePaletteSlider(index, count) {
+        console.log('updatePaletteSlider called:', index, count);
         const slider = document.getElementById('palette-slider');
         const label = document.getElementById('palette-label');
         if (count !== undefined) {
@@ -337,6 +338,7 @@ class AuroraApp {
     }
 
     handleMessage(msg) {
+        console.log('Received message:', msg);
         switch (msg.type) {
             case 'config':
                 this.matrixWidth = msg.width;
