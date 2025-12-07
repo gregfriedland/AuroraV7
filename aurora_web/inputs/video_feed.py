@@ -5,19 +5,19 @@ import asyncio
 import time
 import cv2
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple
+
 from concurrent.futures import ThreadPoolExecutor
 
 
 @dataclass
 class VideoInput:
     """Video analysis data passed to drawers."""
-    frame: Optional[np.ndarray] = None          # Current camera frame (RGB, height x width x 3)
+    frame: np.ndarray | None = None          # Current camera frame (RGB, height x width x 3)
     motion_amount: float = 0.0                  # 0.0-1.0 overall motion level
-    motion_map: Optional[np.ndarray] = None     # Per-pixel motion intensity (height x width)
+    motion_map: np.ndarray | None = None     # Per-pixel motion intensity (height x width)
     light_level: float = 0.5                    # 0.0-1.0 average brightness
-    dominant_color: Optional[Tuple[int, int, int]] = None  # Most common color (R, G, B)
-    faces: Optional[List[Tuple[int, int, int, int]]] = None  # Detected face regions (x, y, w, h)
+    dominant_color: tuple[int, int, int | None] = None  # Most common color (R, G, B)
+    faces: list[tuple[int, int, int, int | None]] = None  # Detected face regions (x, y, w, h)
 
 
 class VideoFeed:
@@ -54,24 +54,24 @@ class VideoFeed:
         self.enable_face_detection = enable_face_detection
 
         # State
-        self.frame: Optional[np.ndarray] = None
-        self.prev_gray: Optional[np.ndarray] = None
+        self.frame: np.ndarray | None = None
+        self.prev_gray: np.ndarray | None = None
         self.motion_amount: float = 0.0
-        self.motion_map: Optional[np.ndarray] = None
+        self.motion_map: np.ndarray | None = None
         self.light_level: float = 0.5
-        self.dominant_color: Optional[Tuple[int, int, int]] = None
-        self.faces: Optional[List[Tuple[int, int, int, int]]] = None
+        self.dominant_color: tuple[int, int, int | None] = None
+        self.faces: list[tuple[int, int, int, int | None]] = None
 
         # Motion history for smoothing
-        self._motion_history: List[float] = []
+        self._motion_history: list[float] = []
 
         # OpenCV objects
-        self._cap: Optional[cv2.VideoCapture] = None
+        self._cap: cv2.VideoCapture | None = None
         self._face_cascade = None
 
         # Async control
         self._running: bool = False
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._executor = ThreadPoolExecutor(max_workers=1)
 
     async def start(self) -> None:
@@ -106,7 +106,7 @@ class VideoFeed:
         self._task = asyncio.create_task(self._capture_loop())
         print(f"[VideoFeed] Started - device {self.device} at {self.width}x{self.height}")
 
-    def _open_camera(self) -> Optional[cv2.VideoCapture]:
+    def _open_camera(self) -> cv2.VideoCapture | None:
         """Open camera (runs in thread pool)."""
         cap = cv2.VideoCapture(self.device)
         if cap.isOpened():
@@ -148,7 +148,7 @@ class VideoFeed:
         except Exception as e:
             print(f"[VideoFeed] Capture error: {e}")
 
-    def _read_frame(self) -> Tuple[bool, Optional[np.ndarray]]:
+    def _read_frame(self) -> tuple[bool, np.ndarray | None]:
         """Read frame from camera (runs in thread pool)."""
         if self._cap:
             return self._cap.read()

@@ -5,7 +5,7 @@ import hashlib
 import secrets
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Optional, Any
+from typing import Any
 from datetime import datetime
 
 
@@ -15,24 +15,24 @@ class UserProfile:
     username: str
     password_hash: str
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    last_login: Optional[str] = None
+    last_login: str | None = None
 
     # User preferences
-    default_drawer: Optional[str] = None
-    favorite_drawers: List[str] = field(default_factory=list)
-    custom_drawers: List[str] = field(default_factory=list)
+    default_drawer: str | None = None
+    favorite_drawers: list[str] = field(default_factory=list)
+    custom_drawers: list[str] = field(default_factory=list)
 
     # Settings preferences
-    preferred_palette: Optional[str] = None
+    preferred_palette: str | None = None
     auto_rotate: bool = False
     rotate_interval: int = 30
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'UserProfile':
+    def from_dict(cls, data: dict[str, Any]) -> 'UserProfile':
         """Create from dictionary."""
         return cls(**data)
 
@@ -47,8 +47,8 @@ class UserManager:
             users_db_path: Path to users YAML database file
         """
         self.db_path = Path(users_db_path)
-        self.users: Dict[str, UserProfile] = {}
-        self._sessions: Dict[str, str] = {}  # session_token -> username
+        self.users: dict[str, UserProfile] = {}
+        self._sessions: dict[str, str] = {}  # session_token -> username
         self._load()
 
     def _load(self) -> None:
@@ -95,7 +95,7 @@ class UserManager:
         """
         return hashlib.sha256(password.encode()).hexdigest()
 
-    def create_user(self, username: str, password: str) -> Optional[UserProfile]:
+    def create_user(self, username: str, password: str) -> UserProfile | None:
         """Create a new user.
 
         Args:
@@ -127,7 +127,7 @@ class UserManager:
 
         return user
 
-    def authenticate(self, username: str, password: str) -> Optional[str]:
+    def authenticate(self, username: str, password: str) -> str | None:
         """Authenticate user and create session.
 
         Args:
@@ -170,7 +170,7 @@ class UserManager:
             return True
         return False
 
-    def get_user_by_session(self, session_token: str) -> Optional[UserProfile]:
+    def get_user_by_session(self, session_token: str) -> UserProfile | None:
         """Get user profile from session token.
 
         Args:
@@ -184,7 +184,7 @@ class UserManager:
             return self.users.get(username)
         return None
 
-    def get_user(self, username: str) -> Optional[UserProfile]:
+    def get_user(self, username: str) -> UserProfile | None:
         """Get user profile by username.
 
         Args:
@@ -195,7 +195,7 @@ class UserManager:
         """
         return self.users.get(username.lower())
 
-    def update_user(self, username: str, updates: Dict[str, Any]) -> bool:
+    def update_user(self, username: str, updates: dict[str, Any]) -> bool:
         """Update user profile.
 
         Args:
@@ -243,7 +243,7 @@ class UserManager:
             return True
         return False
 
-    def list_users(self) -> List[str]:
+    def list_users(self) -> list[str]:
         """Get list of usernames.
 
         Returns:

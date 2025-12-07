@@ -2,7 +2,6 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Tuple
 import numpy as np
 
 
@@ -37,8 +36,8 @@ class Drawer(ABC):
         self.width = width
         self.height = height
         self.palette_size = palette_size
-        self.settings: Dict[str, int] = {}
-        self.settings_ranges: Dict[str, Tuple[int, int]] = {}
+        self.settings: dict[str, int] = {}
+        self.settings_ranges: dict[str, tuple[int, int]] = {}
         self.frame = 0
 
     @abstractmethod
@@ -58,7 +57,7 @@ class Drawer(ABC):
         """
         pass
 
-    def update_settings(self, settings: Dict[str, int]) -> None:
+    def update_settings(self, settings: dict[str, int]) -> None:
         """Update drawer settings, clamping to valid ranges.
 
         Args:
@@ -77,7 +76,7 @@ class Drawer(ABC):
             self.settings[key] = np.random.randint(min_val, max_val + 1)
         self.reset()
 
-    def get_settings_info(self) -> Dict:
+    def get_settings_info(self) -> dict:
         """Get settings with their current values and ranges.
 
         Returns:

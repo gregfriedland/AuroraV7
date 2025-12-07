@@ -1,7 +1,6 @@
 """Drawer manager for mode switching and drawer orchestration."""
 
 import time
-from typing import Dict, List, Optional
 import numpy as np
 
 from aurora_web.core.palette import Palette
@@ -28,8 +27,8 @@ class DrawerManager:
         self.palette_size = palette_size
 
         # Drawer registry
-        self.drawers: Dict[str, Drawer] = {}
-        self.active_drawer: Optional[Drawer] = None
+        self.drawers: dict[str, Drawer] = {}
+        self.active_drawer: Drawer | None = None
 
         # Mode: "paint" or "pattern"
         self.mode = "paint"
@@ -53,7 +52,7 @@ class DrawerManager:
         """
         self.drawers[drawer.name] = drawer
 
-    def get_drawer_list(self) -> List[Dict]:
+    def get_drawer_list(self) -> list[dict]:
         """Get list of available drawers with their info.
 
         Returns:
@@ -96,7 +95,7 @@ class DrawerManager:
             return True
         return False
 
-    def update_drawer_settings(self, settings: Dict[str, int]) -> bool:
+    def update_drawer_settings(self, settings: dict[str, int]) -> bool:
         """Update settings on active drawer.
 
         Args:
@@ -110,7 +109,7 @@ class DrawerManager:
             return True
         return False
 
-    def set_palette_colors(self, base_colors: List[tuple]) -> None:
+    def set_palette_colors(self, base_colors: list[tuple]) -> None:
         """Update palette with new base colors.
 
         Args:
@@ -118,7 +117,7 @@ class DrawerManager:
         """
         self.palette.set_base_colors(base_colors)
 
-    def get_frame(self, browser_frame: Optional[np.ndarray] = None) -> np.ndarray:
+    def get_frame(self, browser_frame: np.ndarray | None = None) -> np.ndarray:
         """Get current frame based on mode.
 
         Args:
@@ -156,7 +155,7 @@ class DrawerManager:
         else:
             return self.black_frame
 
-    def get_status(self) -> Dict:
+    def get_status(self) -> dict:
         """Get current status for UI.
 
         Returns:

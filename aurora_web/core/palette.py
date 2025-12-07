@@ -1,7 +1,6 @@
 """Color palette for converting palette indices to RGB."""
 
 import numpy as np
-from typing import List, Tuple
 
 
 class Palette:
@@ -10,7 +9,7 @@ class Palette:
     Creates a palette of colors by interpolating between base colors.
     """
 
-    def __init__(self, size: int = 4096, base_colors: List[Tuple[int, int, int]] = None):
+    def __init__(self, size: int = 4096, base_colors: list[tuple[int, int, int]] | None = None):
         """Initialize palette.
 
         Args:
@@ -36,7 +35,7 @@ class Palette:
 
         self._build_lut(base_colors)
 
-    def _build_lut(self, base_colors: List[Tuple[int, int, int]]) -> None:
+    def _build_lut(self, base_colors: list[tuple[int, int, int]]) -> None:
         """Build the color lookup table by interpolating base colors."""
         self.lut = np.zeros((self.size, 3), dtype=np.uint8)
 
@@ -59,7 +58,7 @@ class Palette:
                 self.lut[idx] = color.astype(np.uint8)
                 idx += 1
 
-    def get_color(self, index: int) -> Tuple[int, int, int]:
+    def get_color(self, index: int) -> tuple[int, int, int]:
         """Get color at palette index.
 
         Args:
@@ -85,7 +84,7 @@ class Palette:
         # Use fancy indexing to look up colors
         return self.lut[wrapped]
 
-    def set_base_colors(self, base_colors: List[Tuple[int, int, int]]) -> None:
+    def set_base_colors(self, base_colors: list[tuple[int, int, int]]) -> None:
         """Update palette with new base colors.
 
         Args:
@@ -95,8 +94,8 @@ class Palette:
 
 
 def create_gradient_palette(
-    color1: Tuple[int, int, int],
-    color2: Tuple[int, int, int],
+    color1: tuple[int, int, int],
+    color2: tuple[int, int, int],
     size: int = 256
 ) -> Palette:
     """Create a simple two-color gradient palette.

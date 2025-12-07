@@ -3,7 +3,6 @@
 import ctypes
 import multiprocessing as mp
 import numpy as np
-from typing import Tuple
 
 
 class SharedFrame:
@@ -41,7 +40,7 @@ class SharedFrame:
             ctypes.memmove(self.shared_array.get_obj(), flat.ctypes.data, self.frame_size)
             self.frame_num.value = frame_num
 
-    def read_frame(self) -> Tuple[np.ndarray, int]:
+    def read_frame(self) -> tuple[np.ndarray, int]:
         """Read frame from serial process.
 
         Returns:

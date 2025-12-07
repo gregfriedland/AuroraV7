@@ -7,7 +7,6 @@ independent of main process GC or computation delays.
 import multiprocessing as mp
 import numpy as np
 import time
-from typing import Optional
 
 from .shared_frame import SharedFrame
 
@@ -45,7 +44,7 @@ def serial_output_loop(
     )
 
     # Open serial port
-    ser: Optional[serial.Serial] = None
+    ser: serial.Serial | None = None
     if device:
         try:
             ser = serial.Serial(device, 115200)
@@ -119,7 +118,7 @@ class SerialOutputManager:
         """
         self.shared_frame = SharedFrame(width, height)
         self.stop_event = mp.Event()
-        self.process: Optional[mp.Process] = None
+        self.process: mp.Process | None = None
 
         self.device = device
         self.width = width

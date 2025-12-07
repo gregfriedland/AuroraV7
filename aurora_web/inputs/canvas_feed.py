@@ -2,7 +2,7 @@
 
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple
+
 
 
 @dataclass
@@ -12,7 +12,7 @@ class Touch:
     y: float  # 0.0-1.0 normalized y position
     pressure: float = 1.0  # 0.0-1.0 pressure
     radius: float = 2.0  # Brush radius in pixels
-    color: Tuple[int, int, int] = (255, 255, 255)  # RGB color
+    color: tuple[int, int, int] = (255, 255, 255)  # RGB color
 
 
 class CanvasFeed:
@@ -31,11 +31,11 @@ class CanvasFeed:
         """
         self.width = width
         self.height = height
-        self.touches: List[Touch] = []
+        self.touches: list[Touch] = []
         self.paint_buffer: np.ndarray = np.zeros((height, width, 4), dtype=np.uint8)
-        self.last_touch: Optional[Touch] = None
+        self.last_touch: Touch | None = None
         self._decay_rate: float = 0.0  # 0 = permanent, >0 = fade rate per second
-        self._current_color: Tuple[int, int, int] = (255, 255, 255)
+        self._current_color: tuple[int, int, int] = (255, 255, 255)
         self._current_radius: float = 2.0
 
     def set_color(self, r: int, g: int, b: int) -> None:
@@ -50,8 +50,8 @@ class CanvasFeed:
         self,
         x: float,
         y: float,
-        color: Optional[Tuple[int, int, int]] = None,
-        radius: Optional[float] = None
+        color: tuple[int, int, int | None] = None,
+        radius: float | None = None
     ) -> None:
         """Handle touch/mouse down.
 
@@ -145,7 +145,7 @@ class CanvasFeed:
         self,
         x1: float, y1: float,
         x2: float, y2: float,
-        color: Tuple[int, int, int],
+        color: tuple[int, int, int],
         radius: float
     ) -> None:
         """Paint a line between two normalized points using circles."""

@@ -12,10 +12,10 @@ import struct
 @dataclass
 class AudioInput:
     """Audio analysis data passed to drawers."""
-    bpm: Optional[float] = None           # Current tempo estimate (60-200)
+    bpm: float | None = None           # Current tempo estimate (60-200)
     beat_onset: bool = False              # True on beat hit
     beat_phase: float = 0.0               # 0.0-1.0 position within beat
-    spectrum: Optional[np.ndarray] = None # FFT bins (16 bands)
+    spectrum: np.ndarray | None = None # FFT bins (16 bands)
     volume: float = 0.0                   # 0.0-1.0 current volume level
     bass: float = 0.0                     # 0.0-1.0 low frequency energy
     mids: float = 0.0                     # 0.0-1.0 mid frequency energy
@@ -56,24 +56,24 @@ class AudioFeed:
         self.min_beat_interval = min_beat_interval
 
         # State
-        self.bpm: Optional[float] = None
+        self.bpm: float | None = None
         self.beat_onset: bool = False
         self.beat_phase: float = 0.0
-        self.spectrum: Optional[np.ndarray] = None
+        self.spectrum: np.ndarray | None = None
         self.volume: float = 0.0
 
         # Beat detection state
         self._last_beat_time: float = 0.0
-        self._beat_intervals: List[float] = []
-        self._bass_history: List[float] = []
+        self._beat_intervals: list[float] = []
+        self._bass_history: list[float] = []
         self._bass_avg: float = 0.0
 
         # Process
-        self._process: Optional[asyncio.subprocess.Process] = None
+        self._process: asyncio.subprocess.Process | None = None
         self._running: bool = False
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
-    def _build_capture_command(self) -> List[str]:
+    def _build_capture_command(self) -> list[str]:
         """Build the audio capture command based on source."""
         if self.source == "pulse":
             # PulseAudio capture

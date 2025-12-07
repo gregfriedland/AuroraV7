@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Cookie
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+from typing import Any
 from pathlib import Path
 
 from aurora_web.drawers.custom import CustomDrawer, CustomDrawerLoader, EXAMPLE_DRAWER_YAML
@@ -11,8 +11,8 @@ from aurora_web.core.users import UserManager
 router = APIRouter(prefix="/api/custom-drawers", tags=["custom-drawers"])
 
 # Global references - set during app startup
-custom_drawer_loader: Optional[CustomDrawerLoader] = None
-user_manager: Optional[UserManager] = None
+custom_drawer_loader: CustomDrawerLoader | None = None
+user_manager: UserManager | None = None
 drawer_manager = None  # Reference to main drawer manager
 
 
@@ -37,26 +37,26 @@ def set_drawer_manager(manager) -> None:
 class DrawerDefinition(BaseModel):
     """Custom drawer definition request."""
     name: str
-    description: Optional[str] = ""
+    description: str | None = ""
     uses_audio: bool = False
     uses_video: bool = False
     uses_canvas: bool = False
-    settings: Dict[str, Any] = {}
+    settings: dict[str, Any] = {}
     code: str
 
 
 class UpdateDrawerRequest(BaseModel):
     """Request to update an existing drawer."""
-    name: Optional[str] = None
-    description: Optional[str] = None
-    uses_audio: Optional[bool] = None
-    uses_video: Optional[bool] = None
-    uses_canvas: Optional[bool] = None
-    settings: Optional[Dict[str, Any]] = None
-    code: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    uses_audio: bool | None = None
+    uses_video: bool | None = None
+    uses_canvas: bool | None = None
+    settings: dict[str, Any | None] = None
+    code: str | None = None
 
 
-def get_user_from_session(session_token: Optional[str]):
+def get_user_from_session(session_token: str | None):
     """Get user from session token."""
     if not user_manager or not session_token:
         return None
@@ -65,8 +65,8 @@ def get_user_from_session(session_token: Optional[str]):
 
 @router.get("/list")
 async def list_custom_drawers(
-    username: Optional[str] = None,
-    session_token: Optional[str] = Cookie(None),
+    username: str | None = None,
+    session_token: str | None = Cookie(None),
 ):
     """List available custom drawers.
 
@@ -82,7 +82,7 @@ async def list_custom_drawers(
 
 @router.get("/my-drawers")
 async def list_my_drawers(
-    session_token: Optional[str] = Cookie(None),
+    session_token: str | None = Cookie(None),
 ):
     """List current user's custom drawers."""
     if not custom_drawer_loader:
@@ -108,7 +108,7 @@ async def get_template():
 @router.post("/create")
 async def create_custom_drawer(
     definition: DrawerDefinition,
-    session_token: Optional[str] = Cookie(None),
+    session_token: str | None = Cookie(None),
 ):
     """Create a new custom drawer."""
     if not custom_drawer_loader or not user_manager:
@@ -193,7 +193,7 @@ async def update_custom_drawer(
     username: str,
     drawer_name: str,
     updates: UpdateDrawerRequest,
-    session_token: Optional[str] = Cookie(None),
+    session_token: str | None = Cookie(None),
 ):
     """Update an existing custom drawer."""
     if not custom_drawer_loader or not user_manager:
@@ -263,7 +263,7 @@ async def update_custom_drawer(
 async def delete_custom_drawer(
     username: str,
     drawer_name: str,
-    session_token: Optional[str] = Cookie(None),
+    session_token: str | None = Cookie(None),
 ):
     """Delete a custom drawer."""
     if not custom_drawer_loader or not user_manager:

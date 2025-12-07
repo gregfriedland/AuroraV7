@@ -2,14 +2,14 @@
 
 from fastapi import APIRouter, HTTPException, Header, Response, Cookie
 from pydantic import BaseModel
-from typing import Optional, List
+
 
 from aurora_web.core.users import UserManager
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 # Global user manager - will be set during app startup
-user_manager: Optional[UserManager] = None
+user_manager: UserManager | None = None
 
 
 def set_user_manager(manager: UserManager) -> None:
@@ -18,7 +18,7 @@ def set_user_manager(manager: UserManager) -> None:
     user_manager = manager
 
 
-def get_current_user(session_token: Optional[str] = None):
+def get_current_user(session_token: str | None = None):
     """Get current user from session token."""
     if not user_manager or not session_token:
         return None
@@ -36,10 +36,10 @@ class LoginRequest(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
-    default_drawer: Optional[str] = None
-    preferred_palette: Optional[str] = None
-    auto_rotate: Optional[bool] = None
-    rotate_interval: Optional[int] = None
+    default_drawer: str | None = None
+    preferred_palette: str | None = None
+    auto_rotate: bool | None = None
+    rotate_interval: int | None = None
 
 
 class FavoriteRequest(BaseModel):
@@ -106,7 +106,7 @@ async def login(request: LoginRequest, response: Response):
 @router.post("/logout")
 async def logout(
     response: Response,
-    session_token: Optional[str] = Cookie(None),
+    session_token: str | None = Cookie(None),
 ):
     """Logout and invalidate session."""
     if user_manager and session_token:
@@ -119,7 +119,7 @@ async def logout(
 
 @router.get("/me")
 async def get_current_user_profile(
-    session_token: Optional[str] = Cookie(None),
+    session_token: str | None = Cookie(None),
 ):
     """Get current user's profile."""
     if not user_manager:
@@ -148,7 +148,7 @@ async def get_current_user_profile(
 @router.put("/me")
 async def update_profile(
     request: UpdateProfileRequest,
-    session_token: Optional[str] = Cookie(None),
+    session_token: str | None = Cookie(None),
 ):
     """Update current user's profile."""
     if not user_manager:
@@ -171,7 +171,7 @@ async def update_profile(
 @router.post("/me/favorites")
 async def add_favorite(
     request: FavoriteRequest,
-    session_token: Optional[str] = Cookie(None),
+    session_token: str | None = Cookie(None),
 ):
     """Add a drawer to favorites."""
     if not user_manager:
@@ -191,7 +191,7 @@ async def add_favorite(
 @router.delete("/me/favorites/{drawer_name}")
 async def remove_favorite(
     drawer_name: str,
-    session_token: Optional[str] = Cookie(None),
+    session_token: str | None = Cookie(None),
 ):
     """Remove a drawer from favorites."""
     if not user_manager:

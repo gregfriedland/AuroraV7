@@ -9,7 +9,7 @@ import json
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+
 
 import yaml
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -35,15 +35,15 @@ from aurora_web.api import custom_drawers as custom_drawers_api
 
 # Global state
 config: dict = {}
-serial_manager: Optional[SerialOutputManager] = None
-drawer_manager: Optional[DrawerManager] = None
-user_manager: Optional[UserManager] = None
-custom_drawer_loader: Optional[CustomDrawerLoader] = None
-render_task: Optional[asyncio.Task] = None
+serial_manager: SerialOutputManager | None = None
+drawer_manager: DrawerManager | None = None
+user_manager: UserManager | None = None
+custom_drawer_loader: CustomDrawerLoader | None = None
+render_task: asyncio.Task | None = None
 connected_clients: set[WebSocket] = set()
 
 # Frame from browser (used in paint mode)
-browser_frame: Optional[np.ndarray] = None
+browser_frame: np.ndarray | None = None
 browser_frame_lock = asyncio.Lock()
 
 

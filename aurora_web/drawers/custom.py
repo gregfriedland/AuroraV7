@@ -4,7 +4,7 @@ import numpy as np
 import yaml
 import math
 from pathlib import Path
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Callable
 
 from aurora_web.drawers.base import Drawer, DrawerContext
 
@@ -43,8 +43,8 @@ class CustomDrawer(Drawer):
         width: int,
         height: int,
         palette_size: int = 4096,
-        yaml_path: Optional[Path] = None,
-        yaml_content: Optional[str] = None,
+        yaml_path: Path | None = None,
+        yaml_content: str | None = None,
     ):
         """Initialize custom drawer.
 
@@ -79,11 +79,11 @@ class CustomDrawer(Drawer):
         self._parse_settings()
 
         # Compile the draw function
-        self._draw_func: Optional[Callable] = None
+        self._draw_func: Callable | None = None
         self._compile_code()
 
         # State for persistent variables
-        self._state: Dict[str, Any] = {}
+        self._state: dict[str, Any] = {}
 
     def _parse_settings(self) -> None:
         """Parse settings from YAML definition."""
@@ -270,7 +270,7 @@ class CustomDrawerLoader:
         # Ensure directory exists
         self.base_path.mkdir(parents=True, exist_ok=True)
 
-    def list_drawers(self, username: Optional[str] = None) -> list[Dict[str, str]]:
+    def list_drawers(self, username: str | None = None) -> list[dict[str, str]]:
         """List available custom drawers.
 
         Args:
@@ -326,7 +326,7 @@ class CustomDrawerLoader:
         self,
         username: str,
         drawer_name: str,
-        definition: Dict[str, Any],
+        definition: dict[str, Any],
     ) -> str:
         """Save a custom drawer definition.
 
