@@ -19,6 +19,7 @@ import numpy as np
 
 from aurora_web.core.serial_process import SerialOutputManager
 from aurora_web.core.drawer_manager import DrawerManager
+from aurora_web.core.users import UserManager
 from aurora_web.drawers import (
     OffDrawer,
     AlienBlobDrawer,
@@ -26,12 +27,18 @@ from aurora_web.drawers import (
     GrayScottDrawer,
     GinzburgLandauDrawer,
 )
+from aurora_web.drawers.custom import CustomDrawerLoader
+from aurora_web.api import users_router, custom_drawers_router
+from aurora_web.api import users as users_api
+from aurora_web.api import custom_drawers as custom_drawers_api
 
 
 # Global state
 config: dict = {}
 serial_manager: Optional[SerialOutputManager] = None
 drawer_manager: Optional[DrawerManager] = None
+user_manager: Optional[UserManager] = None
+custom_drawer_loader: Optional[CustomDrawerLoader] = None
 render_task: Optional[asyncio.Task] = None
 connected_clients: set[WebSocket] = set()
 
@@ -121,7 +128,7 @@ async def broadcast(message: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
-    global config, serial_manager, drawer_manager, render_task
+    global config, serial_manager, drawer_manager, user_manager, custom_drawer_loader, render_task
 
     # Load config
     config = load_config()
@@ -129,15 +136,41 @@ async def lifespan(app: FastAPI):
     width = matrix_cfg.get("width", 32)
     height = matrix_cfg.get("height", 18)
 
+    # Initialize user manager
+    users_db_path = config.get("users_db", "./users.yaml")
+    user_manager = UserManager(users_db_path)
+    users_api.set_user_manager(user_manager)
+    custom_drawers_api.set_user_manager(user_manager)
+    print(f"[Aurora Web] Users DB: {users_db_path}")
+
+    # Initialize custom drawer loader
+    custom_drawers_path = Path(config.get("custom_drawers_path", "./custom_drawers"))
+    custom_drawer_loader = CustomDrawerLoader(
+        custom_drawers_path, width, height, palette_size=4096
+    )
+    custom_drawers_api.set_custom_drawer_loader(custom_drawer_loader)
+    print(f"[Aurora Web] Custom drawers path: {custom_drawers_path}")
+
     # Initialize drawer manager
     drawer_manager = DrawerManager(width, height)
+    custom_drawers_api.set_drawer_manager(drawer_manager)
 
-    # Register drawers
+    # Register built-in drawers
     drawer_manager.register_drawer(OffDrawer(width, height))
     drawer_manager.register_drawer(AlienBlobDrawer(width, height))
     drawer_manager.register_drawer(BzrDrawer(width, height))
     drawer_manager.register_drawer(GrayScottDrawer(width, height))
     drawer_manager.register_drawer(GinzburgLandauDrawer(width, height))
+
+    # Load and register custom drawers
+    for drawer_info in custom_drawer_loader.list_drawers():
+        try:
+            custom_drawer = custom_drawer_loader.load_drawer(drawer_info['path'])
+            custom_drawer.name = f"Custom:{drawer_info['path'].replace('.yaml', '')}"
+            drawer_manager.register_drawer(custom_drawer)
+            print(f"[Aurora Web] Loaded custom drawer: {custom_drawer.name}")
+        except Exception as e:
+            print(f"[Aurora Web] Failed to load custom drawer {drawer_info['path']}: {e}")
 
     # Set default drawer
     drawer_manager.set_active_drawer("AlienBlob")
@@ -174,6 +207,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Aurora Web", lifespan=lifespan)
+
+# Include API routers
+app.include_router(users_router)
+app.include_router(custom_drawers_router)
 
 # Mount static files
 static_dir = Path(__file__).parent / "static"

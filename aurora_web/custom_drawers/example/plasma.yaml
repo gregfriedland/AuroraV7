@@ -1,0 +1,87 @@
+name: "Plasma"
+author: "example"
+description: "Classic plasma effect with multiple sine waves"
+created: 2025-12-06
+
+uses:
+  audio: false
+  video: false
+  canvas: false
+
+settings:
+  speed:
+    type: float
+    default: 1.0
+    min: 0.1
+    max: 5.0
+    description: "Animation speed"
+
+  complexity:
+    type: int
+    default: 4
+    min: 1
+    max: 8
+    description: "Number of sine wave layers"
+
+  color_speed:
+    type: float
+    default: 0.3
+    min: 0.0
+    max: 2.0
+    description: "Color cycling speed"
+
+  scale:
+    type: float
+    default: 0.1
+    min: 0.01
+    max: 0.5
+    description: "Pattern scale"
+
+code: |
+  def draw(width, height, ctx, settings, palette_size):
+      t = ctx.time * settings['speed']
+      scale = settings['scale']
+      complexity = int(settings['complexity'])
+
+      # Create coordinate grids
+      xx, yy = np.meshgrid(np.arange(width), np.arange(height))
+      xx = xx.astype(np.float32)
+      yy = yy.astype(np.float32)
+
+      # Plasma formula - combine multiple sine waves
+      plasma = np.zeros((height, width), dtype=np.float32)
+
+      # Different patterns based on complexity
+      plasma += np.sin(xx * scale + t)
+      plasma += np.sin(yy * scale + t * 0.9)
+
+      if complexity >= 2:
+          plasma += np.sin((xx + yy) * scale + t * 0.8)
+
+      if complexity >= 3:
+          plasma += np.sin(np.sqrt(xx**2 + yy**2) * scale + t * 0.7)
+
+      if complexity >= 4:
+          cx, cy = width / 2, height / 2
+          plasma += np.sin(np.sqrt((xx - cx)**2 + (yy - cy)**2) * scale * 2 + t)
+
+      if complexity >= 5:
+          plasma += np.sin(xx * scale * 2 - yy * scale + t * 1.1)
+
+      if complexity >= 6:
+          plasma += np.sin(np.arctan2(yy - height/2, xx - width/2) * 5 + t)
+
+      if complexity >= 7:
+          plasma += np.sin((xx * yy) * scale * 0.01 + t * 0.6)
+
+      if complexity >= 8:
+          plasma += np.sin(np.abs(xx - width/2) * scale + np.abs(yy - height/2) * scale + t)
+
+      # Normalize to 0-1
+      plasma = (plasma / complexity + 1) / 2
+
+      # Apply color cycling
+      color_offset = ctx.time * settings['color_speed'] * palette_size
+      indices = ((plasma * (palette_size - 1)) + color_offset).astype(np.int32)
+
+      return indices % palette_size

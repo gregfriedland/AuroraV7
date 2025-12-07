@@ -1,0 +1,57 @@
+name: "Wave Pattern"
+author: "example"
+description: "Simple animated wave pattern with color cycling"
+created: 2025-12-06
+
+uses:
+  audio: false
+  video: false
+  canvas: false
+
+settings:
+  speed:
+    type: float
+    default: 1.0
+    min: 0.1
+    max: 5.0
+    description: "Animation speed"
+
+  wave_count:
+    type: int
+    default: 3
+    min: 1
+    max: 10
+    description: "Number of waves"
+
+  color_speed:
+    type: float
+    default: 0.5
+    min: 0.0
+    max: 2.0
+    description: "Color cycling speed"
+
+code: |
+  def draw(width, height, ctx, settings, palette_size):
+      t = ctx.time * settings['speed']
+
+      # Create coordinate grids using meshgrid
+      x = np.arange(width, dtype=np.float32)
+      y = np.arange(height, dtype=np.float32)
+      xx, yy = np.meshgrid(x, y)
+
+      x_norm = xx / width
+      y_norm = yy / height
+
+      # Generate waves
+      wave_count = int(settings['wave_count'])
+      waves = np.sin(x_norm * wave_count * np.pi * 2 + t)
+      waves = waves * np.cos(y_norm * wave_count * np.pi + t * 0.7)
+
+      # Normalize to 0-1 range
+      normalized = (waves + 1) / 2
+
+      # Apply color cycling
+      color_offset = ctx.time * settings['color_speed'] * palette_size
+      indices = ((normalized * (palette_size - 1)) + color_offset).astype(np.int32)
+
+      return indices % palette_size

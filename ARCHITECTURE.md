@@ -1091,7 +1091,6 @@ Port remaining drawers, add audio reactivity.
 - Port Bzr, GrayScott, GinzburgLandau
 - AudioFeed with beat detection
 - Audio reactivity in drawers
-- Drawer auto-rotation
 
 ---
 
@@ -1104,7 +1103,7 @@ Full feature set.
 - Code editor in web UI (CodeMirror)
 - User profiles
 - Save/load custom drawers
-- VideoFeed (optional)
+- VideoFeed
 
 ---
 

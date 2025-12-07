@@ -6,6 +6,7 @@ from aurora_web.drawers.alien_blob import AlienBlobDrawer
 from aurora_web.drawers.bzr import BzrDrawer
 from aurora_web.drawers.gray_scott import GrayScottDrawer
 from aurora_web.drawers.ginzburg_landau import GinzburgLandauDrawer
+from aurora_web.drawers.custom import CustomDrawer, CustomDrawerLoader
 
 __all__ = [
     "Drawer",
@@ -15,4 +16,6 @@ __all__ = [
     "BzrDrawer",
     "GrayScottDrawer",
     "GinzburgLandauDrawer",
+    "CustomDrawer",
+    "CustomDrawerLoader",
 ]
