@@ -106,9 +106,14 @@ class PerlinNoise:
 
         return r
 
+    def _noise_fsc_vec(self, i: np.ndarray) -> np.ndarray:
+        """Vectorized fade/smoothing function using cosine interpolation."""
+        idx = (i * self.perlin_pi).astype(np.int32) % self.perlin_twopi
+        return 0.5 * (1.0 - self.perlin_cos_table[idx])
+
     def noise_2d(self, x: np.ndarray, y: np.ndarray, z: float,
                  octaves: int = 4, falloff: float = 0.5) -> np.ndarray:
-        """Vectorized 2D noise generation.
+        """Fully vectorized 2D noise generation.
 
         Args:
             x, y: 2D coordinate arrays
@@ -119,11 +124,63 @@ class PerlinNoise:
         Returns:
             2D array of noise values
         """
-        result = np.zeros_like(x, dtype=np.float32)
-        for iy in range(x.shape[0]):
-            for ix in range(x.shape[1]):
-                result[iy, ix] = self.noise(x[iy, ix], y[iy, ix], z, octaves, falloff)
-        return result
+        x = np.abs(x).astype(np.float32)
+        y = np.abs(y).astype(np.float32)
+        z = abs(z)
+
+        xi = x.astype(np.int32)
+        yi = y.astype(np.int32)
+        zi = int(z)
+        xf = x - xi
+        yf = y - yi
+        zf = z - zi
+
+        r = np.zeros_like(x, dtype=np.float32)
+        ampl = 0.5
+
+        for _ in range(octaves):
+            of = xi + (yi << PERLIN_YWRAPB) + (zi << PERLIN_ZWRAPB)
+
+            rxf = self._noise_fsc_vec(xf)
+            ryf = self._noise_fsc_vec(yf)
+
+            n1 = self.perlin[of & PERLIN_SIZE]
+            n1 = n1 + rxf * (self.perlin[(of + 1) & PERLIN_SIZE] - n1)
+            n2 = self.perlin[(of + PERLIN_YWRAP) & PERLIN_SIZE]
+            n2 = n2 + rxf * (self.perlin[(of + PERLIN_YWRAP + 1) & PERLIN_SIZE] - n2)
+            n1 = n1 + ryf * (n2 - n1)
+
+            of = of + PERLIN_ZWRAP
+            n2 = self.perlin[of & PERLIN_SIZE]
+            n2 = n2 + rxf * (self.perlin[(of + 1) & PERLIN_SIZE] - n2)
+            n3 = self.perlin[(of + PERLIN_YWRAP) & PERLIN_SIZE]
+            n3 = n3 + rxf * (self.perlin[(of + PERLIN_YWRAP + 1) & PERLIN_SIZE] - n3)
+            n2 = n2 + ryf * (n3 - n2)
+
+            zf_fsc = self._noise_fsc_vec(np.full_like(xf, zf))[0, 0] if xf.ndim > 0 else self._noise_fsc(zf)
+            n1 = n1 + zf_fsc * (n2 - n1)
+
+            r = r + n1 * ampl
+            ampl *= falloff
+
+            xi = xi << 1
+            xf = xf * 2
+            yi = yi << 1
+            yf = yf * 2
+            zi = zi << 1
+            zf = zf * 2
+
+            mask_x = xf >= 1.0
+            xi = np.where(mask_x, xi + 1, xi)
+            xf = np.where(mask_x, xf - 1, xf)
+            mask_y = yf >= 1.0
+            yi = np.where(mask_y, yi + 1, yi)
+            yf = np.where(mask_y, yf - 1, yf)
+            if zf >= 1.0:
+                zi += 1
+                zf -= 1
+
+        return r
 
 
 class AlienBlobDrawer(Drawer):
@@ -196,26 +253,19 @@ class AlienBlobDrawer(Drawer):
         xx_scaled = self.xx * multiplier
         yy_scaled = self.yy * multiplier
 
-        # Generate noise values
+        # Generate noise values - fully vectorized
+        noise_vals = self.noise_gen.noise_2d(
+            xx_scaled, yy_scaled, self.pos,
+            octaves=detail, falloff=0.5
+        )
+
+        # Map noise to angle (vectorized)
         noise_mult = 7.0
-        indices = np.zeros((self.height, self.width), dtype=np.int32)
+        deg = ((noise_vals * noise_mult + 4 * np.pi) * 180 / np.pi).astype(np.int32)
+        h = (self.sine_table[deg % 360] + 1) / 2
 
-        for y in range(self.height):
-            for x in range(self.width):
-                n = self.noise_gen.noise(
-                    xx_scaled[y, x],
-                    yy_scaled[y, x],
-                    self.pos,
-                    octaves=detail,
-                    falloff=0.5
-                )
-
-                # Map noise to angle
-                deg = int((n * noise_mult + 4 * np.pi) * 180 / np.pi)
-                h = (self.sine_table[deg % 360] + 1) / 2
-
-                # Map to palette index
-                indices[y, x] = int(h * self.palette_size)
+        # Map to palette index
+        indices = (h * self.palette_size).astype(np.int32)
 
         # Add color offset
         indices = (indices + self.color_index) % self.palette_size
