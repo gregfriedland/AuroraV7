@@ -1,5 +1,6 @@
 """Shared memory frame buffer between main and serial processes."""
 
+import ctypes
 import multiprocessing as mp
 import numpy as np
 from typing import Tuple
@@ -34,11 +35,10 @@ class SharedFrame:
             rgb: RGB frame data, shape (height, width, 3), dtype uint8
             frame_num: Frame number for tracking
         """
+        flat = rgb.flatten().astype(np.uint8)
         with self.lock:
-            flat = rgb.flatten().astype(np.uint8)
-            # Copy directly into shared memory
-            for i, b in enumerate(flat.tobytes()):
-                self.shared_array[i] = b
+            # Bulk copy using ctypes memmove - no Python loop
+            ctypes.memmove(self.shared_array.get_obj(), flat.ctypes.data, self.frame_size)
             self.frame_num.value = frame_num
 
     def read_frame(self) -> Tuple[np.ndarray, int]:
