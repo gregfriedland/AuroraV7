@@ -6,6 +6,9 @@ import pytest
 from aurora_web.drawers.base import Drawer, DrawerContext
 from aurora_web.drawers.off import OffDrawer
 from aurora_web.drawers.alien_blob import AlienBlobDrawer, PerlinNoise
+from aurora_web.drawers.bzr import BzrDrawer
+from aurora_web.drawers.gray_scott import GrayScottDrawer
+from aurora_web.drawers.ginzburg_landau import GinzburgLandauDrawer
 
 
 class TestDrawerContext:
@@ -232,3 +235,195 @@ class TestAlienBlobDrawer:
             )
             result = drawer.draw(ctx)
             assert result.shape == (height, width)
+
+
+class TestBzrDrawer:
+    """Tests for BzrDrawer class."""
+
+    def test_initialization(self):
+        """BzrDrawer should initialize correctly."""
+        drawer = BzrDrawer(32, 18)
+        assert drawer.name == "Bzr"
+        assert drawer.width == 32
+        assert drawer.height == 18
+
+    def test_has_settings(self):
+        """BzrDrawer should have expected settings."""
+        drawer = BzrDrawer(32, 18)
+        assert "speed" in drawer.settings
+        assert "colorSpeed" in drawer.settings
+        assert "zoom" in drawer.settings
+        assert "params" in drawer.settings
+
+    def test_draw_returns_correct_shape(self):
+        """draw() should return array of correct shape."""
+        drawer = BzrDrawer(32, 18)
+        ctx = DrawerContext(
+            width=32, height=18, frame_num=0, time=0.0, delta_time=0.016
+        )
+        result = drawer.draw(ctx)
+        assert result.shape == (18, 32)
+        assert result.dtype == np.int32
+
+    def test_draw_returns_valid_indices(self):
+        """draw() should return valid palette indices."""
+        drawer = BzrDrawer(32, 18, palette_size=4096)
+        ctx = DrawerContext(
+            width=32, height=18, frame_num=0, time=0.0, delta_time=0.016
+        )
+        result = drawer.draw(ctx)
+        assert np.all(result >= 0)
+        assert np.all(result < 4096)
+
+    def test_reset_initializes_arrays(self):
+        """reset() should initialize concentration arrays."""
+        drawer = BzrDrawer(32, 18)
+        drawer.reset()
+        assert drawer.a[0] is not None
+        assert drawer.b[0] is not None
+        assert drawer.c[0] is not None
+        assert drawer.a[0].shape == (drawer.bzr_height, drawer.bzr_width)
+
+    def test_simulation_evolves(self):
+        """Simulation should change state over time."""
+        drawer = BzrDrawer(32, 18)
+        ctx = DrawerContext(
+            width=32, height=18, frame_num=0, time=0.0, delta_time=0.1
+        )
+
+        # Get initial state
+        initial_a = drawer.a[drawer.q].copy()
+
+        # Draw several frames to advance simulation
+        for _ in range(10):
+            drawer.draw(ctx)
+
+        # State should have changed
+        assert not np.allclose(initial_a, drawer.a[drawer.q])
+
+
+class TestGrayScottDrawer:
+    """Tests for GrayScottDrawer class."""
+
+    def test_initialization(self):
+        """GrayScottDrawer should initialize correctly."""
+        drawer = GrayScottDrawer(32, 18)
+        assert drawer.name == "GrayScott"
+        assert drawer.width == 32
+        assert drawer.height == 18
+
+    def test_has_settings(self):
+        """GrayScottDrawer should have expected settings."""
+        drawer = GrayScottDrawer(32, 18)
+        assert "speed" in drawer.settings
+        assert "colorSpeed" in drawer.settings
+        assert "params" in drawer.settings
+
+    def test_draw_returns_correct_shape(self):
+        """draw() should return array of correct shape."""
+        drawer = GrayScottDrawer(32, 18)
+        ctx = DrawerContext(
+            width=32, height=18, frame_num=0, time=0.0, delta_time=0.016
+        )
+        result = drawer.draw(ctx)
+        assert result.shape == (18, 32)
+        assert result.dtype == np.int32
+
+    def test_draw_returns_valid_indices(self):
+        """draw() should return valid palette indices."""
+        drawer = GrayScottDrawer(32, 18, palette_size=4096)
+        ctx = DrawerContext(
+            width=32, height=18, frame_num=0, time=0.0, delta_time=0.016
+        )
+        result = drawer.draw(ctx)
+        assert np.all(result >= 0)
+        assert np.all(result < 4096)
+
+    def test_reset_initializes_uv(self):
+        """reset() should initialize U and V arrays."""
+        drawer = GrayScottDrawer(32, 18)
+        drawer.reset()
+        assert drawer.u[0] is not None
+        assert drawer.v[0] is not None
+        assert drawer.u[0].shape == (18, 32)
+        assert drawer.v[0].shape == (18, 32)
+
+    def test_simulation_evolves(self):
+        """Simulation should change state over time."""
+        drawer = GrayScottDrawer(32, 18)
+        ctx = DrawerContext(
+            width=32, height=18, frame_num=0, time=0.0, delta_time=0.1
+        )
+
+        # Get initial state
+        initial_v = drawer.v[drawer.q].copy()
+
+        # Draw several frames
+        for _ in range(5):
+            drawer.draw(ctx)
+
+        # State should have changed
+        assert not np.allclose(initial_v, drawer.v[drawer.q])
+
+
+class TestGinzburgLandauDrawer:
+    """Tests for GinzburgLandauDrawer class."""
+
+    def test_initialization(self):
+        """GinzburgLandauDrawer should initialize correctly."""
+        drawer = GinzburgLandauDrawer(32, 18)
+        assert drawer.name == "GinzburgLandau"
+        assert drawer.width == 32
+        assert drawer.height == 18
+
+    def test_has_settings(self):
+        """GinzburgLandauDrawer should have expected settings."""
+        drawer = GinzburgLandauDrawer(32, 18)
+        assert "speed" in drawer.settings
+        assert "colorSpeed" in drawer.settings
+        assert "params" in drawer.settings
+
+    def test_draw_returns_correct_shape(self):
+        """draw() should return array of correct shape."""
+        drawer = GinzburgLandauDrawer(32, 18)
+        ctx = DrawerContext(
+            width=32, height=18, frame_num=0, time=0.0, delta_time=0.016
+        )
+        result = drawer.draw(ctx)
+        assert result.shape == (18, 32)
+        assert result.dtype == np.int32
+
+    def test_draw_returns_valid_indices(self):
+        """draw() should return valid palette indices."""
+        drawer = GinzburgLandauDrawer(32, 18, palette_size=4096)
+        ctx = DrawerContext(
+            width=32, height=18, frame_num=0, time=0.0, delta_time=0.016
+        )
+        result = drawer.draw(ctx)
+        assert np.all(result >= 0)
+        assert np.all(result < 4096)
+
+    def test_reset_initializes_uv(self):
+        """reset() should initialize U and V arrays."""
+        drawer = GinzburgLandauDrawer(32, 18)
+        drawer.reset()
+        assert drawer.u[0] is not None
+        assert drawer.v[0] is not None
+        assert drawer.u[0].shape == (18, 32)
+
+    def test_simulation_evolves(self):
+        """Simulation should change state over time."""
+        drawer = GinzburgLandauDrawer(32, 18)
+        ctx = DrawerContext(
+            width=32, height=18, frame_num=0, time=0.0, delta_time=0.1
+        )
+
+        # Get initial state
+        initial_u = drawer.u[drawer.q].copy()
+
+        # Draw several frames
+        for _ in range(5):
+            drawer.draw(ctx)
+
+        # State should have changed
+        assert not np.allclose(initial_u, drawer.u[drawer.q])

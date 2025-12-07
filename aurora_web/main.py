@@ -19,7 +19,13 @@ import numpy as np
 
 from aurora_web.core.serial_process import SerialOutputManager
 from aurora_web.core.drawer_manager import DrawerManager
-from aurora_web.drawers import OffDrawer, AlienBlobDrawer
+from aurora_web.drawers import (
+    OffDrawer,
+    AlienBlobDrawer,
+    BzrDrawer,
+    GrayScottDrawer,
+    GinzburgLandauDrawer,
+)
 
 
 # Global state
@@ -129,6 +135,9 @@ async def lifespan(app: FastAPI):
     # Register drawers
     drawer_manager.register_drawer(OffDrawer(width, height))
     drawer_manager.register_drawer(AlienBlobDrawer(width, height))
+    drawer_manager.register_drawer(BzrDrawer(width, height))
+    drawer_manager.register_drawer(GrayScottDrawer(width, height))
+    drawer_manager.register_drawer(GinzburgLandauDrawer(width, height))
 
     # Set default drawer
     drawer_manager.set_active_drawer("AlienBlob")
