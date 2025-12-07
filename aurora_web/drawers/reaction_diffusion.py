@@ -2,7 +2,13 @@
 
 from abc import abstractmethod
 import numpy as np
+from scipy import ndimage
 from aurora_web.drawers.base import Drawer, DrawerContext
+
+# Laplacian kernel for convolution (5-point stencil)
+LAPLACIAN_KERNEL = np.array([[0, 1, 0],
+                              [1, -4, 1],
+                              [0, 1, 0]], dtype=np.float32)
 
 
 class ReactionDiffusionDrawer(Drawer):
@@ -29,16 +35,9 @@ class ReactionDiffusionDrawer(Drawer):
     def _laplacian(self, arr: np.ndarray) -> np.ndarray:
         """Compute discrete Laplacian with periodic boundary conditions.
 
-        Uses the standard 5-point stencil:
-        laplacian = left + right + top + bottom - 4*center
+        Uses scipy.ndimage.convolve for optimized performance.
         """
-        return (
-            np.roll(arr, 1, axis=1) +   # left
-            np.roll(arr, -1, axis=1) +  # right
-            np.roll(arr, 1, axis=0) +   # top
-            np.roll(arr, -1, axis=0) -  # bottom
-            4 * arr                      # center
-        )
+        return ndimage.convolve(arr, LAPLACIAN_KERNEL, mode='wrap')
 
     def reset_to_values(self, bg_u: float, bg_v: float, fg_u: float, fg_v: float) -> None:
         """Reset with background values and random foreground islands.

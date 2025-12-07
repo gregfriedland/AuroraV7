@@ -84,12 +84,19 @@ class BzrDrawer(Drawer):
 
     def _neighbor_avg(self, arr: np.ndarray) -> np.ndarray:
         """Compute 3x3 neighborhood average using convolution."""
-        # Efficient neighbor averaging with wrap-around boundary
-        result = np.zeros_like(arr)
-        for dy in range(-1, 2):
-            for dx in range(-1, 2):
-                result += np.roll(np.roll(arr, dy, axis=0), dx, axis=1)
-        return result / 9.0
+        # Vectorized neighbor averaging with wrap-around boundary
+        # Pre-roll all 9 positions and sum
+        return (
+            np.roll(np.roll(arr, -1, axis=0), -1, axis=1) +
+            np.roll(np.roll(arr, -1, axis=0),  0, axis=1) +
+            np.roll(np.roll(arr, -1, axis=0),  1, axis=1) +
+            np.roll(np.roll(arr,  0, axis=0), -1, axis=1) +
+            arr +
+            np.roll(np.roll(arr,  0, axis=0),  1, axis=1) +
+            np.roll(np.roll(arr,  1, axis=0), -1, axis=1) +
+            np.roll(np.roll(arr,  1, axis=0),  0, axis=1) +
+            np.roll(np.roll(arr,  1, axis=0),  1, axis=1)
+        ) / 9.0
 
     def _step_simulation(self) -> None:
         """Perform one simulation step."""
@@ -160,12 +167,9 @@ class BzrDrawer(Drawer):
         t = self.state / max(1, self.num_states)
         a_interp = a_prev * (1 - t) + a_curr * t
 
-        # Sample at display resolution
-        indices = np.zeros((self.height, self.width), dtype=np.int32)
-        for y in range(self.height):
-            for x in range(self.width):
-                val = a_interp[y_indices[y], x_indices[x]]
-                indices[y, x] = int(val * (self.palette_size - 1))
+        # Sample at display resolution - fully vectorized with fancy indexing
+        sampled = a_interp[np.ix_(y_indices, x_indices)]
+        indices = (sampled * (self.palette_size - 1)).astype(np.int32)
 
         self.state += 1
 
