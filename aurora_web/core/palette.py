@@ -2,6 +2,8 @@
 
 import numpy as np
 
+from aurora_web.core.curated_palettes import CURATED_PALETTES, get_palette_count
+
 
 class Palette:
     """Color palette with smooth gradient interpolation.
@@ -91,6 +93,34 @@ class Palette:
             base_colors: List of (R, G, B) tuples to interpolate between
         """
         self._build_lut(base_colors)
+
+    @classmethod
+    def from_curated(cls, index: int, size: int = 4096) -> "Palette":
+        """Create a palette from the curated collection.
+
+        Args:
+            index: Curated palette index (0-199, wraps around)
+            size: Number of colors in the palette
+
+        Returns:
+            Palette initialized with curated colors
+        """
+        curated_colors = CURATED_PALETTES[index % len(CURATED_PALETTES)]
+        return cls(size=size, base_colors=curated_colors)
+
+    def set_curated(self, index: int) -> None:
+        """Set palette to a curated palette by index.
+
+        Args:
+            index: Curated palette index (0-199, wraps around)
+        """
+        curated_colors = CURATED_PALETTES[index % len(CURATED_PALETTES)]
+        self._build_lut(curated_colors)
+
+    @staticmethod
+    def curated_count() -> int:
+        """Return the number of available curated palettes."""
+        return get_palette_count()
 
 
 def create_gradient_palette(
