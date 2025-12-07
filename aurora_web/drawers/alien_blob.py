@@ -113,7 +113,7 @@ class PerlinNoise:
 
     def noise_2d(self, x: np.ndarray, y: np.ndarray, z: float,
                  octaves: int = 4, falloff: float = 0.5) -> np.ndarray:
-        """Fully vectorized 2D noise generation.
+        """Fully vectorized 2D noise generation - no Python loops.
 
         Args:
             x, y: 2D coordinate arrays
@@ -128,57 +128,56 @@ class PerlinNoise:
         y = np.abs(y).astype(np.float32)
         z = abs(z)
 
-        xi = x.astype(np.int32)
-        yi = y.astype(np.int32)
-        zi = int(z)
-        xf = x - xi
-        yf = y - yi
-        zf = z - zi
+        # Precompute all octave coordinates at once: shape (octaves, height, width)
+        # Each octave doubles the frequency
+        scales = (2 ** np.arange(octaves)).astype(np.float32)  # [1, 2, 4, 8]
+        ampls = (0.5 * falloff ** np.arange(octaves)).astype(np.float32)  # [0.5, 0.25, 0.125, 0.0625]
 
-        r = np.zeros_like(x, dtype=np.float32)
-        ampl = 0.5
+        # Broadcast to (octaves, height, width)
+        x_scaled = x[np.newaxis, :, :] * scales[:, np.newaxis, np.newaxis]
+        y_scaled = y[np.newaxis, :, :] * scales[:, np.newaxis, np.newaxis]
+        z_scaled = z * scales  # (octaves,)
 
-        for _ in range(octaves):
-            of = xi + (yi << PERLIN_YWRAPB) + (zi << PERLIN_ZWRAPB)
+        # Integer and fractional parts
+        xi = x_scaled.astype(np.int32)
+        yi = y_scaled.astype(np.int32)
+        zi = z_scaled.astype(np.int32)  # (octaves,)
+        xf = x_scaled - xi
+        yf = y_scaled - yi
+        zf = z_scaled - zi  # (octaves,)
 
-            rxf = self._noise_fsc_vec(xf)
-            ryf = self._noise_fsc_vec(yf)
+        # Compute offset indices: (octaves, height, width)
+        of = xi + (yi << PERLIN_YWRAPB) + (zi[:, np.newaxis, np.newaxis] << PERLIN_ZWRAPB)
 
-            n1 = self.perlin[of & PERLIN_SIZE]
-            n1 = n1 + rxf * (self.perlin[(of + 1) & PERLIN_SIZE] - n1)
-            n2 = self.perlin[(of + PERLIN_YWRAP) & PERLIN_SIZE]
-            n2 = n2 + rxf * (self.perlin[(of + PERLIN_YWRAP + 1) & PERLIN_SIZE] - n2)
-            n1 = n1 + ryf * (n2 - n1)
+        # Smoothing functions
+        rxf_idx = (xf * self.perlin_pi).astype(np.int32) % self.perlin_twopi
+        ryf_idx = (yf * self.perlin_pi).astype(np.int32) % self.perlin_twopi
+        rxf = 0.5 * (1.0 - self.perlin_cos_table[rxf_idx])
+        ryf = 0.5 * (1.0 - self.perlin_cos_table[ryf_idx])
 
-            of = of + PERLIN_ZWRAP
-            n2 = self.perlin[of & PERLIN_SIZE]
-            n2 = n2 + rxf * (self.perlin[(of + 1) & PERLIN_SIZE] - n2)
-            n3 = self.perlin[(of + PERLIN_YWRAP) & PERLIN_SIZE]
-            n3 = n3 + rxf * (self.perlin[(of + PERLIN_YWRAP + 1) & PERLIN_SIZE] - n3)
-            n2 = n2 + ryf * (n3 - n2)
+        # Z smoothing (one per octave)
+        zf_idx = ((zf * self.perlin_pi).astype(np.int32) % self.perlin_twopi)
+        rzf = 0.5 * (1.0 - self.perlin_cos_table[zf_idx])  # (octaves,)
 
-            zf_fsc = self._noise_fsc_vec(np.full_like(xf, zf))[0, 0] if xf.ndim > 0 else self._noise_fsc(zf)
-            n1 = n1 + zf_fsc * (n2 - n1)
+        # Trilinear interpolation - all octaves at once
+        n1 = self.perlin[of & PERLIN_SIZE]
+        n1 = n1 + rxf * (self.perlin[(of + 1) & PERLIN_SIZE] - n1)
+        n2 = self.perlin[(of + PERLIN_YWRAP) & PERLIN_SIZE]
+        n2 = n2 + rxf * (self.perlin[(of + PERLIN_YWRAP + 1) & PERLIN_SIZE] - n2)
+        n1 = n1 + ryf * (n2 - n1)
 
-            r = r + n1 * ampl
-            ampl *= falloff
+        of2 = of + PERLIN_ZWRAP
+        n2 = self.perlin[of2 & PERLIN_SIZE]
+        n2 = n2 + rxf * (self.perlin[(of2 + 1) & PERLIN_SIZE] - n2)
+        n3 = self.perlin[(of2 + PERLIN_YWRAP) & PERLIN_SIZE]
+        n3 = n3 + rxf * (self.perlin[(of2 + PERLIN_YWRAP + 1) & PERLIN_SIZE] - n3)
+        n2 = n2 + ryf * (n3 - n2)
 
-            xi = xi << 1
-            xf = xf * 2
-            yi = yi << 1
-            yf = yf * 2
-            zi = zi << 1
-            zf = zf * 2
+        # Z interpolation
+        n1 = n1 + rzf[:, np.newaxis, np.newaxis] * (n2 - n1)
 
-            mask_x = xf >= 1.0
-            xi = np.where(mask_x, xi + 1, xi)
-            xf = np.where(mask_x, xf - 1, xf)
-            mask_y = yf >= 1.0
-            yi = np.where(mask_y, yi + 1, yi)
-            yf = np.where(mask_y, yf - 1, yf)
-            if zf >= 1.0:
-                zi += 1
-                zf -= 1
+        # Sum all octaves with their amplitudes
+        r = np.sum(n1 * ampls[:, np.newaxis, np.newaxis], axis=0)
 
         return r
 
