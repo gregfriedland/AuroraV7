@@ -1,158 +1,222 @@
 # AuroraV7
 
-LED matrix control software for Raspberry Pi with support for various visual patterns and remote operation.
+LED matrix control software with a Python web interface for pattern generation, finger painting, and audio/video reactive visualizations.
 
-## Architecture
+## Features
 
-The project consists of two binaries:
+- **Pattern Drawers**: Multiple visual pattern generators (AlienBlob, Bzr, GrayScott, GinzburgLandau)
+- **Finger Paint**: Draw on the LED matrix via web browser
+- **Audio Reactive**: Beat detection and spectrum analysis for music-reactive patterns
+- **Video Input**: Motion detection and light-level reactive patterns
+- **Custom Drawers**: Create your own patterns with Python code via YAML definitions
+- **User Profiles**: Save preferences and custom drawers per user
+- **Web Interface**: Control everything from any browser
 
-- **AuroraMatrix** - Server that runs on the Raspberry Pi with the LED matrix connected. Receives frames over gRPC and displays them on the matrix.
-- **AuroraPatternGen** - Client that generates visual patterns and sends them to AuroraMatrix. Can run on the Pi or remotely.
+## Requirements
 
-## Supported Platforms
+- Python 3.10+
+- Raspberry Pi (or any Linux machine with serial port access to LED controller)
+- LED matrix with serial interface (e.g., Teensy + WS2801 strips)
 
-- **Raspberry Pi 5** - Uses libcamera via GStreamer for camera input
-- **Raspberry Pi 4 and earlier** - Uses raspicam for camera input
-- **Linux/macOS** - For development with ComputerScreen matrix output (OpenCV window)
+## Installation
 
-## Prerequisites
-
-### Ubuntu/Debian (Raspberry Pi or Linux)
-
-Run the dependency installation script:
-
-```bash
-sudo ./install/install-deps.sh
-```
-
-This installs cmake, build-essential, OpenCV, gRPC, Protocol Buffers, and GStreamer.
-
-## Building
+### Quick Install (Raspberry Pi)
 
 ```bash
-# Clone the repository with submodules
-git clone --recursive https://github.com/gregfriedland/AuroraV7.git
+# Clone the repository
+git clone https://github.com/gregfriedland/AuroraV7.git
 cd AuroraV7
 
-# Or if already cloned, initialize submodules
-git submodule update --init --recursive
+# Create virtual environment and install dependencies
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 
-# Build (CMake will automatically build rpi-rgb-led-matrix on ARM)
-mkdir -p build && cd build
-cmake ..
-make -j4
+# Install systemd service
+sudo ./install/install-aurora-web.sh
 ```
 
-### Build Output
+### Manual Installation
 
-On Raspberry Pi with rpi-rgb-led-matrix installed:
-- `AuroraMatrix` - LED matrix server
-- `AuroraPatternGen` - Pattern generator client
+```bash
+# Clone the repository
+git clone https://github.com/gregfriedland/AuroraV7.git
+cd AuroraV7
 
-On non-ARM systems or without rpi-rgb-led-matrix:
-- `AuroraPatternGen` only (can connect to remote AuroraMatrix)
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -e .
+
+# Or install with uv (faster)
+uv pip install -e .
+```
 
 ## Configuration
 
-Create a JSON configuration file (see `config/` directory for examples):
+Edit `aurora_web/config.yaml`:
 
-```json
-{
-    "width": 192,
-    "height": 96,
-    "matrix": "HzellerRpi",
-    "networkPort": 50051,
-    "fps": 30,
-    "gamma": 2.2
-}
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 80
+
+matrix:
+  width: 32
+  height: 18
+  serial_device: "/dev/ttyACM0"
+  fps: 40
+  gamma: 2.5
+  layout_left_to_right: true
+
+inputs:
+  audio:
+    enabled: true
+    source: "pulse"  # or "alsa:hw:0"
+
+  video:
+    enabled: false
+    device: 0
 ```
-
-### Matrix Types
-
-- `HzellerRpi` - rpi-rgb-led-matrix (Raspberry Pi with LED panels)
-- `Serial` - Serial-connected LED matrix
-- `ComputerScreen` - OpenCV window display (for development)
-- `Remote` - Connect to a remote AuroraMatrix server
-- `Noop` - No display output (for testing)
 
 ## Running
 
-### On Raspberry Pi (with LED matrix)
+### Development
 
 ```bash
-# Run the matrix server (requires root for GPIO access)
-sudo ./build/AuroraMatrix config/your-config.json
-
-# In another terminal, run the pattern generator
-./build/AuroraPatternGen config/your-config.json
+source .venv/bin/activate
+python -m uvicorn aurora_web.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Remote Operation
-
-Run AuroraMatrix on the Pi, then run AuroraPatternGen on another machine with a Remote matrix configuration:
-
-```json
-{
-    "matrix": "Remote",
-    "remote": {
-        "host": "aurora.local",
-        "port": 50051
-    }
-}
-```
-
-## Camera Support
-
-### Raspberry Pi 5
-
-Uses libcamera via GStreamer pipeline. Make sure you have:
-- `gstreamer1.0-libcamera` package installed
-- Camera enabled in raspi-config
-
-### Raspberry Pi 4 and earlier
-
-Uses raspicam library. Install from source:
+### Production (Systemd)
 
 ```bash
-git clone https://github.com/cedricve/raspicam.git
-cd raspicam
-mkdir build && cd build
-cmake ..
-make -j4
-sudo make install
+# Start service
+sudo systemctl start aurora-web
+
+# Check status
+sudo systemctl status aurora-web
+
+# View logs
+sudo journalctl -u aurora-web -f
+
+# Enable on boot
+sudo systemctl enable aurora-web
 ```
 
-## Systemd Service
+Then open `http://aurora.local` (or Pi's IP address) in a browser.
 
-Use the setup script to install the systemd service:
+## Project Structure
+
+```
+AuroraV7/
+├── aurora_web/              # Python web application
+│   ├── main.py              # FastAPI app entry point
+│   ├── config.yaml          # Configuration file
+│   ├── core/                # Core components
+│   │   ├── drawer_manager.py
+│   │   ├── palette.py
+│   │   ├── serial_process.py
+│   │   ├── shared_frame.py
+│   │   └── users.py
+│   ├── drawers/             # Pattern generators
+│   │   ├── base.py
+│   │   ├── alien_blob.py
+│   │   ├── bzr.py
+│   │   ├── gray_scott.py
+│   │   ├── ginzburg_landau.py
+│   │   ├── custom.py
+│   │   └── off.py
+│   ├── inputs/              # Input feeds
+│   │   ├── audio_feed.py
+│   │   ├── video_feed.py
+│   │   └── canvas_feed.py
+│   ├── api/                 # REST API endpoints
+│   │   ├── users.py
+│   │   └── custom_drawers.py
+│   ├── static/              # Web UI files
+│   └── custom_drawers/      # User-created patterns
+├── install/                 # Installation scripts
+│   ├── aurora-web.service
+│   └── install-aurora-web.sh
+├── firmware/                # Teensy/Arduino firmware
+│   └── AuroraLEDs.ino
+├── config/                  # Example configurations
+└── pyproject.toml           # Python package config
+```
+
+## Creating Custom Drawers
+
+Create a YAML file in `aurora_web/custom_drawers/username/`:
+
+```yaml
+name: "My Pattern"
+author: "username"
+description: "A custom pattern"
+
+settings:
+  speed:
+    type: float
+    default: 1.0
+    min: 0.1
+    max: 5.0
+
+code: |
+  def draw(width, height, ctx, settings, palette_size):
+      t = ctx.time * settings['speed']
+
+      xx, yy = np.meshgrid(np.arange(width), np.arange(height))
+      pattern = np.sin(xx * 0.1 + t) * np.cos(yy * 0.1 + t)
+
+      normalized = (pattern + 1) / 2
+      indices = (normalized * (palette_size - 1)).astype(np.int32)
+
+      return indices % palette_size
+```
+
+## API Endpoints
+
+- `GET /api/config` - Get matrix configuration
+- `GET /api/drawers` - List available drawers
+- `GET /api/status` - Get current status
+- `WebSocket /ws` - Real-time frame streaming and control
+
+### User API
+- `POST /api/users/register` - Create account
+- `POST /api/users/login` - Login
+- `GET /api/users/me` - Get profile
+
+### Custom Drawer API
+- `GET /api/custom-drawers/list` - List custom drawers
+- `POST /api/custom-drawers/create` - Create new drawer
+- `GET /api/custom-drawers/template` - Get example template
+
+## Testing
 
 ```bash
-# Full setup (installs deps, builds, configures service)
-sudo ./install/setup-rpi5-ubuntu.sh
+# Run all tests
+pytest aurora_web/tests/ -v
 
-# With custom config file
-sudo ./install/setup-rpi5-ubuntu.sh --config /path/to/config.json
-
-# Don't start service automatically
-sudo ./install/setup-rpi5-ubuntu.sh --no-start
+# Run specific test file
+pytest aurora_web/tests/test_drawers.py -v
 ```
 
-Service commands:
-```bash
-sudo systemctl status aurorav7   # Check status
-sudo systemctl start aurorav7    # Start service
-sudo systemctl stop aurorav7     # Stop service
-sudo systemctl restart aurorav7  # Restart service
-sudo journalctl -u aurorav7 -f   # View logs
-```
+## Hardware Setup
 
-## Dependencies
+### LED Matrix with Teensy
 
-### Submodules (included)
-- [rpi-rgb-led-matrix](https://github.com/hzeller/rpi-rgb-led-matrix) - LED matrix driver
-- [nlohmann/json](https://github.com/nlohmann/json) - JSON for Modern C++
+The system expects a Teensy microcontroller connected via USB serial, receiving RGB data for a snake-pattern LED matrix.
 
-### System packages
-- [OpenCV](https://opencv.org/) - Computer vision library
-- [gRPC](https://grpc.io/) - Remote procedure call framework
-- [raspicam](https://github.com/cedricve/raspicam) - Raspberry Pi camera library (Pi 4 and earlier, optional)
+See `firmware/AuroraLEDs.ino` for the Teensy firmware.
+
+### Serial Protocol
+
+- Baud rate: 115200
+- Frame format: RGB bytes (capped at 254) + 0xFF delimiter
+- Snake pattern: alternate rows reversed
+
+## License
+
+MIT License - See LICENSE file.
