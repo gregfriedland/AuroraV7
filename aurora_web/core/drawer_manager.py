@@ -1,5 +1,6 @@
 """Drawer manager for mode switching and drawer orchestration."""
 
+import random
 import time
 import numpy as np
 
@@ -13,6 +14,10 @@ class DrawerManager:
     Handles switching between paint mode (browser-sourced frames) and
     pattern mode (server-generated frames from drawers).
     """
+
+    # Auto-rotation settings
+    AUTO_ROTATE_INTERVAL = 60.0  # seconds between auto-rotations
+    USER_INTERACTION_COOLDOWN = 15 * 60.0  # 15 minutes cooldown after user interaction
 
     def __init__(self, width: int, height: int, palette_size: int = 4096):
         """Initialize drawer manager.
@@ -35,11 +40,16 @@ class DrawerManager:
 
         # Color palette for pattern mode
         self.palette = Palette(size=palette_size)
+        self.current_palette_index = 0
 
         # Timing
         self.frame_num = 0
         self.start_time = time.time()
         self.last_time = self.start_time
+
+        # Auto-rotation state
+        self.last_rotation_time = time.time()
+        self.last_user_interaction = 0.0  # No interaction yet
 
         # Default black frame
         self.black_frame = np.zeros((height, width, 3), dtype=np.uint8)
@@ -165,4 +175,68 @@ class DrawerManager:
             "mode": self.mode,
             "active_drawer": self.active_drawer.name if self.active_drawer else None,
             "drawers": list(self.drawers.keys()),
+            "auto_rotate_active": self.is_auto_rotate_active(),
+            "palette_index": self.current_palette_index,
         }
+
+    def user_interacted(self) -> None:
+        """Mark that user has interacted, disabling auto-rotation temporarily."""
+        self.last_user_interaction = time.time()
+
+    def is_auto_rotate_active(self) -> bool:
+        """Check if auto-rotation is currently active.
+
+        Returns:
+            True if auto-rotation is active (no recent user interaction)
+        """
+        time_since_interaction = time.time() - self.last_user_interaction
+        return time_since_interaction >= self.USER_INTERACTION_COOLDOWN
+
+    def randomize_all(self) -> dict:
+        """Randomize drawer, settings, and palette.
+
+        Returns:
+            Dict with new drawer name, palette index, and settings
+        """
+        # Pick a random drawer (excluding "Off")
+        available_drawers = [name for name in self.drawers.keys() if name != "Off"]
+        if not available_drawers:
+            return {}
+
+        drawer_name = random.choice(available_drawers)
+        self.set_active_drawer(drawer_name)
+
+        # Randomize the drawer's settings
+        if self.active_drawer:
+            self.active_drawer.randomize_settings()
+
+        # Pick a random curated palette
+        self.current_palette_index = random.randint(0, Palette.curated_count() - 1)
+        self.palette.set_curated(self.current_palette_index)
+
+        # Reset rotation timer
+        self.last_rotation_time = time.time()
+
+        return {
+            "drawer": drawer_name,
+            "palette_index": self.current_palette_index,
+            "settings": self.active_drawer.get_settings_info() if self.active_drawer else {},
+        }
+
+    def check_auto_rotate(self) -> dict | None:
+        """Check if it's time to auto-rotate and do so if needed.
+
+        Returns:
+            Dict with new state if rotated, None otherwise
+        """
+        if not self.is_auto_rotate_active():
+            return None
+
+        if self.mode != "pattern":
+            return None
+
+        time_since_rotation = time.time() - self.last_rotation_time
+        if time_since_rotation >= self.AUTO_ROTATE_INTERVAL:
+            return self.randomize_all()
+
+        return None

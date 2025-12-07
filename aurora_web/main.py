@@ -93,6 +93,16 @@ async def render_loop():
 
             local_frame_num += 1
 
+            # Check for auto-rotation
+            rotation_result = drawer_manager.check_auto_rotate()
+            if rotation_result and connected_clients:
+                await broadcast(json.dumps({
+                    "type": "auto_rotated",
+                    "drawer": rotation_result.get("drawer"),
+                    "palette_index": rotation_result.get("palette_index"),
+                    "settings": rotation_result.get("settings"),
+                }))
+
             # Broadcast status to clients every 30 frames
             if local_frame_num % 30 == 0 and connected_clients:
                 actual_fps = 1.0 / max(delta_time, 0.001)
@@ -172,8 +182,10 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[Aurora Web] Failed to load custom drawer {drawer_info['path']}: {e}")
 
-    # Set default drawer
-    drawer_manager.set_active_drawer("AlienBlob")
+    # Start with random pattern, settings, and palette (pattern mode)
+    drawer_manager.set_mode("pattern")
+    result = drawer_manager.randomize_all()
+    print(f"[Aurora Web] Auto-started with: {result.get('drawer')}, palette #{result.get('palette_index')}")
 
     # Start serial output process
     serial_manager = SerialOutputManager(
@@ -305,6 +317,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Switch between paint and pattern mode
                     mode = msg.get("mode", "paint")
                     if drawer_manager:
+                        drawer_manager.user_interacted()
                         drawer_manager.set_mode(mode)
                         # Notify all clients
                         await broadcast(json.dumps({
@@ -316,6 +329,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Set active drawer
                     drawer_name = msg.get("drawer")
                     if drawer_manager and drawer_name:
+                        drawer_manager.user_interacted()
                         if drawer_manager.set_active_drawer(drawer_name):
                             # Send updated settings
                             await websocket.send_text(json.dumps({
@@ -328,11 +342,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Update drawer settings
                     settings = msg.get("settings", {})
                     if drawer_manager:
+                        drawer_manager.user_interacted()
                         drawer_manager.update_drawer_settings(settings)
 
                 elif msg_type == "randomize_drawer":
                     # Randomize drawer settings
                     if drawer_manager and drawer_manager.active_drawer:
+                        drawer_manager.user_interacted()
                         drawer_manager.active_drawer.randomize_settings()
                         await websocket.send_text(json.dumps({
                             "type": "drawer_changed",
