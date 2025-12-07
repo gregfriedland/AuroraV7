@@ -161,6 +161,25 @@ class AuroraApp {
         document.getElementById('randomize-btn').addEventListener('click', () => {
             this.sendMessage({ type: 'randomize_drawer' });
         });
+
+        // Palette slider
+        const paletteSlider = document.getElementById('palette-slider');
+        const paletteLabel = document.getElementById('palette-label');
+        paletteSlider.addEventListener('input', () => {
+            const index = parseInt(paletteSlider.value);
+            paletteLabel.textContent = index;
+            this.sendMessage({ type: 'set_palette', index: index });
+        });
+    }
+
+    updatePaletteSlider(index, count) {
+        const slider = document.getElementById('palette-slider');
+        const label = document.getElementById('palette-label');
+        if (count !== undefined) {
+            slider.max = count - 1;
+        }
+        slider.value = index;
+        label.textContent = index;
     }
 
     populateDrawerSelect(drawers) {
@@ -344,6 +363,9 @@ class AuroraApp {
                         this.updateDrawerSettings(drawer.settings);
                     }
                 }
+                if (msg.palette_index !== undefined) {
+                    this.updatePaletteSlider(msg.palette_index, msg.palette_count);
+                }
                 break;
 
             case 'status':
@@ -364,6 +386,20 @@ class AuroraApp {
                 document.getElementById('current-pattern-name').textContent = msg.drawer;
                 if (msg.settings) {
                     this.updateDrawerSettings(msg.settings);
+                }
+                if (msg.palette_index !== undefined) {
+                    this.updatePaletteSlider(msg.palette_index);
+                }
+                break;
+
+            case 'auto_rotated':
+                document.getElementById('drawer-select').value = msg.drawer;
+                document.getElementById('current-pattern-name').textContent = msg.drawer;
+                if (msg.settings) {
+                    this.updateDrawerSettings(msg.settings);
+                }
+                if (msg.palette_index !== undefined) {
+                    this.updatePaletteSlider(msg.palette_index);
                 }
                 break;
 

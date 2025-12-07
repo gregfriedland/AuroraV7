@@ -20,6 +20,7 @@ import numpy as np
 from aurora_web.core.serial_process import SerialOutputManager
 from aurora_web.core.drawer_manager import DrawerManager
 from aurora_web.core.users import UserManager
+from aurora_web.core.palette import Palette
 from aurora_web.drawers import (
     OffDrawer,
     AlienBlobDrawer,
@@ -289,6 +290,8 @@ async def websocket_endpoint(websocket: WebSocket):
         init_msg["mode"] = drawer_manager.mode
         init_msg["drawers"] = drawer_manager.get_drawer_list()
         init_msg["active_drawer"] = drawer_manager.active_drawer.name if drawer_manager.active_drawer else None
+        init_msg["palette_index"] = drawer_manager.current_palette_index
+        init_msg["palette_count"] = Palette.curated_count()
 
     await websocket.send_text(json.dumps(init_msg))
 
@@ -346,15 +349,28 @@ async def websocket_endpoint(websocket: WebSocket):
                         drawer_manager.update_drawer_settings(settings)
 
                 elif msg_type == "randomize_drawer":
-                    # Randomize drawer settings
+                    # Randomize drawer settings and palette
                     if drawer_manager and drawer_manager.active_drawer:
                         drawer_manager.user_interacted()
                         drawer_manager.active_drawer.randomize_settings()
+                        # Also randomize palette
+                        import random
+                        drawer_manager.current_palette_index = random.randint(0, Palette.curated_count() - 1)
+                        drawer_manager.palette.set_curated(drawer_manager.current_palette_index)
                         await websocket.send_text(json.dumps({
                             "type": "drawer_changed",
                             "drawer": drawer_manager.active_drawer.name,
-                            "settings": drawer_manager.active_drawer.get_settings_info()
+                            "settings": drawer_manager.active_drawer.get_settings_info(),
+                            "palette_index": drawer_manager.current_palette_index
                         }))
+
+                elif msg_type == "set_palette":
+                    # Set palette by index
+                    palette_index = msg.get("index", 0)
+                    if drawer_manager:
+                        drawer_manager.user_interacted()
+                        drawer_manager.current_palette_index = palette_index % Palette.curated_count()
+                        drawer_manager.palette.set_curated(drawer_manager.current_palette_index)
 
                 elif msg_type == "get_drawers":
                     # Return list of drawers
