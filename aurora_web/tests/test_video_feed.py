@@ -55,6 +55,7 @@ class TestVideoFeed:
         assert feed.fps == 30
         assert feed.motion_threshold == 0.02
         assert feed.enable_face_detection is False
+        assert feed.rotation == 0
         assert feed.is_running is False
 
     def test_custom_initialization(self):
@@ -66,6 +67,7 @@ class TestVideoFeed:
             fps=60,
             motion_threshold=0.05,
             enable_face_detection=True,
+            rotation=180,
         )
         assert feed.device == 1
         assert feed.width == 640
@@ -73,6 +75,7 @@ class TestVideoFeed:
         assert feed.fps == 60
         assert feed.motion_threshold == 0.05
         assert feed.enable_face_detection is True
+        assert feed.rotation == 180
 
     def test_get_input_when_not_running(self):
         """get_input should return empty VideoInput when not running."""
@@ -82,18 +85,26 @@ class TestVideoFeed:
         assert result.frame is None
         assert result.motion_amount == 0.0
 
+    def test_start_without_picamera2_logs_warning(self):
+        """start() should log warning and not crash when picamera2 unavailable."""
+        async def run_test():
+            feed = VideoFeed()
+            await feed.start()
+            # On macOS/non-Pi, picamera2 won't be available
+            # Feed should gracefully not start
+            assert not feed.is_running
+
+        asyncio.run(run_test())
+
     def test_analyze_light_level(self):
         """_analyze should compute light level from frame."""
         feed = VideoFeed()
         feed.prev_gray = None  # Reset
 
-        # Create a gray frame with known brightness
-        # OpenCV uses BGR, so we need a BGR frame
         brightness = 128
         frame = np.full((240, 320, 3), brightness, dtype=np.uint8)
         feed._analyze(frame)
 
-        # Light level should be close to 0.5 (128/255)
         assert 0.45 < feed.light_level < 0.55
 
     def test_analyze_light_level_dark(self):
@@ -101,7 +112,6 @@ class TestVideoFeed:
         feed = VideoFeed()
         feed.prev_gray = None
 
-        # Create a dark frame
         frame = np.zeros((240, 320, 3), dtype=np.uint8)
         feed._analyze(frame)
 
@@ -112,7 +122,6 @@ class TestVideoFeed:
         feed = VideoFeed()
         feed.prev_gray = None
 
-        # Create a bright frame
         frame = np.full((240, 320, 3), 255, dtype=np.uint8)
         feed._analyze(frame)
 
@@ -122,12 +131,10 @@ class TestVideoFeed:
         """_analyze should detect motion between frames."""
         feed = VideoFeed(motion_threshold=0.01)
 
-        # First frame - no motion yet
         frame1 = np.zeros((240, 320, 3), dtype=np.uint8)
         feed._analyze(frame1)
         assert feed.motion_amount == 0.0
 
-        # Second frame - different, should detect motion
         frame2 = np.full((240, 320, 3), 128, dtype=np.uint8)
         feed._analyze(frame2)
         assert feed.motion_amount > 0.0
@@ -138,25 +145,21 @@ class TestVideoFeed:
         """_analyze should detect no motion for identical frames."""
         feed = VideoFeed()
 
-        # Same frame twice
         frame = np.full((240, 320, 3), 128, dtype=np.uint8)
         feed._analyze(frame)
         feed._analyze(frame.copy())
 
-        # No difference = no motion
         assert feed.motion_amount == 0.0
 
     def test_analyze_dominant_color(self):
         """_analyze should compute dominant color."""
         feed = VideoFeed()
 
-        # Create a blue frame (BGR in OpenCV)
         frame = np.zeros((240, 320, 3), dtype=np.uint8)
         frame[:, :, 0] = 255  # Blue channel in BGR
 
         feed._analyze(frame)
 
-        # Dominant color should be blue (RGB: 0, 0, 255)
         assert feed.dominant_color is not None
         r, g, b = feed.dominant_color
         assert b > r and b > g
@@ -165,16 +168,13 @@ class TestVideoFeed:
         """_analyze should store frame in RGB format."""
         feed = VideoFeed()
 
-        # Create a red frame in BGR (OpenCV format)
         frame_bgr = np.zeros((240, 320, 3), dtype=np.uint8)
         frame_bgr[:, :, 2] = 255  # Red channel in BGR
 
         feed._analyze(frame_bgr)
 
-        # Stored frame should be RGB
         assert feed.frame is not None
         assert feed.frame.shape == (240, 320, 3)
-        # In RGB, red is channel 0
         assert np.mean(feed.frame[:, :, 0]) > 200  # Red channel high
         assert np.mean(feed.frame[:, :, 2]) < 50   # Blue channel low
 
@@ -188,9 +188,60 @@ class TestVideoFeed:
         result1 = feed.get_input()
         result2 = feed.get_input()
 
-        # Should be equal but not the same object
         assert np.array_equal(result1.frame, result2.frame)
         assert result1.frame is not result2.frame
+
+
+class TestVideoFeedRotation:
+    """Tests for VideoFeed rotation."""
+
+    def test_rotation_0_no_change(self):
+        """rotation=0 should not modify the frame."""
+        feed = VideoFeed(rotation=0)
+
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        frame[0, 0, 0] = 255  # top-left pixel, blue channel BGR
+        feed._analyze(frame.copy())
+
+        # Stored as RGB: top-left should have blue=255
+        assert feed.frame[0, 0, 2] == 255
+
+    def test_rotation_180_flips(self):
+        """rotation=180 should flip the frame."""
+        feed = VideoFeed(rotation=180)
+
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        frame[0, 0, :] = 200
+
+        feed._analyze(frame.copy())
+
+        assert feed.frame[0, 0, 0] == 0  # top-left is now black
+        assert feed.frame[239, 319, 0] == 200  # bottom-right has the marker
+
+    def test_rotation_90(self):
+        """rotation=90 should rotate clockwise."""
+        feed = VideoFeed(rotation=90)
+
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        frame[0, 0, :] = 200
+
+        feed._analyze(frame.copy())
+
+        # After 90° CW, frame dimensions swap
+        assert feed.frame.shape == (320, 240, 3)
+        assert feed.frame[0, 239, 0] == 200
+
+    def test_rotation_270(self):
+        """rotation=270 should rotate counter-clockwise."""
+        feed = VideoFeed(rotation=270)
+
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        frame[0, 0, :] = 200
+
+        feed._analyze(frame.copy())
+
+        assert feed.frame.shape == (320, 240, 3)
+        assert feed.frame[319, 0, 0] == 200
 
 
 class TestMockVideoFeed:
@@ -268,7 +319,6 @@ class TestMockVideoFeed:
 
             await feed.stop()
 
-            # Motion should vary (not all the same)
             assert len(set(round(m, 3) for m in motions)) > 1
 
         asyncio.run(run_test())
@@ -287,7 +337,6 @@ class TestMockVideoFeed:
 
             await feed.stop()
 
-            # Light level should vary
             assert len(set(round(l, 3) for l in lights)) > 1
 
         asyncio.run(run_test())

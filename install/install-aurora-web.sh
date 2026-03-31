@@ -30,8 +30,9 @@ fi
 echo ""
 echo "Installing Python dependencies..."
 cd "$SCRIPT_DIR/.."
-uv venv --python 3.11 2>/dev/null || uv venv
-uv pip install fastapi "uvicorn[standard]" websockets pyyaml numpy pyserial
+uv venv --python 3.12
+uv pip install -e .
+uv pip install picamera2
 
 # Copy service file
 echo ""

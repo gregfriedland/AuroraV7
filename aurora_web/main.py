@@ -27,6 +27,7 @@ from aurora_web.drawers import (
     BzrDrawer,
     GrayScottDrawer,
     GinzburgLandauDrawer,
+    CameraDrawer,
 )
 from aurora_web.drawers.custom import CustomDrawerLoader
 from aurora_web.api import users_router, custom_drawers_router
@@ -172,6 +173,7 @@ async def lifespan(app: FastAPI):
     drawer_manager.register_drawer(BzrDrawer(width, height))
     drawer_manager.register_drawer(GrayScottDrawer(width, height))
     drawer_manager.register_drawer(GinzburgLandauDrawer(width, height))
+    drawer_manager.register_drawer(CameraDrawer(width, height))
 
     # Load and register custom drawers
     for drawer_info in custom_drawer_loader.list_drawers():
@@ -183,10 +185,10 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[Aurora Web] Failed to load custom drawer {drawer_info['path']}: {e}")
 
-    # Start with random pattern, settings, and palette (pattern mode)
+    # Start with Camera drawer in pattern mode
     drawer_manager.set_mode("pattern")
-    result = drawer_manager.randomize_all()
-    print(f"[Aurora Web] Auto-started with: {result.get('drawer')}, palette #{result.get('palette_index')}")
+    drawer_manager.set_active_drawer("Camera")
+    print("[Aurora Web] Auto-started with: Camera")
 
     # Start serial output process
     serial_manager = SerialOutputManager(
