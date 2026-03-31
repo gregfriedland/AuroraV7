@@ -116,8 +116,8 @@ class CameraDrawer(Drawer):
         if self.settings["mirror"]:
             normalized = np.fliplr(normalized)
 
-        # Map 0.0-1.0 to palette indices
-        indices = (normalized * (self.palette_size - 1)).astype(np.int32)
+        # Map 0.0-1.0 to palette indices (4x multiplier for stronger gradient)
+        indices = (normalized * (self.palette_size - 1) * 4).astype(np.int32)
 
         # Apply color cycling (scale down so max speed is gentle)
         indices = (indices + int(self.color_index)) % self.palette_size
