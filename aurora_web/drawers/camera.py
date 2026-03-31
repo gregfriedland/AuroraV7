@@ -38,7 +38,7 @@ class CameraDrawer(Drawer):
             "mirror": 1,
             "colorSpeed": 0,
             "zoom": 4,       # 1-8x digital zoom
-            "zoomX": 50,     # 0=left, 50=center, 100=right
+            "zoomX": 35,     # 0=left, 50=center, 100=right
             "zoomY": 100,    # 0=top, 50=center, 100=bottom
         }
         self.settings_ranges = {
