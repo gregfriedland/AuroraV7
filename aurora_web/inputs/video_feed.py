@@ -6,6 +6,7 @@ import asyncio
 import time
 import cv2
 from dataclasses import dataclass
+from pathlib import Path
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -82,7 +83,7 @@ class VideoFeed:
 
         # Camera backend
         self._picam: object | None = None
-        self._face_cascade = None
+        self._face_detector = None
 
         # Async control
         self._running: bool = False
@@ -109,19 +110,22 @@ class VideoFeed:
             self._running = False
             return
 
-        # Load face cascade if needed
+        # Load face detector if needed (YuNet DNN — rotation-invariant)
         if self.enable_face_detection:
             try:
-                cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-                self._face_cascade = cv2.CascadeClassifier(cascade_path)
-                if self._face_cascade.empty():
-                    print("[VideoFeed] WARNING: Face cascade loaded but is empty!")
-                    self._face_cascade = None
-                else:
-                    print("[VideoFeed] Face detection enabled")
+                model_path = str(Path(__file__).parent.parent / "models" / "face_detection_yunet_2023mar.onnx")
+                self._face_detector = cv2.FaceDetectorYN.create(
+                    model_path,
+                    "",
+                    (self.width, self.height),
+                    score_threshold=0.5,
+                    nms_threshold=0.3,
+                    top_k=10,
+                )
+                print("[VideoFeed] Face detection enabled (YuNet)")
             except Exception as e:
                 print(f"[VideoFeed] Face detection unavailable: {e}")
-                self._face_cascade = None
+                self._face_detector = None
 
         self._task = asyncio.create_task(self._capture_loop())
         logger.info("VideoFeed started — device %d at %dx%d (rotation=%d°)",
@@ -241,21 +245,21 @@ class VideoFeed:
         # Convert BGR to RGB
         self.dominant_color = (int(avg_color[2]), int(avg_color[1]), int(avg_color[0]))
 
-        # Face detection (expensive, run less frequently)
-        if self._face_cascade is not None:
+        # Face detection (YuNet DNN, run every 5th frame)
+        if self._face_detector is not None:
             if not hasattr(self, '_face_frame_count'):
                 self._face_frame_count = 0
             self._face_frame_count += 1
 
             if self._face_frame_count >= 5:
                 self._face_frame_count = 0
-                faces = self._face_cascade.detectMultiScale(
-                    gray,
-                    scaleFactor=1.1,
-                    minNeighbors=5,
-                    minSize=(30, 30)
-                )
-                self.faces = [(int(x), int(y), int(w), int(h)) for (x, y, w, h) in faces]
+                _, raw_faces = self._face_detector.detect(frame)
+                if raw_faces is not None:
+                    # YuNet returns [x, y, w, h, ...landmarks, score] per row
+                    self.faces = [(int(r[0]), int(r[1]), int(r[2]), int(r[3]))
+                                  for r in raw_faces]
+                else:
+                    self.faces = []
                 if not hasattr(self, '_face_log_count'):
                     self._face_log_count = 0
                 self._face_log_count += 1

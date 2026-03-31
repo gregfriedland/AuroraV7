@@ -195,10 +195,12 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[Aurora Web] Failed to load custom drawer {drawer_info['path']}: {e}")
 
-    # Start with Camera drawer in pattern mode
+    # Start with Camera drawer in pattern mode, high-contrast palette
     drawer_manager.set_mode("pattern")
     drawer_manager.set_active_drawer("Camera")
-    print("[Aurora Web] Auto-started with: Camera")
+    drawer_manager.current_palette_index = 110
+    drawer_manager.palette.set_curated(110)
+    print("[Aurora Web] Auto-started with: Camera, palette #110")
 
     # Start serial output process
     serial_manager = SerialOutputManager(

@@ -36,7 +36,7 @@ class CameraDrawer(Drawer):
             "brightness": 50,
             "contrast": 50,
             "mirror": 1,
-            "colorSpeed": 0,
+            "colorSpeed": 5,
             "zoom": 2,       # 1-8x digital zoom
             "zoomX": 42,     # 0=left, 50=center, 100=right
             "zoomY": 100,    # 0=top, 50=center, 100=bottom
@@ -83,8 +83,13 @@ class CameraDrawer(Drawer):
             return self._fallback_pattern(ctx)
 
         # Face zoom montage mode
-        if self.settings["faceZoom"] and video_input.faces:
-            smoothed = self._smooth_faces(video_input.faces)
+        use_face_zoom = self.settings["faceZoom"] and (
+            video_input.faces or self._smoothed_faces
+        )
+        if use_face_zoom:
+            # Use detected faces, or keep last known positions if face lost
+            faces = video_input.faces if video_input.faces else None
+            smoothed = self._smooth_faces(faces)
             normalized = self._build_face_montage(video_input.frame, smoothed)
         else:
             frame = self._apply_zoom(video_input.frame)
@@ -113,17 +118,18 @@ class CameraDrawer(Drawer):
 
         return indices
 
-    def _smooth_faces(self, faces: list[tuple[int, int, int, int]],
+    def _smooth_faces(self, faces: list[tuple[int, int, int, int]] | None,
                       alpha: float = 0.03,
                       retarget_interval: float = 30.0,
                       ) -> list[tuple[int, int, int, int]]:
         """Exponential moving average on face rectangles for smooth panning.
 
         Only accepts new face targets every retarget_interval seconds,
-        then slowly lerps toward them. First detection is accepted immediately.
+        then slowly lerps toward them. If faces is None (lost tracking),
+        returns the last known smoothed positions.
 
         Args:
-            faces: Detected face rects [(x, y, w, h), ...]
+            faces: Detected face rects, or None to hold current position
             alpha: Blend factor per frame (0.03 at 40fps ≈ 1s to settle)
             retarget_interval: Seconds between accepting new target positions
 
@@ -132,6 +138,12 @@ class CameraDrawer(Drawer):
         """
         import time
         now = time.monotonic()
+
+        # No new faces — hold current position
+        if faces is None:
+            return [(int(round(x)), int(round(y)), int(round(w)), int(round(h)))
+                    for x, y, w, h in self._smoothed_faces]
+
         detected = faces[:4]
 
         # Accept new targets on first detection, face count change, or every 30s
