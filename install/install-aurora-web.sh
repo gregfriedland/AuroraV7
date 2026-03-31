@@ -26,11 +26,16 @@ if ! command -v uv &> /dev/null; then
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
+# Install build dependencies for picamera2
+echo ""
+echo "Installing system dependencies..."
+sudo apt-get install -y -qq python3.12-dev libcap-dev
+
 # Create venv and install Python dependencies
 echo ""
 echo "Installing Python dependencies..."
 cd "$SCRIPT_DIR/.."
-uv venv --python 3.12
+uv venv --python 3.12 --clear
 uv pip install -e .
 uv pip install picamera2
 
