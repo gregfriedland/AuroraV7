@@ -114,9 +114,13 @@ class VideoFeed:
             try:
                 cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
                 self._face_cascade = cv2.CascadeClassifier(cascade_path)
-                logger.info("Face detection enabled")
+                if self._face_cascade.empty():
+                    print("[VideoFeed] WARNING: Face cascade loaded but is empty!")
+                    self._face_cascade = None
+                else:
+                    print("[VideoFeed] Face detection enabled")
             except Exception as e:
-                logger.warning("Face detection unavailable: %s", e)
+                print(f"[VideoFeed] Face detection unavailable: {e}")
                 self._face_cascade = None
 
         self._task = asyncio.create_task(self._capture_loop())
@@ -252,6 +256,11 @@ class VideoFeed:
                     minSize=(30, 30)
                 )
                 self.faces = [(int(x), int(y), int(w), int(h)) for (x, y, w, h) in faces]
+                if not hasattr(self, '_face_log_count'):
+                    self._face_log_count = 0
+                self._face_log_count += 1
+                if self._face_log_count <= 5 or (self.faces and self._face_log_count % 30 == 0):
+                    print(f"[VideoFeed] Face detect: {len(self.faces)} faces {self.faces}")
 
     def get_input(self) -> VideoInput:
         """Get current video input state for drawers.

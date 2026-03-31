@@ -81,6 +81,11 @@ class CameraDrawer(Drawer):
 
         # Face zoom montage mode
         if self.settings["faceZoom"] and video_input.faces:
+            if not hasattr(self, '_face_log_count'):
+                self._face_log_count = 0
+            self._face_log_count += 1
+            if self._face_log_count <= 3:
+                print(f"[CameraDrawer] Face montage: {len(video_input.faces)} faces")
             normalized = self._build_face_montage(video_input.frame, video_input.faces)
         else:
             frame = self._apply_zoom(video_input.frame)
