@@ -39,6 +39,11 @@ uv venv --python 3.12 --clear
 uv pip install -e .
 uv pip install picamera2
 
+# Symlink system libcamera bindings and KMS stub into venv
+SITE_PKGS=".venv/lib/python3.12/site-packages"
+ln -sf /usr/lib/aarch64-linux-gnu/python3.12/site-packages/libcamera "$SITE_PKGS/libcamera"
+ln -sf "$(pwd)/stubs/kms" "$SITE_PKGS/kms"
+
 # Copy service file
 echo ""
 echo "Installing systemd service..."
