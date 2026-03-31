@@ -14,36 +14,46 @@ LED matrix control software with a Python web interface for pattern generation, 
 
 ## Requirements
 
-- Python 3.10+
-- Raspberry Pi (or any Linux machine with serial port access to LED controller)
+- Python 3.11 (required for Pi camera support via libcamera v0.5 bindings)
+- Raspberry Pi 5 running Ubuntu 24.04 (or Raspberry Pi OS Bookworm)
 - LED matrix with serial interface (e.g., Teensy + WS2801 strips)
+
+### System Dependencies (Ubuntu 24.04 on Pi 5)
+
+The install script handles these automatically, but for reference:
+
+```bash
+# Python 3.11 (Ubuntu 24.04 ships with 3.12, but libcamera bindings need 3.11)
+sudo add-apt-repository -y ppa:deadsnakes/ppa
+sudo apt-get install -y python3.11 python3.11-venv python3.11-dev
+
+# Build dependencies for picamera2
+sudo apt-get install -y libcap-dev
+
+# Pi camera support (libcamera v0.5 with PiSP IPA for Pi 5)
+# Requires the Raspberry Pi apt repo: https://archive.raspberrypi.com/debian
+sudo apt-get install -y libcamera-ipa libcamera-tools python3-libcamera
+```
+
+The venv symlinks system `libcamera` Python bindings and a `kms` stub module
+(in `stubs/kms/`) so that picamera2 can load without requiring `python3-kms++`
+on headless setups.
 
 ## Installation
 
 ### Quick Install (Raspberry Pi)
 
 ```bash
-# Clone the repository
 git clone https://github.com/gregfriedland/AuroraV7.git
 cd AuroraV7
 
-# Install uv (fast Python package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source ~/.local/bin/env
-
-# Create virtual environment and install dependencies
-uv venv .venv
-source .venv/bin/activate
-uv pip install -e .
-
-# Install systemd service
-sudo ./install/install-aurora-web.sh
+# Installs uv, Python 3.11 venv, picamera2, system deps, and systemd service
+./install/install-aurora-web.sh
 ```
 
 ### Manual Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/gregfriedland/AuroraV7.git
 cd AuroraV7
 
@@ -51,10 +61,16 @@ cd AuroraV7
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.local/bin/env
 
-# Create virtual environment and install
-uv venv .venv
+# Create Python 3.11 virtual environment and install
+uv venv --python 3.11 .venv
 source .venv/bin/activate
 uv pip install -e .
+uv pip install picamera2
+
+# Symlink system libcamera bindings and KMS stub into venv
+SITE_PKGS=".venv/lib/python3.11/site-packages"
+ln -sf /usr/lib/python3/dist-packages/libcamera "$SITE_PKGS/libcamera"
+ln -sf "$(pwd)/stubs/kms" "$SITE_PKGS/kms"
 ```
 
 ## Configuration

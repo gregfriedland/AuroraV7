@@ -26,22 +26,40 @@ if ! command -v uv &> /dev/null; then
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
+# Install Python 3.11 if not present (Ubuntu 24.04 ships with 3.12)
+if ! command -v python3.11 &> /dev/null; then
+    echo "Installing Python 3.11..."
+    sudo add-apt-repository -y ppa:deadsnakes/ppa
+    sudo apt-get install -y -qq python3.11 python3.11-venv python3.11-dev
+fi
+
 # Install build dependencies for picamera2
 echo ""
 echo "Installing system dependencies..."
-sudo apt-get install -y -qq python3.12-dev libcap-dev
+sudo apt-get install -y -qq libcap-dev
+
+# Install libcamera v0.5 Python bindings (has PiSP IPA for Pi 5)
+# On Ubuntu 24.04, the Pi repo package has a python3 (<3.12) dependency
+# that must be force-installed since the system python3 is 3.12
+if ! python3.11 -c "import libcamera" 2>/dev/null; then
+    echo "Installing libcamera v0.5 Python bindings..."
+    cd /tmp
+    apt-get download python3-libcamera 2>/dev/null || true
+    sudo dpkg --force-depends -i python3-libcamera_*.deb 2>/dev/null || true
+    cd "$SCRIPT_DIR/.."
+fi
 
 # Create venv and install Python dependencies
 echo ""
 echo "Installing Python dependencies..."
 cd "$SCRIPT_DIR/.."
-uv venv --python 3.12 --clear
+uv venv --python 3.11 --clear
 uv pip install -e .
 uv pip install picamera2
 
 # Symlink system libcamera bindings and KMS stub into venv
-SITE_PKGS=".venv/lib/python3.12/site-packages"
-ln -sf /usr/lib/aarch64-linux-gnu/python3.12/site-packages/libcamera "$SITE_PKGS/libcamera"
+SITE_PKGS=".venv/lib/python3.11/site-packages"
+ln -sf /usr/lib/python3/dist-packages/libcamera "$SITE_PKGS/libcamera"
 ln -sf "$(pwd)/stubs/kms" "$SITE_PKGS/kms"
 
 # Copy service file
