@@ -30,6 +30,7 @@ from aurora_web.drawers import (
     CameraDrawer,
 )
 from aurora_web.drawers.custom import CustomDrawerLoader
+from aurora_web.inputs.video_feed import VideoFeed
 from aurora_web.api import users_router, custom_drawers_router
 from aurora_web.api import users as users_api
 from aurora_web.api import custom_drawers as custom_drawers_api
@@ -41,6 +42,7 @@ serial_manager: SerialOutputManager | None = None
 drawer_manager: DrawerManager | None = None
 user_manager: UserManager | None = None
 custom_drawer_loader: CustomDrawerLoader | None = None
+video_feed: VideoFeed | None = None
 render_task: asyncio.Task | None = None
 connected_clients: set[WebSocket] = set()
 
@@ -167,13 +169,20 @@ async def lifespan(app: FastAPI):
     drawer_manager = DrawerManager(width, height)
     custom_drawers_api.set_drawer_manager(drawer_manager)
 
+    # Initialize video feed for camera drawer
+    video_feed = VideoFeed(
+        width=640, height=480, fps=30, rotation=180,
+    )
+    await video_feed.start()
+
     # Register built-in drawers
     drawer_manager.register_drawer(OffDrawer(width, height))
     drawer_manager.register_drawer(AlienBlobDrawer(width, height))
     drawer_manager.register_drawer(BzrDrawer(width, height))
     drawer_manager.register_drawer(GrayScottDrawer(width, height))
     drawer_manager.register_drawer(GinzburgLandauDrawer(width, height))
-    drawer_manager.register_drawer(CameraDrawer(width, height))
+    camera_drawer = CameraDrawer(width, height, video_feed=video_feed)
+    drawer_manager.register_drawer(camera_drawer)
 
     # Load and register custom drawers
     for drawer_info in custom_drawer_loader.list_drawers():
@@ -217,6 +226,8 @@ async def lifespan(app: FastAPI):
             await render_task
         except asyncio.CancelledError:
             pass
+    if video_feed:
+        await video_feed.stop()
     if serial_manager:
         serial_manager.stop()
 
