@@ -37,6 +37,9 @@ class CameraDrawer(Drawer):
             "contrast": 50,
             "mirror": 1,
             "colorSpeed": 0,
+            "zoom": 4,       # 1-8x digital zoom
+            "zoomX": 50,     # 0=left, 50=center, 100=right
+            "zoomY": 100,    # 0=top, 50=center, 100=bottom
         }
         self.settings_ranges = {
             "mode": (1, 3),
@@ -44,6 +47,9 @@ class CameraDrawer(Drawer):
             "contrast": (0, 100),
             "mirror": (0, 1),
             "colorSpeed": (0, 50),
+            "zoom": (1, 8),
+            "zoomX": (0, 100),
+            "zoomY": (0, 100),
         }
         self.color_index = 0
 
@@ -71,14 +77,15 @@ class CameraDrawer(Drawer):
         if video_input.frame is None:
             return self._fallback_pattern(ctx)
 
+        frame = self._apply_zoom(video_input.frame)
         mode = self.settings["mode"]
 
         if mode == self.MODE_EDGES:
-            normalized = self._compute_edges(video_input.frame)
+            normalized = self._compute_edges(frame)
         elif mode == self.MODE_MOTION and video_input.motion_map is not None:
-            normalized = self._resize(video_input.motion_map)
+            normalized = self._resize(self._apply_zoom_2d(video_input.motion_map))
         else:
-            normalized = self._frame_to_luminance(video_input.frame)
+            normalized = self._frame_to_luminance(frame)
 
         # Apply brightness/contrast
         normalized = self._adjust_brightness_contrast(normalized)
@@ -95,6 +102,38 @@ class CameraDrawer(Drawer):
         self.color_index = (self.color_index + self.settings["colorSpeed"]) % self.palette_size
 
         return indices
+
+    def _zoom_crop(self, h: int, w: int) -> tuple[int, int, int, int]:
+        """Compute crop region for current zoom settings.
+
+        Returns:
+            (y_start, y_end, x_start, x_end)
+        """
+        zoom = max(1, self.settings["zoom"])
+        crop_w = w // zoom
+        crop_h = h // zoom
+
+        # zoomX/zoomY are 0-100 percentages for the crop center
+        cx = int(self.settings["zoomX"] / 100.0 * w)
+        cy = int(self.settings["zoomY"] / 100.0 * h)
+
+        x0 = max(0, min(cx - crop_w // 2, w - crop_w))
+        y0 = max(0, min(cy - crop_h // 2, h - crop_h))
+        return y0, y0 + crop_h, x0, x0 + crop_w
+
+    def _apply_zoom(self, frame: np.ndarray) -> np.ndarray:
+        """Crop an RGB frame according to zoom settings."""
+        if self.settings["zoom"] <= 1:
+            return frame
+        y0, y1, x0, x1 = self._zoom_crop(frame.shape[0], frame.shape[1])
+        return frame[y0:y1, x0:x1]
+
+    def _apply_zoom_2d(self, arr: np.ndarray) -> np.ndarray:
+        """Crop a 2D array according to zoom settings."""
+        if self.settings["zoom"] <= 1:
+            return arr
+        y0, y1, x0, x1 = self._zoom_crop(arr.shape[0], arr.shape[1])
+        return arr[y0:y1, x0:x1]
 
     def _frame_to_luminance(self, frame: np.ndarray) -> np.ndarray:
         """Convert RGB frame to luminance and resize to matrix dimensions.
