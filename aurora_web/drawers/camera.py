@@ -60,6 +60,7 @@ class CameraDrawer(Drawer):
     def reset(self) -> None:
         """Reset drawer state."""
         self._prev_frame = None
+        self._smoothed_faces: list[tuple[float, float, float, float]] = []
 
     def set_video_feed(self, video_feed) -> None:
         """Set or replace the video feed source."""
@@ -81,12 +82,8 @@ class CameraDrawer(Drawer):
 
         # Face zoom montage mode
         if self.settings["faceZoom"] and video_input.faces:
-            if not hasattr(self, '_face_log_count'):
-                self._face_log_count = 0
-            self._face_log_count += 1
-            if self._face_log_count <= 3:
-                print(f"[CameraDrawer] Face montage: {len(video_input.faces)} faces")
-            normalized = self._build_face_montage(video_input.frame, video_input.faces)
+            smoothed = self._smooth_faces(video_input.faces)
+            normalized = self._build_face_montage(video_input.frame, smoothed)
         else:
             frame = self._apply_zoom(video_input.frame)
             mode = self.settings["mode"]
@@ -113,6 +110,40 @@ class CameraDrawer(Drawer):
         self.color_index = (self.color_index + self.settings["colorSpeed"] * 0.1) % self.palette_size
 
         return indices
+
+    def _smooth_faces(self, faces: list[tuple[int, int, int, int]],
+                      alpha: float = 0.12) -> list[tuple[int, int, int, int]]:
+        """Exponential moving average on face rectangles for smooth cropping.
+
+        Matches detected faces to previously smoothed faces by proximity,
+        then lerps each coordinate toward the target.
+
+        Args:
+            faces: Detected face rects [(x, y, w, h), ...]
+            alpha: Blend factor per frame (lower = smoother, 0.12 ≈ 0.3s settle at 40fps)
+
+        Returns:
+            Smoothed face rects as integer tuples
+        """
+        targets = faces[:4]
+
+        if not self._smoothed_faces or len(targets) != len(self._smoothed_faces):
+            # Face count changed — snap to new positions immediately
+            self._smoothed_faces = [(float(x), float(y), float(w), float(h))
+                                    for x, y, w, h in targets]
+        else:
+            # Match by index (Haar cascade returns faces in stable order) and lerp
+            blended = []
+            for (sx, sy, sw, sh), (tx, ty, tw, th) in zip(self._smoothed_faces, targets):
+                bx = sx + alpha * (tx - sx)
+                by = sy + alpha * (ty - sy)
+                bw = sw + alpha * (tw - sw)
+                bh = sh + alpha * (th - sh)
+                blended.append((bx, by, bw, bh))
+            self._smoothed_faces = blended
+
+        return [(int(round(x)), int(round(y)), int(round(w)), int(round(h)))
+                for x, y, w, h in self._smoothed_faces]
 
     def _crop_face(self, frame: np.ndarray, face: tuple[int, int, int, int],
                    margin: float = 0.5) -> np.ndarray:
