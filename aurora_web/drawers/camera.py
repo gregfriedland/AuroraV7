@@ -126,7 +126,7 @@ class CameraDrawer(Drawer):
 
     def _smooth_faces(self, faces: list[tuple[int, int, int, int]] | None,
                       alpha: float = 0.03,
-                      retarget_interval: float = 30.0,
+                      retarget_interval: float = 15.0,
                       ) -> list[tuple[int, int, int, int]]:
         """Exponential moving average on face rectangles for smooth panning.
 
@@ -182,27 +182,49 @@ class CameraDrawer(Drawer):
                 for x, y, w, h in self._smoothed_faces]
 
     def _crop_face(self, frame: np.ndarray, face: tuple[int, int, int, int],
-                   margin: float = 0.5) -> np.ndarray:
-        """Crop a face region from the frame with padding margin.
+                   target_aspect: float, margin: float = 0.5) -> np.ndarray:
+        """Crop a face region matching the target aspect ratio.
+
+        Expands the crop around the face center to match target_aspect
+        (width/height), preserving aspect ratio with no distortion.
 
         Args:
             frame: RGB source frame (h, w, 3)
             face: (x, y, w, h) face rectangle in source pixel coords
+            target_aspect: Desired width/height ratio of the crop
             margin: Fraction of face size to add as padding (0.5 = 50%)
 
         Returns:
-            Cropped RGB region
+            Cropped RGB region matching target aspect ratio
         """
         fh, fw = frame.shape[:2]
         fx, fy, face_w, face_h = face
 
-        pad_x = int(face_w * margin)
-        pad_y = int(face_h * margin)
+        # Start with padded region around face
+        crop_w = face_w * (1 + 2 * margin)
+        crop_h = face_h * (1 + 2 * margin)
 
-        x0 = max(0, fx - pad_x)
-        y0 = max(0, fy - pad_y)
-        x1 = min(fw, fx + face_w + pad_x)
-        y1 = min(fh, fy + face_h + pad_y)
+        # Expand to match target aspect ratio
+        crop_aspect = crop_w / max(crop_h, 1)
+        if crop_aspect < target_aspect:
+            # Too tall — widen
+            crop_w = crop_h * target_aspect
+        else:
+            # Too wide — heighten
+            crop_h = crop_w / target_aspect
+
+        # Center on face
+        cx = fx + face_w / 2
+        cy = fy + face_h / 2
+
+        x0 = int(max(0, cx - crop_w / 2))
+        y0 = int(max(0, cy - crop_h / 2))
+        x1 = int(min(fw, x0 + crop_w))
+        y1 = int(min(fh, y0 + crop_h))
+
+        # Re-adjust if clamped to edge
+        x0 = max(0, x1 - int(crop_w))
+        y0 = max(0, y1 - int(crop_h))
 
         return frame[y0:y1, x0:x1]
 
@@ -247,14 +269,16 @@ class CameraDrawer(Drawer):
 
         if n == 1:
             # Single face fills the whole matrix
-            crop = self._crop_face(frame, faces[0])
+            aspect = self.width / max(self.height, 1)
+            crop = self._crop_face(frame, faces[0], aspect)
             montage[:, :] = self._resize_rgb_to(crop, self.height, self.width)
 
         elif n == 2:
             # Left/right split — each half is width//2 wide
             half_w = self.width // 2
+            aspect = half_w / max(self.height, 1)
             for i, face in enumerate(faces):
-                crop = self._crop_face(frame, face)
+                crop = self._crop_face(frame, face, aspect)
                 resized = self._resize_rgb_to(crop, self.height, half_w)
                 montage[:, i * half_w:(i + 1) * half_w] = resized
 
@@ -262,21 +286,21 @@ class CameraDrawer(Drawer):
             # Top row: 2 faces side-by-side; bottom row: 1 face centered
             half_w = self.width // 2
             half_h = self.height // 2
+            top_aspect = half_w / max(half_h, 1)
+            bot_h = self.height - half_h
+            center_w = self.width - 2 * (self.width // 4)
+            bot_aspect = center_w / max(bot_h, 1)
 
-            # Top-left
-            crop0 = self._crop_face(frame, faces[0])
+            crop0 = self._crop_face(frame, faces[0], top_aspect)
             montage[:half_h, :half_w] = self._resize_rgb_to(crop0, half_h, half_w)
 
-            # Top-right
-            crop1 = self._crop_face(frame, faces[1])
+            crop1 = self._crop_face(frame, faces[1], top_aspect)
             montage[:half_h, half_w:] = self._resize_rgb_to(crop1, half_h, self.width - half_w)
 
-            # Bottom-center (quarter offset on each side)
             quarter_w = self.width // 4
-            center_w = self.width - 2 * quarter_w
-            crop2 = self._crop_face(frame, faces[2])
+            crop2 = self._crop_face(frame, faces[2], bot_aspect)
             montage[half_h:, quarter_w:quarter_w + center_w] = self._resize_rgb_to(
-                crop2, self.height - half_h, center_w
+                crop2, bot_h, center_w
             )
 
         else:
@@ -288,7 +312,8 @@ class CameraDrawer(Drawer):
                 y_off, x_off = positions[i]
                 tile_h = half_h if i < 2 else self.height - half_h
                 tile_w = half_w if i % 2 == 0 else self.width - half_w
-                crop = self._crop_face(frame, face)
+                aspect = tile_w / max(tile_h, 1)
+                crop = self._crop_face(frame, face, aspect)
                 montage[y_off:y_off + tile_h, x_off:x_off + tile_w] = self._resize_rgb_to(
                     crop, tile_h, tile_w
                 )
