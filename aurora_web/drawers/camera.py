@@ -63,6 +63,7 @@ class CameraDrawer(Drawer):
         self._smoothed_faces: list[tuple[float, float, float, float]] = []
         self._face_targets: list[tuple[int, int, int, int]] = []
         self._face_target_time: float = 0.0
+        self._last_face_seen: float = 0.0  # monotonic time of last detection
 
     def randomize_settings(self) -> None:
         """Randomize settings but keep faceZoom on and colorSpeed slow."""
@@ -127,17 +128,21 @@ class CameraDrawer(Drawer):
     def _smooth_faces(self, faces: list[tuple[int, int, int, int]] | None,
                       alpha: float = 0.03,
                       retarget_interval: float = 15.0,
+                      hold_time: float = 3.0,
                       ) -> list[tuple[int, int, int, int]]:
         """Exponential moving average on face rectangles for smooth panning.
 
         Only accepts new face targets every retarget_interval seconds,
-        then slowly lerps toward them. If faces is None (lost tracking),
-        returns the last known smoothed positions.
+        then slowly lerps toward them. When faces are lost, holds the
+        last position for hold_time seconds before accepting new faces
+        (debounce to prevent flickering).
 
         Args:
             faces: Detected face rects, or None to hold current position
             alpha: Blend factor per frame (0.03 at 40fps ≈ 1s to settle)
             retarget_interval: Seconds between accepting new target positions
+            hold_time: Seconds to hold position after face loss before
+                       accepting new detections (debounce)
 
         Returns:
             Smoothed face rects as integer tuples
@@ -145,37 +150,65 @@ class CameraDrawer(Drawer):
         import time
         now = time.monotonic()
 
-        # No new faces — hold current position
-        if faces is None:
+        if faces:
+            self._last_face_seen = now
+
+        # Hold current position if no faces or within debounce window after loss
+        in_hold = (
+            self._smoothed_faces
+            and (not faces or now - self._last_face_seen > hold_time)
+            and not faces
+        )
+        if in_hold or (faces is None and self._smoothed_faces):
+            # Just lerp toward existing targets (keeps animation smooth)
+            if self._face_targets and self._smoothed_faces:
+                blended = []
+                for (sx, sy, sw, sh), (tx, ty, tw, th) in zip(
+                    self._smoothed_faces, self._face_targets
+                ):
+                    blended.append((
+                        sx + alpha * (tx - sx),
+                        sy + alpha * (ty - sy),
+                        sw + alpha * (tw - sw),
+                        sh + alpha * (th - sh),
+                    ))
+                self._smoothed_faces = blended
             return [(int(round(x)), int(round(y)), int(round(w)), int(round(h)))
                     for x, y, w, h in self._smoothed_faces]
 
-        detected = faces[:4]
+        detected = faces[:4] if faces else []
+        if not detected:
+            return [(int(round(x)), int(round(y)), int(round(w)), int(round(h)))
+                    for x, y, w, h in self._smoothed_faces]
 
-        # Accept new targets on first detection, face count change, or every 30s
-        need_retarget = (
-            not self._face_targets
-            or len(detected) != len(self._face_targets)
-            or now - self._face_target_time >= retarget_interval
-        )
-
-        if need_retarget:
+        # First detection ever — snap immediately
+        if not self._face_targets:
             self._face_targets = detected
             self._face_target_time = now
-
-        # Initialize smoothed positions if needed
-        if not self._smoothed_faces or len(self._face_targets) != len(self._smoothed_faces):
             self._smoothed_faces = [(float(x), float(y), float(w), float(h))
-                                    for x, y, w, h in self._face_targets]
-        else:
-            # Lerp toward current targets
+                                    for x, y, w, h in detected]
+        elif now - self._face_target_time >= retarget_interval:
+            # Time for a new target — use the first N faces matching current count
+            # to avoid layout jumps; if count differs, still retarget smoothly
+            self._face_targets = detected
+            self._face_target_time = now
+            # If face count changed, re-init smoothed to match
+            if len(detected) != len(self._smoothed_faces):
+                self._smoothed_faces = [(float(x), float(y), float(w), float(h))
+                                        for x, y, w, h in detected]
+
+        # Lerp toward current targets
+        if len(self._smoothed_faces) == len(self._face_targets):
             blended = []
-            for (sx, sy, sw, sh), (tx, ty, tw, th) in zip(self._smoothed_faces, self._face_targets):
-                bx = sx + alpha * (tx - sx)
-                by = sy + alpha * (ty - sy)
-                bw = sw + alpha * (tw - sw)
-                bh = sh + alpha * (th - sh)
-                blended.append((bx, by, bw, bh))
+            for (sx, sy, sw, sh), (tx, ty, tw, th) in zip(
+                self._smoothed_faces, self._face_targets
+            ):
+                blended.append((
+                    sx + alpha * (tx - sx),
+                    sy + alpha * (ty - sy),
+                    sw + alpha * (tw - sw),
+                    sh + alpha * (th - sh),
+                ))
             self._smoothed_faces = blended
 
         return [(int(round(x)), int(round(y)), int(round(w)), int(round(h)))
