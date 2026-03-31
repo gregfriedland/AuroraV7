@@ -36,7 +36,7 @@ class CameraDrawer(Drawer):
             "brightness": 50,
             "contrast": 50,
             "mirror": 1,
-            "colorSpeed": 5,
+            "colorSpeed": 0,
             "zoom": 2,       # 1-8x digital zoom
             "zoomX": 42,     # 0=left, 50=center, 100=right
             "zoomY": 100,    # 0=top, 50=center, 100=bottom
@@ -64,12 +64,14 @@ class CameraDrawer(Drawer):
         self._face_targets: list[tuple[int, int, int, int]] = []
         self._face_target_time: float = 0.0
         self._last_face_seen: float = 0.0  # monotonic time of last detection
+        self._palette_scale: float = 2.0  # auto-scale factor for palette mapping
+        self._palette_scale_time: float = 0.0
 
     def randomize_settings(self) -> None:
         """Randomize settings but keep faceZoom on and colorSpeed slow."""
         super().randomize_settings()
         self.settings["faceZoom"] = 1
-        self.settings["colorSpeed"] = np.random.randint(0, 10)
+        self.settings["colorSpeed"] = 0
 
     def set_video_feed(self, video_feed) -> None:
         """Set or replace the video feed source."""
@@ -116,8 +118,19 @@ class CameraDrawer(Drawer):
         if self.settings["mirror"]:
             normalized = np.fliplr(normalized)
 
-        # Map 0.0-1.0 to palette indices (4x multiplier for stronger gradient)
-        indices = (normalized * (self.palette_size - 1) * 4).astype(np.int32)
+        # Auto-scale: recalculate every 15s so max luminance maps to full palette
+        import time
+        now = time.monotonic()
+        if now - self._palette_scale_time >= 15.0:
+            self._palette_scale_time = now
+            max_val = normalized.max()
+            if max_val > 0.01:
+                self._palette_scale = min(1.0 / max_val, 10.0)
+            else:
+                self._palette_scale = 2.0
+
+        # Map 0.0-1.0 to palette indices (2x base + auto-scale)
+        indices = (normalized * self._palette_scale * (self.palette_size - 1) * 2).astype(np.int32)
 
         # Apply color cycling (scale down so max speed is gentle)
         indices = (indices + int(self.color_index)) % self.palette_size
