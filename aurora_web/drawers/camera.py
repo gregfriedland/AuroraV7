@@ -124,15 +124,16 @@ class CameraDrawer(Drawer):
         if now - self._palette_scale_time >= 15.0:
             self._palette_scale_time = now
             max_val = normalized.max()
-            if max_val > 0.01:
-                self._palette_scale = min(1.0 / max_val, 10.0)
+            if max_val > 0.05:
+                self._palette_scale = 1.0 / max_val
             else:
-                self._palette_scale = 2.0
+                self._palette_scale = 1.0
 
-        # Map 0.0-1.0 to palette indices (2x base + auto-scale)
-        indices = (normalized * self._palette_scale * (self.palette_size - 1) * 2).astype(np.int32)
+        # Map to palette indices (auto-scale stretches range to fill palette)
+        scaled = np.clip(normalized * self._palette_scale, 0.0, 1.0)
+        indices = (scaled * (self.palette_size - 1)).astype(np.int32)
 
-        # Apply color cycling (scale down so max speed is gentle)
+        # Apply color cycling
         indices = (indices + int(self.color_index)) % self.palette_size
         self.color_index = (self.color_index + self.settings["colorSpeed"] * 0.1) % self.palette_size
 
