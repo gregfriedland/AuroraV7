@@ -64,6 +64,12 @@ class CameraDrawer(Drawer):
         self._face_targets: list[tuple[int, int, int, int]] = []
         self._face_target_time: float = 0.0
 
+    def randomize_settings(self) -> None:
+        """Randomize settings but keep faceZoom on and colorSpeed slow."""
+        super().randomize_settings()
+        self.settings["faceZoom"] = 1
+        self.settings["colorSpeed"] = np.random.randint(0, 10)
+
     def set_video_feed(self, video_feed) -> None:
         """Set or replace the video feed source."""
         self.video_feed = video_feed
