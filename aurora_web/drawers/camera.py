@@ -97,9 +97,9 @@ class CameraDrawer(Drawer):
         # Map 0.0-1.0 to palette indices
         indices = (normalized * (self.palette_size - 1)).astype(np.int32)
 
-        # Apply color cycling
-        indices = (indices + self.color_index) % self.palette_size
-        self.color_index = (self.color_index + self.settings["colorSpeed"]) % self.palette_size
+        # Apply color cycling (scale down so max speed is gentle)
+        indices = (indices + int(self.color_index)) % self.palette_size
+        self.color_index = (self.color_index + self.settings["colorSpeed"] * 0.1) % self.palette_size
 
         return indices
 
