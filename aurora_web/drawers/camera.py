@@ -40,7 +40,7 @@ class CameraDrawer(Drawer):
             "zoom": 2,       # 1-8x digital zoom
             "zoomX": 42,     # 0=left, 50=center, 100=right
             "zoomY": 100,    # 0=top, 50=center, 100=bottom
-            "faceZoom": 0,   # 0=off, 1=on (2x2 montage of detected faces)
+            "faceZoom": 1,   # 0=off, 1=on (2x2 montage of detected faces)
         }
         self.settings_ranges = {
             "mode": (1, 3),
