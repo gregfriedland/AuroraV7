@@ -40,6 +40,7 @@ class CameraDrawer(Drawer):
             "zoom": 2,       # 1-8x digital zoom
             "zoomX": 42,     # 0=left, 50=center, 100=right
             "zoomY": 100,    # 0=top, 50=center, 100=bottom
+            "faceZoom": 0,   # 0=off, 1=on (2x2 montage of detected faces)
         }
         self.settings_ranges = {
             "mode": (1, 3),
@@ -50,6 +51,7 @@ class CameraDrawer(Drawer):
             "zoom": (1, 8),
             "zoomX": (0, 100),
             "zoomY": (0, 100),
+            "faceZoom": (0, 1),
         }
         self.color_index = 0
 
@@ -77,15 +79,19 @@ class CameraDrawer(Drawer):
         if video_input.frame is None:
             return self._fallback_pattern(ctx)
 
-        frame = self._apply_zoom(video_input.frame)
-        mode = self.settings["mode"]
-
-        if mode == self.MODE_EDGES:
-            normalized = self._compute_edges(frame)
-        elif mode == self.MODE_MOTION and video_input.motion_map is not None:
-            normalized = self._resize(self._apply_zoom_2d(video_input.motion_map))
+        # Face zoom montage mode
+        if self.settings["faceZoom"] and video_input.faces:
+            normalized = self._build_face_montage(video_input.frame, video_input.faces)
         else:
-            normalized = self._frame_to_luminance(frame)
+            frame = self._apply_zoom(video_input.frame)
+            mode = self.settings["mode"]
+
+            if mode == self.MODE_EDGES:
+                normalized = self._compute_edges(frame)
+            elif mode == self.MODE_MOTION and video_input.motion_map is not None:
+                normalized = self._resize(self._apply_zoom_2d(video_input.motion_map))
+            else:
+                normalized = self._frame_to_luminance(frame)
 
         # Apply brightness/contrast
         normalized = self._adjust_brightness_contrast(normalized)
@@ -102,6 +108,124 @@ class CameraDrawer(Drawer):
         self.color_index = (self.color_index + self.settings["colorSpeed"] * 0.1) % self.palette_size
 
         return indices
+
+    def _crop_face(self, frame: np.ndarray, face: tuple[int, int, int, int],
+                   margin: float = 0.5) -> np.ndarray:
+        """Crop a face region from the frame with padding margin.
+
+        Args:
+            frame: RGB source frame (h, w, 3)
+            face: (x, y, w, h) face rectangle in source pixel coords
+            margin: Fraction of face size to add as padding (0.5 = 50%)
+
+        Returns:
+            Cropped RGB region
+        """
+        fh, fw = frame.shape[:2]
+        fx, fy, face_w, face_h = face
+
+        pad_x = int(face_w * margin)
+        pad_y = int(face_h * margin)
+
+        x0 = max(0, fx - pad_x)
+        y0 = max(0, fy - pad_y)
+        x1 = min(fw, fx + face_w + pad_x)
+        y1 = min(fh, fy + face_h + pad_y)
+
+        return frame[y0:y1, x0:x1]
+
+    def _resize_rgb_to(self, frame: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+        """Resize an RGB frame to arbitrary target dimensions using nearest-neighbor.
+
+        Args:
+            frame: RGB frame (h, w, 3)
+            target_h: Target height
+            target_w: Target width
+
+        Returns:
+            Resized frame (target_h, target_w, 3)
+        """
+        src_h, src_w = frame.shape[:2]
+        row_idx = (np.arange(target_h) * src_h // target_h).astype(int)
+        col_idx = (np.arange(target_w) * src_w // target_w).astype(int)
+        return frame[np.ix_(row_idx, col_idx)]
+
+    def _build_face_montage(self, frame: np.ndarray,
+                            faces: list[tuple[int, int, int, int]]) -> np.ndarray:
+        """Build a face montage and return normalized luminance at matrix size.
+
+        Layout adapts to face count:
+          1 face  -> full matrix
+          2 faces -> left/right split (each 16x18)
+          3 faces -> top-left, top-right, bottom-center
+          4 faces -> 2x2 grid (each 16x9)
+
+        Args:
+            frame: RGB source frame from camera
+            faces: List of (x, y, w, h) face rectangles
+
+        Returns:
+            Normalized float array (0.0-1.0), shape (height, width)
+        """
+        faces = faces[:4]  # Limit to 4 faces
+        n = len(faces)
+
+        # Assemble an RGB montage at matrix resolution, then convert to luminance
+        montage = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+
+        if n == 1:
+            # Single face fills the whole matrix
+            crop = self._crop_face(frame, faces[0])
+            montage[:, :] = self._resize_rgb_to(crop, self.height, self.width)
+
+        elif n == 2:
+            # Left/right split — each half is width//2 wide
+            half_w = self.width // 2
+            for i, face in enumerate(faces):
+                crop = self._crop_face(frame, face)
+                resized = self._resize_rgb_to(crop, self.height, half_w)
+                montage[:, i * half_w:(i + 1) * half_w] = resized
+
+        elif n == 3:
+            # Top row: 2 faces side-by-side; bottom row: 1 face centered
+            half_w = self.width // 2
+            half_h = self.height // 2
+
+            # Top-left
+            crop0 = self._crop_face(frame, faces[0])
+            montage[:half_h, :half_w] = self._resize_rgb_to(crop0, half_h, half_w)
+
+            # Top-right
+            crop1 = self._crop_face(frame, faces[1])
+            montage[:half_h, half_w:] = self._resize_rgb_to(crop1, half_h, self.width - half_w)
+
+            # Bottom-center (quarter offset on each side)
+            quarter_w = self.width // 4
+            center_w = self.width - 2 * quarter_w
+            crop2 = self._crop_face(frame, faces[2])
+            montage[half_h:, quarter_w:quarter_w + center_w] = self._resize_rgb_to(
+                crop2, self.height - half_h, center_w
+            )
+
+        else:
+            # 4 faces: 2x2 grid
+            half_w = self.width // 2
+            half_h = self.height // 2
+            positions = [(0, 0), (0, half_w), (half_h, 0), (half_h, half_w)]
+            for i, face in enumerate(faces[:4]):
+                y_off, x_off = positions[i]
+                tile_h = half_h if i < 2 else self.height - half_h
+                tile_w = half_w if i % 2 == 0 else self.width - half_w
+                crop = self._crop_face(frame, face)
+                montage[y_off:y_off + tile_h, x_off:x_off + tile_w] = self._resize_rgb_to(
+                    crop, tile_h, tile_w
+                )
+
+        # Convert assembled montage to luminance (BT.709)
+        luminance = (0.2126 * montage[:, :, 0] +
+                     0.7152 * montage[:, :, 1] +
+                     0.0722 * montage[:, :, 2])
+        return luminance / 255.0
 
     def _zoom_crop(self, h: int, w: int) -> tuple[int, int, int, int]:
         """Compute crop region for current zoom settings.

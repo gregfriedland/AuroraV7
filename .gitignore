@@ -6,3 +6,4 @@ aurora
 __pycache__/
 *.pyc
 .pytest_cache/
+aurora_web.egg-info

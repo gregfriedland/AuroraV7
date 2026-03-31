@@ -172,6 +172,7 @@ async def lifespan(app: FastAPI):
     # Initialize video feed for camera drawer
     video_feed = VideoFeed(
         width=640, height=480, fps=30, rotation=180,
+        enable_face_detection=True,
     )
     await video_feed.start()
 
