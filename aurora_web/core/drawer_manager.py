@@ -193,22 +193,18 @@ class DrawerManager:
         return time_since_interaction >= self.USER_INTERACTION_COOLDOWN
 
     def randomize_all(self) -> dict:
-        """Randomize drawer, settings, and palette.
+        """Randomize palette and color speed, keeping the current drawer.
 
         Returns:
-            Dict with new drawer name, palette index, and settings
+            Dict with drawer name, palette index, and settings
         """
-        # Pick a random drawer (excluding "Off")
-        available_drawers = [name for name in self.drawers.keys() if name != "Off"]
-        if not available_drawers:
+        if not self.active_drawer:
             return {}
 
-        drawer_name = random.choice(available_drawers)
-        self.set_active_drawer(drawer_name)
-
-        # Randomize the drawer's settings
-        if self.active_drawer:
-            self.active_drawer.randomize_settings()
+        # Randomize color speed if the drawer supports it
+        if "colorSpeed" in self.active_drawer.settings_ranges:
+            min_val, max_val = self.active_drawer.settings_ranges["colorSpeed"]
+            self.active_drawer.settings["colorSpeed"] = random.randint(min_val, max_val)
 
         # Pick a random curated palette
         self.current_palette_index = random.randint(0, Palette.curated_count() - 1)
@@ -218,9 +214,9 @@ class DrawerManager:
         self.last_rotation_time = time.time()
 
         return {
-            "drawer": drawer_name,
+            "drawer": self.active_drawer.name,
             "palette_index": self.current_palette_index,
-            "settings": self.active_drawer.get_settings_info() if self.active_drawer else {},
+            "settings": self.active_drawer.get_settings_info(),
         }
 
     def check_auto_rotate(self) -> dict | None:

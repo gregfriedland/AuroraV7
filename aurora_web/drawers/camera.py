@@ -36,13 +36,16 @@ class CameraDrawer(Drawer):
             "brightness": 50,
             "contrast": 50,
             "mirror": 1,
+            "colorSpeed": 0,
         }
         self.settings_ranges = {
             "mode": (1, 3),
             "brightness": (0, 100),
             "contrast": (0, 100),
             "mirror": (0, 1),
+            "colorSpeed": (0, 50),
         }
+        self.color_index = 0
 
         self.reset()
 
@@ -86,7 +89,12 @@ class CameraDrawer(Drawer):
 
         # Map 0.0-1.0 to palette indices
         indices = (normalized * (self.palette_size - 1)).astype(np.int32)
-        return np.clip(indices, 0, self.palette_size - 1)
+
+        # Apply color cycling
+        indices = (indices + self.color_index) % self.palette_size
+        self.color_index = (self.color_index + self.settings["colorSpeed"]) % self.palette_size
+
+        return indices
 
     def _frame_to_luminance(self, frame: np.ndarray) -> np.ndarray:
         """Convert RGB frame to luminance and resize to matrix dimensions.
