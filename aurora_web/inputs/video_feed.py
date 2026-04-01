@@ -118,7 +118,7 @@ class VideoFeed:
                     model_path,
                     "",
                     (self.width, self.height),
-                    score_threshold=0.5,
+                    score_threshold=0.3,
                     nms_threshold=0.3,
                     top_k=10,
                 )
