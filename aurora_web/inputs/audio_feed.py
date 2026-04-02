@@ -257,27 +257,27 @@ class AudioFeed:
                 for i in range(self.num_bands)
             ], dtype=np.float32)
 
-        # Normalize spectrum
+        # Beat detection using raw (unnormalized) bass energy
+        raw_bass = float(np.mean(self.spectrum[:3]))
+
+        # Normalize spectrum for display only
         max_val = np.max(self.spectrum)
         if max_val > 0:
             self.spectrum = self.spectrum / max_val
 
-        # Beat detection using bass energy
-        bass_energy = float(np.mean(self.spectrum[:3])) if self.spectrum is not None else 0
-
-        # Maintain running average for adaptive threshold
-        self._bass_history.append(bass_energy)
+        # Maintain running average of raw bass for adaptive threshold
+        self._bass_history.append(raw_bass)
         if len(self._bass_history) > 43:  # ~1 second at 43 fps
             self._bass_history.pop(0)
         self._bass_avg = np.mean(self._bass_history) if self._bass_history else 0
 
-        # Detect beat: bass energy spike above threshold and average
+        # Detect beat: raw bass spike well above running average
         now = time.time()
         time_since_last = now - self._last_beat_time
 
-        threshold = max(self.onset_threshold, self._bass_avg * 1.5)
         is_beat = (
-            bass_energy > threshold and
+            raw_bass > self._bass_avg * 2.0 and
+            raw_bass > self.onset_threshold * 0.01 and  # minimum energy floor
             time_since_last > self.min_beat_interval
         )
 
