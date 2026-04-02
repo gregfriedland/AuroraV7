@@ -7,6 +7,7 @@ from aurora_web.drawers.bzr import BzrDrawer
 from aurora_web.drawers.gray_scott import GrayScottDrawer
 from aurora_web.drawers.ginzburg_landau import GinzburgLandauDrawer
 from aurora_web.drawers.camera import CameraDrawer
+from aurora_web.drawers.audio_viz import AudioVizDrawer
 from aurora_web.drawers.custom import CustomDrawer, CustomDrawerLoader
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "GrayScottDrawer",
     "GinzburgLandauDrawer",
     "CameraDrawer",
+    "AudioVizDrawer",
     "CustomDrawer",
     "CustomDrawerLoader",
 ]

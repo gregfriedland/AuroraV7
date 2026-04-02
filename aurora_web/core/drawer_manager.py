@@ -1,11 +1,17 @@
 """Drawer manager for mode switching and drawer orchestration."""
 
+from __future__ import annotations
+
 import random
 import time
+from typing import TYPE_CHECKING
 import numpy as np
 
 from aurora_web.core.palette import Palette
 from aurora_web.drawers.base import Drawer, DrawerContext
+
+if TYPE_CHECKING:
+    from aurora_web.inputs.audio_feed import AudioFeed
 
 
 class DrawerManager:
@@ -51,8 +57,15 @@ class DrawerManager:
         self.last_rotation_time = time.time()
         self.last_user_interaction = 0.0  # No interaction yet
 
+        # Audio feed (optional)
+        self._audio_feed: AudioFeed | None = None
+
         # Default black frame
         self.black_frame = np.zeros((height, width, 3), dtype=np.uint8)
+
+    def set_audio_feed(self, audio_feed: AudioFeed) -> None:
+        """Set the audio feed for providing audio data to drawers."""
+        self._audio_feed = audio_feed
 
     def register_drawer(self, drawer: Drawer) -> None:
         """Register a drawer.
@@ -147,13 +160,18 @@ class DrawerManager:
 
         elif self.mode == "pattern" and self.active_drawer:
             # Generate frame from drawer
+            audio_input = None
+            if self._audio_feed:
+                audio_input = self._audio_feed.get_input()
+
             ctx = DrawerContext(
                 width=self.width,
                 height=self.height,
                 frame_num=self.frame_num,
                 time=current_time - self.start_time,
                 delta_time=delta_time,
-                palette_size=self.palette_size
+                palette_size=self.palette_size,
+                audio=audio_input,
             )
 
             # Get palette indices from drawer

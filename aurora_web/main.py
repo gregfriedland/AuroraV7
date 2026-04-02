@@ -28,9 +28,11 @@ from aurora_web.drawers import (
     GrayScottDrawer,
     GinzburgLandauDrawer,
     CameraDrawer,
+    AudioVizDrawer,
 )
 from aurora_web.drawers.custom import CustomDrawerLoader
 from aurora_web.inputs.video_feed import VideoFeed
+from aurora_web.inputs.audio_feed import AudioFeed
 from aurora_web.api import users_router, custom_drawers_router
 from aurora_web.api import users as users_api
 from aurora_web.api import custom_drawers as custom_drawers_api
@@ -43,6 +45,7 @@ drawer_manager: DrawerManager | None = None
 user_manager: UserManager | None = None
 custom_drawer_loader: CustomDrawerLoader | None = None
 video_feed: VideoFeed | None = None
+audio_feed: AudioFeed | None = None
 render_task: asyncio.Task | None = None
 connected_clients: set[WebSocket] = set()
 
@@ -116,6 +119,7 @@ async def render_loop():
                     "frame": local_frame_num,
                     "mode": drawer_manager.mode,
                     "drawer": drawer_manager.active_drawer.name if drawer_manager.active_drawer else None,
+                    "audio_active": audio_feed.is_active if audio_feed else False,
                 }
                 await broadcast(json.dumps(status))
 
@@ -142,7 +146,7 @@ async def broadcast(message: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
-    global config, serial_manager, drawer_manager, user_manager, custom_drawer_loader, render_task
+    global config, serial_manager, drawer_manager, user_manager, custom_drawer_loader, render_task, audio_feed
 
     # Load config
     config = load_config()
@@ -176,6 +180,13 @@ async def lifespan(app: FastAPI):
     )
     await video_feed.start()
 
+    # Initialize audio feed (shairport-sync AirPlay pipe)
+    audio_feed = AudioFeed(
+        source="pipe:/tmp/shairport-audio",
+        channels=2,  # shairport-sync outputs stereo
+    )
+    await audio_feed.start()
+
     # Register built-in drawers
     drawer_manager.register_drawer(OffDrawer(width, height))
     drawer_manager.register_drawer(AlienBlobDrawer(width, height))
@@ -184,6 +195,10 @@ async def lifespan(app: FastAPI):
     drawer_manager.register_drawer(GinzburgLandauDrawer(width, height))
     camera_drawer = CameraDrawer(width, height, video_feed=video_feed)
     drawer_manager.register_drawer(camera_drawer)
+    drawer_manager.register_drawer(AudioVizDrawer(width, height))
+
+    # Wire audio feed into drawer manager so all drawers get ctx.audio
+    drawer_manager.set_audio_feed(audio_feed)
 
     # Load and register custom drawers
     for drawer_info in custom_drawer_loader.list_drawers():
@@ -229,6 +244,8 @@ async def lifespan(app: FastAPI):
             await render_task
         except asyncio.CancelledError:
             pass
+    if audio_feed:
+        await audio_feed.stop()
     if video_feed:
         await video_feed.stop()
     if serial_manager:

@@ -1,8 +1,14 @@
 """Base drawer class for pattern generation."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 import numpy as np
+
+if TYPE_CHECKING:
+    from aurora_web.inputs.audio_feed import AudioInput
 
 
 @dataclass
@@ -14,6 +20,7 @@ class DrawerContext:
     time: float
     delta_time: float
     palette_size: int = 4096
+    audio: AudioInput | None = None
 
 
 class Drawer(ABC):
