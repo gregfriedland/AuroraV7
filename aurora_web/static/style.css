@@ -49,6 +49,12 @@ header h1 {
     background: #7e0a0a;
 }
 
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .audio-indicator {
     font-size: 1.2rem;
     color: #4fc3f7;
