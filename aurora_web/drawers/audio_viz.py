@@ -44,7 +44,6 @@ class AudioVizDrawer(Drawer):
         offset = int(self._phase_offset) % ctx.palette_size
 
         if audio is None or not audio.is_active or audio.spectrum is None:
-            self._draw_waiting(indices, ctx, offset)
             return indices
 
         sens = self.settings["sensitivity"] / 50.0  # 0→0, 50→1, 100→2
@@ -55,21 +54,6 @@ class AudioVizDrawer(Drawer):
         self._draw_bands(indices, ctx, audio, offset)
 
         return indices
-
-    # ------------------------------------------------------------------
-    # Waiting / fallback pattern
-    # ------------------------------------------------------------------
-    def _draw_waiting(
-        self, indices: np.ndarray, ctx: DrawerContext, offset: int
-    ) -> None:
-        """Dim scrolling bars when no audio is connected."""
-        for x in range(ctx.width):
-            val = int((x + offset * 0.1) * ctx.palette_size / ctx.width) % ctx.palette_size
-            # Dim it — use lower quarter of palette
-            val = val // 4
-            for y in range(ctx.height):
-                if (x + y) % 4 == int(ctx.time * 2) % 4:
-                    indices[y, x] = val
 
     # ------------------------------------------------------------------
     # Spectrum bars  (rows 0-13, 16 bars × 2 cols)
