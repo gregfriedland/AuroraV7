@@ -23,25 +23,18 @@ class AudioVizDrawer(Drawer):
         super().__init__("AudioViz", width, height, palette_size)
         self.settings = {
             "sensitivity": 70,
-            "colorSpeed": 10,
         }
         self.settings_ranges = {
             "sensitivity": (0, 100),
-            "colorSpeed": (0, 50),
         }
-        self._phase_offset = 0.0
-
     def reset(self) -> None:
-        self._phase_offset = 0.0
+        pass
 
     def draw(self, ctx: DrawerContext) -> np.ndarray:
         indices = np.zeros((ctx.height, ctx.width), dtype=np.int32)
         audio = ctx.audio
 
-        # Animate palette offset
-        speed = self.settings["colorSpeed"]
-        self._phase_offset += ctx.delta_time * speed * 40
-        offset = int(self._phase_offset) % ctx.palette_size
+        offset = 0
 
         if audio is None or not audio.is_active or audio.spectrum is None:
             return indices
