@@ -39,10 +39,101 @@ echo ""
 echo "Installing system dependencies..."
 sudo apt-get install -y -qq libcap-dev
 
-# Install shairport-sync (AirPlay receiver) — must happen while apt is clean
-echo ""
-echo "Installing shairport-sync (AirPlay)..."
-sudo apt-get install -y -qq shairport-sync
+# Build dependencies for shairport-sync (AirPlay 2) and NQPTP
+sudo apt-get install -y -qq \
+    build-essential autoconf automake libtool \
+    libpopt-dev libconfig-dev libasound2-dev libavahi-client-dev \
+    libssl-dev libsoxr-dev libplist-dev libplist-utils \
+    libsodium-dev libgcrypt20-dev uuid-dev xxd
+
+# Pin ffmpeg dev libs to Ubuntu version (Pi repo may offer incompatible downgrades)
+FFMPEG_VER=$(dpkg -s libavcodec-dev 2>/dev/null | grep '^Version:' | awk '{print $2}')
+if [ -n "$FFMPEG_VER" ]; then
+    sudo apt-get install -y -qq \
+        "libavformat-dev=$FFMPEG_VER" \
+        "libavcodec-dev=$FFMPEG_VER" \
+        "libavutil-dev=$FFMPEG_VER"
+else
+    sudo apt-get install -y -qq libavformat-dev libavcodec-dev libavutil-dev
+fi
+
+# Remove old apt shairport-sync (AirPlay 1 only) if present
+if dpkg -s shairport-sync &>/dev/null; then
+    echo "Removing old shairport-sync (AirPlay 1)..."
+    sudo systemctl stop shairport-sync 2>/dev/null || true
+    sudo apt-get remove -y shairport-sync 2>/dev/null || true
+fi
+
+# Build and install NQPTP (required for AirPlay 2 timing)
+if ! command -v nqptp &> /dev/null; then
+    echo ""
+    echo "Building NQPTP..."
+    cd /tmp
+    rm -rf nqptp
+    git clone https://github.com/mikebrady/nqptp.git
+    cd nqptp
+    autoreconf -fi
+    ./configure --with-systemd-startup
+    make -j"$(nproc)"
+    sudo make install
+    cd "$SCRIPT_DIR/.."
+fi
+sudo systemctl enable nqptp
+sudo systemctl restart nqptp
+
+# Build and install shairport-sync with AirPlay 2 + pipe support
+if ! /usr/local/bin/shairport-sync -V 2>/dev/null | grep -q "AirPlay2"; then
+    echo ""
+    echo "Building shairport-sync with AirPlay 2..."
+    cd /tmp
+    rm -rf shairport-sync
+    git clone https://github.com/mikebrady/shairport-sync.git
+    cd shairport-sync
+    autoreconf -fi
+    ./configure --sysconfdir=/etc \
+        --with-alsa --with-soxr --with-avahi --with-ssl=openssl \
+        --with-airplay-2 --with-pipe
+    make -j"$(nproc)"
+    sudo make install
+    cd "$SCRIPT_DIR/.."
+fi
+
+# Create systemd service for shairport-sync
+sudo tee /etc/systemd/system/shairport-sync.service > /dev/null <<'SERVICE_EOF'
+[Unit]
+Description=Shairport Sync - AirPlay 2 Audio Receiver
+After=network.target avahi-daemon.service nqptp.service
+Requires=nqptp.service
+
+[Service]
+ExecStart=/usr/local/bin/shairport-sync
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+# Configure shairport-sync: device name + pipe backend for audio analysis
+sudo tee /etc/shairport-sync.conf > /dev/null <<'SHAIRPORT_EOF'
+general = {
+  name = "Aurora";
+  output_backend = "pipe";
+};
+
+pipe = {
+  name = "/tmp/shairport-audio";
+};
+SHAIRPORT_EOF
+echo "Configured shairport-sync with pipe backend"
+
+# Create the audio FIFO
+[ -p /tmp/shairport-audio ] || mkfifo /tmp/shairport-audio
+chmod 666 /tmp/shairport-audio
+
+sudo systemctl daemon-reload
+sudo systemctl enable shairport-sync
+sudo systemctl restart shairport-sync
 
 # Install libcamera v0.5 Python bindings (has PiSP IPA for Pi 5)
 # On Ubuntu 24.04, the Pi repo package has a python3 (<3.12) dependency
@@ -79,38 +170,15 @@ sudo systemctl daemon-reload
 sudo systemctl enable aurora-web
 sudo systemctl restart aurora-web
 
-# Configure shairport-sync: device name + pipe backend for audio analysis
-SHAIRPORT_CONF="/etc/shairport-sync.conf"
-if [ -f "$SHAIRPORT_CONF" ]; then
-    # Write a clean config with pipe output for Aurora audio feed
-    sudo tee "$SHAIRPORT_CONF" > /dev/null <<'SHAIRPORT_EOF'
-general = {
-  name = "Aurora";
-  output_backend = "pipe";
-};
-
-pipe = {
-  name = "/tmp/shairport-audio";
-};
-SHAIRPORT_EOF
-    echo "Configured shairport-sync with pipe backend"
-fi
-
-# Create the audio FIFO
-[ -p /tmp/shairport-audio ] || mkfifo /tmp/shairport-audio
-chmod 666 /tmp/shairport-audio
-
-sudo systemctl enable shairport-sync
-sudo systemctl restart shairport-sync
-
 echo ""
 echo "=== Aurora Web installed! ==="
 echo ""
 echo "Access at: http://$(hostname -I | awk '{print $1}')"
-echo "AirPlay:   \"Aurora\" should appear on Apple devices"
+echo "AirPlay 2: \"Aurora\" should appear on Apple devices (groupable)"
 echo ""
 echo "Commands:"
-echo "  sudo systemctl status aurora-web    # Check status"
-echo "  sudo journalctl -u aurora-web -f    # View logs"
-echo "  sudo systemctl restart aurora-web   # Restart"
+echo "  sudo systemctl status aurora-web      # Check status"
+echo "  sudo journalctl -u aurora-web -f      # View logs"
+echo "  sudo systemctl restart aurora-web     # Restart"
 echo "  sudo systemctl status shairport-sync  # AirPlay status"
+echo "  sudo systemctl status nqptp           # AirPlay 2 timing daemon"
