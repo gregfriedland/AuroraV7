@@ -39,12 +39,12 @@ class AudioVizDrawer(Drawer):
             return indices
 
         sens = self.settings["sensitivity"] / 50.0  # 0->0, 50->1, 100->2
-        color = ctx.palette_size // 2
+        ps = ctx.palette_size
 
-        self._draw_spectrum(indices, ctx, audio, sens, color)
-        self._draw_beat_phase(indices, ctx, audio, color)
-        self._draw_volume(indices, ctx, audio, color)
-        self._draw_bands(indices, ctx, audio, color)
+        self._draw_spectrum(indices, ctx, audio, sens, ps * 1 // 5)
+        self._draw_beat_phase(indices, ctx, audio, ps * 2 // 5)
+        self._draw_volume(indices, ctx, audio, ps * 3 // 5)
+        self._draw_bands(indices, ctx, audio, ps * 4 // 5)
 
         return indices
 
