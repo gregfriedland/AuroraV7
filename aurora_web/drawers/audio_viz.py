@@ -28,10 +28,20 @@ class AudioVizDrawer(Drawer):
             "sensitivity": (0, 100),
         }
         self._smoothed_spectrum = np.zeros(16, dtype=np.float32)
+        self._beat_brightness = 0.0
+        self._smoothed_volume = 0.0
+        self._smoothed_bass = 0.0
+        self._smoothed_mids = 0.0
+        self._smoothed_highs = 0.0
         self._smooth_factor = 0.15  # 0=frozen, 1=instant
 
     def reset(self) -> None:
         self._smoothed_spectrum[:] = 0
+        self._beat_brightness = 0.0
+        self._smoothed_volume = 0.0
+        self._smoothed_bass = 0.0
+        self._smoothed_mids = 0.0
+        self._smoothed_highs = 0.0
 
     def draw(self, ctx: DrawerContext) -> np.ndarray:
         indices = np.zeros((ctx.height, ctx.width), dtype=np.int32)
@@ -42,6 +52,19 @@ class AudioVizDrawer(Drawer):
 
         sens = self.settings["sensitivity"] / 50.0  # 0->0, 50->1, 100->2
         ps = ctx.palette_size
+        a = self._smooth_factor
+
+        # Smooth beat: jump to 1.0 on onset, decay otherwise
+        if audio.beat_onset:
+            self._beat_brightness = 1.0
+        else:
+            self._beat_brightness *= 0.85  # decay per frame
+
+        # Smooth volume and bands
+        self._smoothed_volume += a * (audio.volume - self._smoothed_volume)
+        self._smoothed_bass += a * (audio.bass - self._smoothed_bass)
+        self._smoothed_mids += a * (audio.mids - self._smoothed_mids)
+        self._smoothed_highs += a * (audio.highs - self._smoothed_highs)
 
         self._draw_spectrum(indices, ctx, audio, sens, ps * 1 // 5)
         self._draw_beat_phase(indices, ctx, audio, ps * 2 // 5)
@@ -80,18 +103,12 @@ class AudioVizDrawer(Drawer):
     # Beat phase sweep  (rows 14-15)
     # ------------------------------------------------------------------
     def _draw_beat_phase(self, indices, ctx, audio, color):
-        fill_cols = int(audio.beat_phase * ctx.width)
-
-        if audio.beat_onset:
-            for r in range(self.BEAT_ROWS):
-                y = self.SPECTRUM_ROWS + r
-                if y < ctx.height:
-                    indices[y, :] = color
-        else:
-            for r in range(self.BEAT_ROWS):
-                y = self.SPECTRUM_ROWS + r
-                if y < ctx.height:
-                    indices[y, :fill_cols] = color
+        # Fill width based on beat brightness (EMA decay after onset)
+        fill_cols = int(self._beat_brightness * ctx.width)
+        for r in range(self.BEAT_ROWS):
+            y = self.SPECTRUM_ROWS + r
+            if y < ctx.height:
+                indices[y, :fill_cols] = color
 
     # ------------------------------------------------------------------
     # Volume bar  (row 16)
@@ -99,7 +116,7 @@ class AudioVizDrawer(Drawer):
     def _draw_volume(self, indices, ctx, audio, color):
         if self.VOLUME_ROW >= ctx.height:
             return
-        fill = int(audio.volume * ctx.width)
+        fill = int(self._smoothed_volume * ctx.width)
         fill = min(fill, ctx.width)
         indices[self.VOLUME_ROW, :fill] = color
 
@@ -111,9 +128,9 @@ class AudioVizDrawer(Drawer):
             return
 
         regions = [
-            (0, 10, audio.bass),
-            (11, 21, audio.mids),
-            (22, 32, audio.highs),
+            (0, 10, self._smoothed_bass),
+            (11, 21, self._smoothed_mids),
+            (22, 32, self._smoothed_highs),
         ]
         for start, end, level in regions:
             end = min(end, ctx.width)

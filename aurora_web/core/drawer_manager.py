@@ -249,6 +249,10 @@ class DrawerManager:
         if self.mode != "pattern":
             return None
 
+        # Don't auto-rotate when AudioViz is active
+        if self.active_drawer and self.active_drawer.name == "AudioViz":
+            return None
+
         time_since_rotation = time.time() - self.last_rotation_time
         if time_since_rotation >= self.AUTO_ROTATE_INTERVAL:
             return self.randomize_all()
