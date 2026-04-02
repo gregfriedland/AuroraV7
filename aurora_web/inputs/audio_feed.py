@@ -4,11 +4,9 @@ import numpy as np
 import asyncio
 import os
 import stat
-import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Optional, List
-import struct
 
 
 @dataclass
@@ -18,11 +16,196 @@ class AudioInput:
     bpm: float | None = None           # Current tempo estimate (60-200)
     beat_onset: bool = False              # True on beat hit
     beat_phase: float = 0.0               # 0.0-1.0 position within beat
+    beat_index: int = 0                    # Which beat in bar (0-3)
+    bar_phase: float = 0.0                # 0.0-1.0 position within full bar
     spectrum: np.ndarray | None = None # FFT bins (16 bands)
     volume: float = 0.0                   # 0.0-1.0 current volume level
     bass: float = 0.0                     # 0.0-1.0 low frequency energy
     mids: float = 0.0                     # 0.0-1.0 mid frequency energy
     highs: float = 0.0                    # 0.0-1.0 high frequency energy
+
+
+class BeatTracker:
+    """Spectral flux onset detection + autocorrelation tempo + phase-locked oscillator.
+
+    Three-stage pipeline:
+    1. Spectral flux: half-wave rectified difference of consecutive FFT frames
+    2. Autocorrelation: finds dominant periodicity in onset strength buffer (60-200 BPM)
+    3. Phase-locked oscillator: phase 0→4 (one 4/4 bar), nudged toward detected onsets
+    """
+
+    def __init__(self, analysis_fps: float = 21.5):
+        self.analysis_fps = analysis_fps
+
+        # Spectral flux state
+        self._prev_fft: np.ndarray | None = None
+        self._flux_mean: float = 0.0
+        self._flux_var: float = 0.0
+        self._flux_ema_alpha: float = 0.02  # ~50 frame time constant
+
+        # Onset strength circular buffer (~4 seconds)
+        self._onset_buf_size = int(analysis_fps * 4)
+        self._onset_buf = np.zeros(self._onset_buf_size, dtype=np.float32)
+        self._onset_idx = 0
+
+        # Tempo estimation
+        self._bpm: float = 120.0
+        self._tempo_confidence: float = 0.0
+        self._last_tempo_time: float = 0.0
+        self._tempo_update_interval: float = 2.0  # seconds
+
+        # Phase-locked oscillator (0→4 = one full bar)
+        self._phase: float = 0.0
+        self._phase_correction: float = 0.1
+
+        # Outputs
+        self.bpm: float = 120.0
+        self.beat_onset: bool = False
+        self.beat_phase: float = 0.0
+        self.beat_index: int = 0
+        self.bar_phase: float = 0.0
+
+    def reset(self) -> None:
+        self._prev_fft = None
+        self._flux_mean = 0.0
+        self._flux_var = 0.0
+        self._onset_buf[:] = 0
+        self._onset_idx = 0
+        self._bpm = 120.0
+        self._tempo_confidence = 0.0
+        self._last_tempo_time = 0.0
+        self._phase = 0.0
+        self.bpm = 120.0
+        self.beat_onset = False
+        self.beat_phase = 0.0
+        self.beat_index = 0
+        self.bar_phase = 0.0
+
+    def update(self, fft_magnitudes: np.ndarray, dt: float) -> None:
+        """Process one frame of FFT magnitudes.
+
+        Args:
+            fft_magnitudes: Raw FFT magnitude bins (e.g. 1025 bins from rfft of 2048 samples)
+            dt: Time since last frame in seconds
+        """
+        now = time.time()
+
+        # --- Stage 1: Spectral flux onset detection ---
+        is_onset = False
+        if self._prev_fft is not None and len(fft_magnitudes) == len(self._prev_fft):
+            # Half-wave rectified spectral flux
+            diff = fft_magnitudes - self._prev_fft
+            flux = float(np.sum(np.maximum(diff, 0.0)))
+
+            # Update running mean/variance with EMA
+            a = self._flux_ema_alpha
+            self._flux_mean += a * (flux - self._flux_mean)
+            deviation = (flux - self._flux_mean) ** 2
+            self._flux_var += a * (deviation - self._flux_var)
+            stddev = max(np.sqrt(self._flux_var), 1e-6)
+
+            # Onset = flux exceeds mean + 1.5 * stddev
+            threshold = self._flux_mean + 1.5 * stddev
+            onset_strength = max(0.0, (flux - threshold) / stddev)
+            is_onset = flux > threshold
+
+            # Store in circular buffer
+            self._onset_buf[self._onset_idx % self._onset_buf_size] = onset_strength
+            self._onset_idx += 1
+        else:
+            self._onset_buf[self._onset_idx % self._onset_buf_size] = 0.0
+            self._onset_idx += 1
+
+        self._prev_fft = fft_magnitudes.copy()
+
+        # --- Stage 2: Autocorrelation tempo estimation (every ~2 seconds) ---
+        if now - self._last_tempo_time > self._tempo_update_interval and self._onset_idx >= self._onset_buf_size:
+            self._estimate_tempo()
+            self._last_tempo_time = now
+
+        # --- Stage 3: Phase-locked oscillator ---
+        old_phase = self._phase
+
+        # Advance phase: dt * (bpm / 60) gives beats per dt; phase runs 0→4
+        beats_per_second = self._bpm / 60.0
+        self._phase += dt * beats_per_second
+        self._phase %= 4.0
+
+        # Nudge phase toward nearest integer beat on onset
+        if is_onset:
+            nearest_beat = round(self._phase)
+            if nearest_beat >= 4:
+                nearest_beat = 0
+            # Phase error: signed distance to nearest beat
+            error = nearest_beat - self._phase
+            # Wrap to [-2, 2]
+            if error > 2.0:
+                error -= 4.0
+            elif error < -2.0:
+                error += 4.0
+            self._phase += self._phase_correction * error
+            self._phase %= 4.0
+
+        # Detect beat onset: phase crossed an integer boundary
+        self.beat_onset = False
+        if old_phase > self._phase:
+            # Phase wrapped around 4→0
+            self.beat_onset = True
+        else:
+            # Check if we crossed any integer
+            old_beat = int(old_phase)
+            new_beat = int(self._phase)
+            if new_beat != old_beat and self._phase != old_phase:
+                self.beat_onset = True
+
+        # Set outputs
+        self.bpm = self._bpm
+        self.beat_phase = self._phase % 1.0
+        self.beat_index = int(self._phase) % 4
+        self.bar_phase = self._phase / 4.0
+
+    def _estimate_tempo(self) -> None:
+        """Autocorrelation-based tempo estimation from onset strength buffer."""
+        buf = self._onset_buf.copy()
+
+        # Remove DC
+        buf -= np.mean(buf)
+
+        # Autocorrelation via FFT (O(n log n))
+        n = len(buf)
+        fft = np.fft.rfft(buf, n=2 * n)
+        acf = np.fft.irfft(fft * np.conj(fft))[:n]
+
+        # Normalize
+        if acf[0] > 0:
+            acf /= acf[0]
+
+        # Convert BPM range to lag range
+        # lag = analysis_fps * 60 / bpm
+        min_lag = int(self.analysis_fps * 60.0 / 200.0)  # 200 BPM
+        max_lag = int(self.analysis_fps * 60.0 / 60.0)   # 60 BPM
+        min_lag = max(1, min_lag)
+        max_lag = min(max_lag, n - 1)
+
+        if min_lag >= max_lag:
+            return
+
+        # Find peak in valid lag range
+        search = acf[min_lag:max_lag + 1]
+        peak_idx = np.argmax(search)
+        peak_lag = peak_idx + min_lag
+        peak_val = search[peak_idx]
+
+        if peak_lag > 0 and peak_val > 0.1:
+            estimated_bpm = self.analysis_fps * 60.0 / peak_lag
+            estimated_bpm = float(np.clip(estimated_bpm, 60.0, 200.0))
+
+            # Smoothly nudge toward estimate (weighted by confidence)
+            confidence = min(peak_val, 1.0)
+            blend = 0.3 * confidence
+            self._bpm += blend * (estimated_bpm - self._bpm)
+            self._bpm = float(np.clip(self._bpm, 60.0, 200.0))
+            self._tempo_confidence = confidence
 
 
 class AudioFeed:
@@ -66,14 +249,15 @@ class AudioFeed:
         self.bpm: float | None = None
         self.beat_onset: bool = False
         self.beat_phase: float = 0.0
+        self.beat_index: int = 0
+        self.bar_phase: float = 0.0
         self.spectrum: np.ndarray | None = None
         self.volume: float = 0.0
 
-        # Beat detection state
-        self._last_beat_time: float = 0.0
-        self._beat_intervals: list[float] = []
-        self._bass_history: list[float] = []
-        self._bass_avg: float = 0.0
+        # Beat tracker
+        analysis_fps = sample_rate / buffer_size  # ~21.5 Hz
+        self._beat_tracker = BeatTracker(analysis_fps=analysis_fps)
+        self._last_analyze_time: float = 0.0
 
         # Process
         self._process: asyncio.subprocess.Process | None = None
@@ -86,12 +270,12 @@ class AudioFeed:
         self.bpm = None
         self.beat_onset = False
         self.beat_phase = 0.0
+        self.beat_index = 0
+        self.bar_phase = 0.0
         self.spectrum = None
         self.volume = 0.0
-        self._last_beat_time = 0.0
-        self._beat_intervals.clear()
-        self._bass_history.clear()
-        self._bass_avg = 0.0
+        self._beat_tracker.reset()
+        self._last_analyze_time = 0.0
 
     def _build_capture_command(self) -> list[str]:
         """Build the audio capture command based on source."""
@@ -236,12 +420,24 @@ class AudioFeed:
         Args:
             samples: Audio samples as float array (-1 to 1)
         """
+        now = time.time()
+        dt = now - self._last_analyze_time if self._last_analyze_time > 0 else 1.0 / self._beat_tracker.analysis_fps
+        self._last_analyze_time = now
+
         # Compute FFT
         window = np.hanning(len(samples))
         fft = np.abs(np.fft.rfft(samples * window))
 
         # Volume (RMS)
         self.volume = float(np.sqrt(np.mean(samples ** 2)))
+
+        # Pass full FFT to beat tracker
+        self._beat_tracker.update(fft, dt)
+        self.bpm = self._beat_tracker.bpm
+        self.beat_onset = self._beat_tracker.beat_onset
+        self.beat_phase = self._beat_tracker.beat_phase
+        self.beat_index = self._beat_tracker.beat_index
+        self.bar_phase = self._beat_tracker.bar_phase
 
         # Create spectrum bands (logarithmic spacing)
         freq_bins = len(fft)
@@ -257,56 +453,10 @@ class AudioFeed:
                 for i in range(self.num_bands)
             ], dtype=np.float32)
 
-        # Beat detection using raw (unnormalized) bass energy
-        raw_bass = float(np.mean(self.spectrum[:3]))
-
-        # Normalize spectrum for display only
+        # Normalize spectrum for display
         max_val = np.max(self.spectrum)
         if max_val > 0:
             self.spectrum = self.spectrum / max_val
-
-        # Maintain running average of raw bass for adaptive threshold
-        self._bass_history.append(raw_bass)
-        if len(self._bass_history) > 43:  # ~1 second at 43 fps
-            self._bass_history.pop(0)
-        self._bass_avg = np.mean(self._bass_history) if self._bass_history else 0
-
-        # Detect beat: raw bass spike well above running average
-        now = time.time()
-        time_since_last = now - self._last_beat_time
-
-        is_beat = (
-            raw_bass > self._bass_avg * 2.0 and
-            raw_bass > self.onset_threshold * 0.01 and  # minimum energy floor
-            time_since_last > self.min_beat_interval
-        )
-
-        if is_beat:
-            self.beat_onset = True
-            self._last_beat_time = now
-
-            # Update BPM estimate
-            if time_since_last < 2.0:  # Only use reasonable intervals
-                self._beat_intervals.append(time_since_last)
-                # Keep last 8 intervals
-                if len(self._beat_intervals) > 8:
-                    self._beat_intervals.pop(0)
-
-                if len(self._beat_intervals) >= 4:
-                    median_interval = float(np.median(self._beat_intervals))
-                    if median_interval > 0:
-                        self.bpm = 60.0 / median_interval
-                        # Clamp to reasonable range
-                        self.bpm = float(np.clip(self.bpm, 60, 200))
-        else:
-            self.beat_onset = False
-
-        # Update beat phase (0-1 position within beat)
-        if self.bpm and self.bpm > 0:
-            beat_duration = 60.0 / self.bpm
-            self.beat_phase = (time_since_last % beat_duration) / beat_duration
-        else:
-            self.beat_phase = 0.0
 
     def get_input(self) -> AudioInput:
         """Get current audio input state for drawers.
@@ -329,6 +479,8 @@ class AudioFeed:
             bpm=self.bpm,
             beat_onset=self.beat_onset,
             beat_phase=self.beat_phase,
+            beat_index=self.beat_index,
+            bar_phase=self.bar_phase,
             spectrum=spectrum.copy() if spectrum is not None else None,
             volume=self.volume,
             bass=bass,
@@ -375,7 +527,6 @@ class MockAudioFeed:
             bpm: Beats per minute to simulate
         """
         self.bpm = bpm
-        self._last_beat_time = 0.0
         self._start_time = 0.0
         self._running = False
 
@@ -383,7 +534,6 @@ class MockAudioFeed:
         """Start mock audio feed."""
         self._running = True
         self._start_time = time.time()
-        self._last_beat_time = self._start_time
         print(f"[MockAudioFeed] Started at {self.bpm} BPM")
 
     async def stop(self) -> None:
@@ -397,18 +547,17 @@ class MockAudioFeed:
             return AudioInput()
 
         now = time.time()
-        beat_duration = 60.0 / self.bpm
-        time_since_last = now - self._last_beat_time
+        elapsed = now - self._start_time
+        beats_per_second = self.bpm / 60.0
 
-        # Check if we hit a new beat
-        beat_onset = False
-        if time_since_last >= beat_duration:
-            beat_onset = True
-            self._last_beat_time = now
-            time_since_last = 0.0
+        # Phase within a 4-beat bar (0→4)
+        bar_phase_raw = (elapsed * beats_per_second) % 4.0
+        beat_index = int(bar_phase_raw) % 4
+        beat_phase = bar_phase_raw % 1.0
+        bar_phase = bar_phase_raw / 4.0
 
-        # Calculate phase
-        beat_phase = (time_since_last % beat_duration) / beat_duration
+        # Detect beat onset (phase near zero)
+        beat_onset = beat_phase < 0.05
 
         # Generate fake spectrum (pulsing with beat)
         intensity = 1.0 - beat_phase  # Decay after beat
@@ -419,6 +568,8 @@ class MockAudioFeed:
             bpm=self.bpm,
             beat_onset=beat_onset,
             beat_phase=beat_phase,
+            beat_index=beat_index,
+            bar_phase=bar_phase,
             spectrum=spectrum,
             volume=0.5 + intensity * 0.3,
             bass=float(np.mean(spectrum[:3])),

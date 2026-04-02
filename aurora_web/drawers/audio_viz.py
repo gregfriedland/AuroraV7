@@ -9,7 +9,7 @@ class AudioVizDrawer(Drawer):
 
     Layout:
         Rows 0-13:  16 spectrum bars (2 cols each, bottom-up fill)
-        Rows 14-15: Beat phase sweep (left-right, flashes on beat_onset)
+        Rows 14-15: 4/4 beat bar (4 sections of 8 cols, fills L→R with flash on onset)
         Row 16:     Volume bar (horizontal)
         Row 17:     Bass | Mids | Highs (3 separate bars)
     """
@@ -28,7 +28,7 @@ class AudioVizDrawer(Drawer):
             "sensitivity": (0, 100),
         }
         self._smoothed_spectrum = np.zeros(16, dtype=np.float32)
-        self._beat_brightness = 0.0
+        self._beat_section_flash: list[float] = [0.0, 0.0, 0.0, 0.0]
         self._smoothed_volume = 0.0
         self._smoothed_bass = 0.0
         self._smoothed_mids = 0.0
@@ -37,7 +37,7 @@ class AudioVizDrawer(Drawer):
 
     def reset(self) -> None:
         self._smoothed_spectrum[:] = 0
-        self._beat_brightness = 0.0
+        self._beat_section_flash = [0.0, 0.0, 0.0, 0.0]
         self._smoothed_volume = 0.0
         self._smoothed_bass = 0.0
         self._smoothed_mids = 0.0
@@ -54,11 +54,13 @@ class AudioVizDrawer(Drawer):
         ps = ctx.palette_size
         a = self._smooth_factor
 
-        # Smooth beat: jump to 1.0 on onset, decay otherwise
+        # Flash the current beat section on onset
         if audio.beat_onset:
-            self._beat_brightness = 1.0
-        else:
-            self._beat_brightness *= 0.85  # decay per frame
+            self._beat_section_flash[audio.beat_index] = 1.0
+
+        # Decay all section flashes
+        for i in range(4):
+            self._beat_section_flash[i] *= 0.85
 
         # Smooth volume and bands
         self._smoothed_volume += a * (audio.volume - self._smoothed_volume)
@@ -67,7 +69,7 @@ class AudioVizDrawer(Drawer):
         self._smoothed_highs += a * (audio.highs - self._smoothed_highs)
 
         self._draw_spectrum(indices, ctx, audio, sens, ps * 1 // 5)
-        self._draw_beat_phase(indices, ctx, audio, ps * 2 // 5)
+        self._draw_beat_bar(indices, ctx, audio, ps * 2 // 5)
         self._draw_volume(indices, ctx, audio, ps * 3 // 5)
         self._draw_bands(indices, ctx, audio, ps * 4 // 5)
 
@@ -100,15 +102,42 @@ class AudioVizDrawer(Drawer):
                     indices[y, col_start + 1] = color
 
     # ------------------------------------------------------------------
-    # Beat phase sweep  (rows 14-15)
+    # 4/4 Beat bar  (rows 14-15, 4 sections of 8 cols each)
     # ------------------------------------------------------------------
-    def _draw_beat_phase(self, indices, ctx, audio, color):
-        # Fill width based on beat brightness (EMA decay after onset)
-        fill_cols = int(self._beat_brightness * ctx.width)
-        for r in range(self.BEAT_ROWS):
-            y = self.SPECTRUM_ROWS + r
-            if y < ctx.height:
-                indices[y, :fill_cols] = color
+    def _draw_beat_bar(self, indices, ctx, audio, color):
+        section_width = ctx.width // 4  # 8 cols per beat section
+
+        for section in range(4):
+            col_start = section * section_width
+            col_end = col_start + section_width
+
+            if section < audio.beat_index:
+                # Past beats: fully lit
+                brightness = 1.0
+            elif section == audio.beat_index:
+                # Current beat: proportional fill by beat_phase
+                brightness = audio.beat_phase
+            else:
+                # Future beats: dark
+                brightness = 0.0
+
+            # Add flash on top
+            flash = self._beat_section_flash[section]
+            brightness = min(1.0, brightness + flash)
+
+            if brightness <= 0.0:
+                continue
+
+            fill_cols = max(1, int(brightness * section_width))
+            fill_end = min(col_start + fill_cols, col_end, ctx.width)
+
+            # Compute dimmed color for partial brightness
+            dim_color = max(1, int(color * brightness))
+
+            for r in range(self.BEAT_ROWS):
+                y = self.SPECTRUM_ROWS + r
+                if y < ctx.height:
+                    indices[y, col_start:fill_end] = dim_color
 
     # ------------------------------------------------------------------
     # Volume bar  (row 16)
