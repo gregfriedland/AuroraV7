@@ -196,8 +196,6 @@ class AudioFeed:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.DEVNULL,
                     )
-                    self.is_active = True
-                    print("[AudioFeed] AirPlay connected")
 
                 data = await self._process.stdout.read(bytes_needed)
                 if not data:
@@ -208,6 +206,11 @@ class AudioFeed:
                         continue
                     await asyncio.sleep(0.01)
                     continue
+
+                # Mark active on first data received
+                if not self.is_active:
+                    self.is_active = True
+                    print("[AudioFeed] AirPlay connected")
 
                 # Convert bytes to samples
                 samples = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
