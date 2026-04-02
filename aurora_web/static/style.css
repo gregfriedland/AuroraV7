@@ -49,6 +49,17 @@ header h1 {
     background: #7e0a0a;
 }
 
+.audio-indicator {
+    font-size: 1.2rem;
+    color: #4fc3f7;
+    animation: pulse-audio 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-audio {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
 main {
     flex: 1;
     display: flex;

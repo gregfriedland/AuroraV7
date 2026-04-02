@@ -64,7 +64,7 @@ class CameraDrawer(Drawer):
         self._face_targets: list[tuple[int, int, int, int]] = []
         self._face_target_time: float = 0.0
         self._last_face_seen: float = 0.0  # monotonic time of last detection
-        self._palette_scale: float = 2.0  # auto-scale factor for palette mapping
+        self._palette_scale: float = 1.0  # auto-scale factor for palette mapping
         self._palette_scale_time: float = 0.0
 
     def randomize_settings(self) -> None:
@@ -118,18 +118,20 @@ class CameraDrawer(Drawer):
         if self.settings["mirror"]:
             normalized = np.fliplr(normalized)
 
-        # Auto-scale: recalculate every 15s so max luminance maps to full palette
+        # Auto-scale: recalculate every 15s to boost dark scenes
+        # Only boosts when the scene is very dark; leaves normal scenes untouched
         import time
         now = time.monotonic()
         if now - self._palette_scale_time >= 15.0:
             self._palette_scale_time = now
             max_val = normalized.max()
-            if max_val > 0.05:
-                self._palette_scale = 1.0 / max_val
+            if 0.01 < max_val < 0.3:
+                # Dark scene: scale up so max reaches ~0.3
+                self._palette_scale = 0.3 / max_val
             else:
                 self._palette_scale = 1.0
 
-        # Map to palette indices (auto-scale stretches range to fill palette)
+        # Map to palette indices
         scaled = np.clip(normalized * self._palette_scale, 0.0, 1.0)
         indices = (scaled * (self.palette_size - 1)).astype(np.int32)
 

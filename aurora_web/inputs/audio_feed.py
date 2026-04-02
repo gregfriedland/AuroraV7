@@ -2,6 +2,8 @@
 
 import numpy as np
 import asyncio
+import os
+import stat
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -12,6 +14,7 @@ import struct
 @dataclass
 class AudioInput:
     """Audio analysis data passed to drawers."""
+    is_active: bool = False                # True when audio stream is connected
     bpm: float | None = None           # Current tempo estimate (60-200)
     beat_onset: bool = False              # True on beat hit
     beat_phase: float = 0.0               # 0.0-1.0 position within beat
@@ -33,6 +36,7 @@ class AudioFeed:
         self,
         source: str = "pulse",
         sample_rate: int = 44100,
+        channels: int = 1,
         buffer_size: int = 2048,
         num_bands: int = 16,
         onset_threshold: float = 0.6,
@@ -41,8 +45,10 @@ class AudioFeed:
         """Initialize audio feed.
 
         Args:
-            source: Audio source - "pulse", "alsa:hw:0", or "file:/path"
+            source: Audio source - "pulse", "alsa:hw:0", "file:/path",
+                    or "pipe:/path" (raw S16LE FIFO from shairport-sync)
             sample_rate: Audio sample rate
+            channels: Number of input channels (1=mono, 2=stereo; stereo is downmixed)
             buffer_size: FFT buffer size
             num_bands: Number of spectrum bands
             onset_threshold: Threshold for beat detection (0-1)
@@ -50,6 +56,7 @@ class AudioFeed:
         """
         self.source = source
         self.sample_rate = sample_rate
+        self.channels = channels
         self.buffer_size = buffer_size
         self.num_bands = num_bands
         self.onset_threshold = onset_threshold
@@ -72,6 +79,19 @@ class AudioFeed:
         self._process: asyncio.subprocess.Process | None = None
         self._running: bool = False
         self._task: asyncio.Task | None = None
+        self.is_active: bool = False  # True when audio is flowing
+
+    def _reset_state(self) -> None:
+        """Reset audio analysis state (on disconnect)."""
+        self.bpm = None
+        self.beat_onset = False
+        self.beat_phase = 0.0
+        self.spectrum = None
+        self.volume = 0.0
+        self._last_beat_time = 0.0
+        self._beat_intervals.clear()
+        self._bass_history.clear()
+        self._bass_avg = 0.0
 
     def _build_capture_command(self) -> list[str]:
         """Build the audio capture command based on source."""
@@ -94,6 +114,10 @@ class AudioFeed:
                 "-c", "1",
                 "-t", "raw",
             ]
+        elif self.source.startswith("pipe:"):
+            # Named pipe (FIFO) — raw S16LE PCM (e.g. from shairport-sync)
+            pipe_path = self.source[5:]
+            return ["cat", pipe_path]
         elif self.source.startswith("file:"):
             # File playback via ffmpeg
             filepath = self.source[5:]
@@ -114,6 +138,19 @@ class AudioFeed:
             return
 
         self._running = True
+
+        # Create FIFO for pipe source if it doesn't exist
+        if self.source.startswith("pipe:"):
+            pipe_path = self.source[5:]
+            if not os.path.exists(pipe_path):
+                try:
+                    os.mkfifo(pipe_path)
+                    print(f"[AudioFeed] Created FIFO: {pipe_path}")
+                except OSError as e:
+                    print(f"[AudioFeed] Failed to create FIFO {pipe_path}: {e}")
+            elif not stat.S_ISFIFO(os.stat(pipe_path).st_mode):
+                print(f"[AudioFeed] WARNING: {pipe_path} exists but is not a FIFO")
+
         cmd = self._build_capture_command()
 
         try:
@@ -132,19 +169,52 @@ class AudioFeed:
             self._running = False
 
     async def _read_loop(self) -> None:
-        """Read audio data and analyze."""
+        """Read audio data and analyze.
+
+        For pipe sources, auto-reconnects when the writer disconnects
+        (e.g. AirPlay stream ends) and waits for the next connection.
+        """
         bytes_per_sample = 2  # 16-bit audio
-        bytes_needed = self.buffer_size * bytes_per_sample
+        bytes_needed = self.buffer_size * bytes_per_sample * self.channels
+        is_pipe = self.source.startswith("pipe:")
 
         try:
-            while self._running and self._process and self._process.returncode is None:
+            while self._running:
+                if self._process is None or self._process.returncode is not None:
+                    if not is_pipe:
+                        break  # Non-pipe sources don't reconnect
+
+                    # Reset state on disconnect
+                    self._reset_state()
+                    self.is_active = False
+                    print("[AudioFeed] Waiting for AirPlay connection...")
+
+                    # Restart cat on the FIFO (blocks until writer connects)
+                    cmd = self._build_capture_command()
+                    self._process = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
+                    self.is_active = True
+                    print("[AudioFeed] AirPlay connected")
+
                 data = await self._process.stdout.read(bytes_needed)
                 if not data:
+                    if is_pipe:
+                        # EOF — writer disconnected, loop will reconnect
+                        print("[AudioFeed] AirPlay disconnected")
+                        self._process = None
+                        continue
                     await asyncio.sleep(0.01)
                     continue
 
                 # Convert bytes to samples
                 samples = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+
+                # Downmix stereo to mono
+                if self.channels == 2 and len(samples) >= 2:
+                    samples = (samples[0::2] + samples[1::2]) / 2.0
 
                 if len(samples) >= self.buffer_size // 2:
                     self._analyze(samples)
@@ -252,6 +322,7 @@ class AudioFeed:
             bass = mids = highs = 0.0
 
         return AudioInput(
+            is_active=self.is_active,
             bpm=self.bpm,
             beat_onset=self.beat_onset,
             beat_phase=self.beat_phase,

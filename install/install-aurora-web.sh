@@ -72,12 +72,43 @@ sudo systemctl daemon-reload
 sudo systemctl enable aurora-web
 sudo systemctl restart aurora-web
 
+# Install shairport-sync (AirPlay receiver)
+echo ""
+echo "Installing shairport-sync (AirPlay)..."
+sudo apt-get install -y -qq shairport-sync
+
+# Configure shairport-sync: device name + pipe backend for audio analysis
+SHAIRPORT_CONF="/etc/shairport-sync.conf"
+if [ -f "$SHAIRPORT_CONF" ]; then
+    # Write a clean config with pipe output for Aurora audio feed
+    sudo tee "$SHAIRPORT_CONF" > /dev/null <<'SHAIRPORT_EOF'
+general = {
+  name = "Aurora";
+  output_backend = "pipe";
+};
+
+pipe = {
+  name = "/tmp/shairport-audio";
+};
+SHAIRPORT_EOF
+    echo "Configured shairport-sync with pipe backend"
+fi
+
+# Create the audio FIFO
+[ -p /tmp/shairport-audio ] || mkfifo /tmp/shairport-audio
+chmod 666 /tmp/shairport-audio
+
+sudo systemctl enable shairport-sync
+sudo systemctl restart shairport-sync
+
 echo ""
 echo "=== Aurora Web installed! ==="
 echo ""
 echo "Access at: http://$(hostname -I | awk '{print $1}')"
+echo "AirPlay:   \"Aurora\" should appear on Apple devices"
 echo ""
 echo "Commands:"
 echo "  sudo systemctl status aurora-web    # Check status"
 echo "  sudo journalctl -u aurora-web -f    # View logs"
 echo "  sudo systemctl restart aurora-web   # Restart"
+echo "  sudo systemctl status shairport-sync  # AirPlay status"

@@ -375,6 +375,11 @@ class AuroraApp {
                 if (msg.drawer) {
                     document.getElementById('current-pattern-name').textContent = msg.drawer;
                 }
+                // Audio indicator
+                const audioEl = document.getElementById('audio-indicator');
+                if (audioEl) {
+                    audioEl.classList.toggle('hidden', !msg.audio_active);
+                }
                 break;
 
             case 'mode_changed':
