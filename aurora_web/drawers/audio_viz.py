@@ -27,9 +27,11 @@ class AudioVizDrawer(Drawer):
         self.settings_ranges = {
             "sensitivity": (0, 100),
         }
+        self._smoothed_spectrum = np.zeros(16, dtype=np.float32)
+        self._smooth_factor = 0.15  # 0=frozen, 1=instant
 
     def reset(self) -> None:
-        pass
+        self._smoothed_spectrum[:] = 0
 
     def draw(self, ctx: DrawerContext) -> np.ndarray:
         indices = np.zeros((ctx.height, ctx.width), dtype=np.int32)
@@ -55,8 +57,15 @@ class AudioVizDrawer(Drawer):
         num_bars = min(16, len(audio.spectrum))
         max_h = self.SPECTRUM_ROWS
 
+        # Exponential moving average for smooth bars
+        a = self._smooth_factor
+        self._smoothed_spectrum[:num_bars] = (
+            a * audio.spectrum[:num_bars]
+            + (1 - a) * self._smoothed_spectrum[:num_bars]
+        )
+
         for i in range(num_bars):
-            bar_h = int(audio.spectrum[i] * sens * max_h)
+            bar_h = int(self._smoothed_spectrum[i] * sens * max_h)
             bar_h = min(bar_h, max_h)
 
             col_start = i * 2
