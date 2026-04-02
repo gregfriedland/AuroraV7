@@ -33,14 +33,21 @@ if ! command -v python3.11 &> /dev/null; then
     sudo apt-get install -y -qq python3.11 python3.11-venv python3.11-dev
 fi
 
-# Install build dependencies for picamera2
+# Install apt packages BEFORE the force-depends libcamera step,
+# which breaks apt's dependency tracking
 echo ""
 echo "Installing system dependencies..."
 sudo apt-get install -y -qq libcap-dev
 
+# Install shairport-sync (AirPlay receiver) — must happen while apt is clean
+echo ""
+echo "Installing shairport-sync (AirPlay)..."
+sudo apt-get install -y -qq shairport-sync
+
 # Install libcamera v0.5 Python bindings (has PiSP IPA for Pi 5)
 # On Ubuntu 24.04, the Pi repo package has a python3 (<3.12) dependency
-# that must be force-installed since the system python3 is 3.12
+# that must be force-installed since the system python3 is 3.12.
+# NOTE: This breaks apt — all apt-get installs must happen above this point.
 if ! python3.11 -c "import libcamera" 2>/dev/null; then
     echo "Installing libcamera v0.5 Python bindings..."
     cd /tmp
@@ -71,11 +78,6 @@ sudo systemctl daemon-reload
 # Enable and start service
 sudo systemctl enable aurora-web
 sudo systemctl restart aurora-web
-
-# Install shairport-sync (AirPlay receiver)
-echo ""
-echo "Installing shairport-sync (AirPlay)..."
-sudo apt-get install -y -qq shairport-sync
 
 # Configure shairport-sync: device name + pipe backend for audio analysis
 SHAIRPORT_CONF="/etc/shairport-sync.conf"
