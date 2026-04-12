@@ -5,7 +5,7 @@ import pytest
 import asyncio
 import time
 
-from aurora_web.inputs.audio_feed import AudioFeed, AudioInput, MockAudioFeed, BeatTracker
+from aurora_web.inputs.audio_feed import AudioFeed, AudioInput, MockAudioFeed, BeatTracker, Onset, OnsetTracker
 
 
 class TestAudioInput:
@@ -398,3 +398,139 @@ class TestMockAudioFeed:
             await feed.stop()
 
         asyncio.run(run_test())
+
+
+class TestOnsetTracker:
+    """Tests for OnsetTracker class."""
+
+    def _make_spectrum(self, val: float = 0.5) -> np.ndarray:
+        return np.full(16, val, dtype=np.float32)
+
+    def test_onset_quantization(self):
+        """Onset at phase 1.5 should quantize to 16th-note position 6."""
+        tracker = OnsetTracker()
+        # phase=1.5 → raw_16th = 1.5*4 = 6.0 → position=6
+        tracker.update(True, 1.0, 1.5, self._make_spectrum(), 0.5)
+        assert len(tracker.active) == 1
+        assert tracker.active[0].position == 6
+
+    def test_onset_quantization_wraps(self):
+        """Phase near 4.0 should wrap to position 0."""
+        tracker = OnsetTracker()
+        # phase=3.99 → raw_16th = 15.96 → round=16 → %16 = 0
+        tracker.update(True, 1.0, 3.99, self._make_spectrum(), 0.5)
+        assert tracker.active[0].position == 0
+
+    def test_onset_quantization_various(self):
+        """Check a few phase→position mappings."""
+        cases = [
+            (0.0, 0),    # raw=0
+            (0.25, 1),   # raw=1
+            (1.0, 4),    # raw=4
+            (2.0, 8),    # raw=8
+            (3.0, 12),   # raw=12
+        ]
+        for phase, expected_pos in cases:
+            tracker = OnsetTracker()
+            tracker.update(True, 1.0, phase, self._make_spectrum(), 0.5)
+            assert tracker.active[0].position == expected_pos, f"phase={phase}"
+
+    def test_envelope_grows_to_max(self):
+        """Envelope should grow to max_envelope_frames then stop."""
+        tracker = OnsetTracker(max_envelope_frames=4)
+        tracker.update(True, 1.0, 0.5, self._make_spectrum(), 0.8)
+        assert len(tracker.active[0].envelope) == 1  # initial volume
+
+        # Subsequent frames (no onset) should extend envelope
+        for i in range(10):
+            tracker.update(False, 0.0, 0.5 + 0.01 * (i + 1), self._make_spectrum(), 0.5)
+
+        assert len(tracker.active[0].envelope) == 4  # capped at max
+
+    def test_bar_boundary_clears_active(self):
+        """When phase wraps from >3 to <1, active moves to last_bar."""
+        tracker = OnsetTracker()
+        # Add onset at phase 2.0
+        tracker.update(True, 1.0, 2.0, self._make_spectrum(), 0.5)
+        assert len(tracker.active) == 1
+        assert len(tracker.last_bar) == 0
+
+        # Advance to near end of bar
+        tracker.update(False, 0.0, 3.5, self._make_spectrum(), 0.5)
+
+        # Cross bar boundary
+        tracker.update(False, 0.0, 0.1, self._make_spectrum(), 0.5)
+        assert len(tracker.active) == 0
+        assert len(tracker.last_bar) == 1
+        assert tracker.last_bar[0].position == 8  # phase 2.0 → pos 8
+
+    def test_deduplication_keeps_stronger(self):
+        """Same 16th-note position should keep the stronger onset."""
+        tracker = OnsetTracker()
+        tracker.update(True, 0.5, 1.0, self._make_spectrum(), 0.5)
+        assert tracker.active[0].strength == 0.5
+
+        # Same position (phase=1.0 → pos 4), stronger
+        tracker.update(True, 2.0, 1.0, self._make_spectrum(), 0.7)
+        assert len(tracker.active) == 1
+        assert tracker.active[0].strength == 2.0
+
+    def test_deduplication_rejects_weaker(self):
+        """Weaker onset at same position should be rejected."""
+        tracker = OnsetTracker()
+        tracker.update(True, 2.0, 1.0, self._make_spectrum(), 0.5)
+        tracker.update(True, 0.5, 1.0, self._make_spectrum(), 0.3)
+        assert len(tracker.active) == 1
+        assert tracker.active[0].strength == 2.0
+
+    def test_onset_grid(self):
+        """onset_grid should reflect active onsets."""
+        tracker = OnsetTracker()
+        tracker.update(True, 0.8, 0.0, self._make_spectrum(), 0.5)   # pos 0
+        tracker.update(True, 1.2, 1.0, self._make_spectrum(), 0.5)   # pos 4
+
+        grid = tracker.onset_grid
+        assert grid.shape == (16,)
+        assert grid[0] == pytest.approx(0.8)
+        assert grid[4] == pytest.approx(1.2)
+        assert grid[1] == 0.0  # no onset here
+
+    def test_latest_onset(self):
+        """latest_onset should return the most recent age==0 onset."""
+        tracker = OnsetTracker()
+        tracker.update(True, 1.0, 0.5, self._make_spectrum(), 0.5)
+        assert tracker.latest_onset is not None
+        assert tracker.latest_onset.position == 2  # phase 0.5 → raw 2.0
+
+        # Next frame without onset: all onsets aged, no latest
+        tracker.update(False, 0.0, 0.6, self._make_spectrum(), 0.5)
+        assert tracker.latest_onset is None
+
+    def test_reset_clears_everything(self):
+        """reset() should clear active, last_bar, and prev_phase."""
+        tracker = OnsetTracker()
+        tracker.update(True, 1.0, 2.0, self._make_spectrum(), 0.5)
+        tracker.update(False, 0.0, 3.5, self._make_spectrum(), 0.5)
+        tracker.update(False, 0.0, 0.1, self._make_spectrum(), 0.5)
+        # Now last_bar has data
+        assert len(tracker.last_bar) > 0
+
+        tracker.reset()
+        assert tracker.active == []
+        assert tracker.last_bar == []
+        assert tracker._prev_phase == 0.0
+
+    def test_spectrum_snapshot_is_copy(self):
+        """Onset spectrum should be a copy, not a reference."""
+        tracker = OnsetTracker()
+        spec = self._make_spectrum(0.5)
+        tracker.update(True, 1.0, 1.0, spec, 0.5)
+        spec[:] = 999.0  # mutate original
+        assert tracker.active[0].spectrum[0] == pytest.approx(0.5)
+
+    def test_phase_error_recorded(self):
+        """phase_error should reflect distance from exact grid point."""
+        tracker = OnsetTracker()
+        # phase=1.1 → raw=4.4 → round=4 → error = 4.4 - 4 = 0.4
+        tracker.update(True, 1.0, 1.1, self._make_spectrum(), 0.5)
+        assert tracker.active[0].phase_error == pytest.approx(0.4, abs=0.01)

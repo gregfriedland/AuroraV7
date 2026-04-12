@@ -23,6 +23,9 @@ class AudioInput:
     bass: float = 0.0                     # 0.0-1.0 low frequency energy
     mids: float = 0.0                     # 0.0-1.0 mid frequency energy
     highs: float = 0.0                    # 0.0-1.0 high frequency energy
+    onsets: list | None = None            # current bar's onset list
+    onset_grid: np.ndarray | None = None  # float32[16] strength per 16th note
+    latest_onset: object = None           # most recent Onset this frame (or None)
 
 
 class BeatTracker:
@@ -64,6 +67,8 @@ class BeatTracker:
         self.beat_phase: float = 0.0
         self.beat_index: int = 0
         self.bar_phase: float = 0.0
+        self.is_onset: bool = False
+        self.onset_strength: float = 0.0
 
     def reset(self) -> None:
         self._prev_fft = None
@@ -80,6 +85,8 @@ class BeatTracker:
         self.beat_phase = 0.0
         self.beat_index = 0
         self.bar_phase = 0.0
+        self.is_onset = False
+        self.onset_strength = 0.0
 
     def update(self, fft_magnitudes: np.ndarray, dt: float) -> None:
         """Process one frame of FFT magnitudes.
@@ -92,6 +99,7 @@ class BeatTracker:
 
         # --- Stage 1: Spectral flux onset detection ---
         is_onset = False
+        onset_strength = 0.0
         if self._prev_fft is not None and len(fft_magnitudes) == len(self._prev_fft):
             # Half-wave rectified spectral flux
             diff = fft_magnitudes - self._prev_fft
@@ -117,6 +125,8 @@ class BeatTracker:
             self._onset_idx += 1
 
         self._prev_fft = fft_magnitudes.copy()
+        self.is_onset = is_onset
+        self.onset_strength = onset_strength
 
         # --- Stage 2: Autocorrelation tempo estimation (every ~2 seconds) ---
         if now - self._last_tempo_time > self._tempo_update_interval and self._onset_idx >= self._onset_buf_size:
@@ -208,6 +218,117 @@ class BeatTracker:
             self._tempo_confidence = confidence
 
 
+@dataclass
+class Onset:
+    """A single detected onset event, quantized to the 16th-note grid."""
+    position: int            # 16th note in bar (0-15)
+    strength: float          # onset strength (flux above threshold / stddev)
+    spectrum: np.ndarray     # 16-band spectral snapshot at onset (float32[16])
+    envelope: list           # volume samples after onset (grows to max ~8 entries)
+    age: int = 0             # frames since creation
+    phase_error: float = 0.0 # distance from exact grid point (-0.5 to +0.5 in 16th-note units)
+
+
+class OnsetTracker:
+    """Tracks individual onset events and quantizes them to a 16th-note grid.
+
+    Sits alongside BeatTracker: BeatTracker handles tempo/phase,
+    OnsetTracker handles note-level events with spectral snapshots.
+    """
+
+    def __init__(self, max_envelope_frames: int = 8):
+        self.max_envelope_frames = max_envelope_frames
+        self.active: list[Onset] = []       # onsets in current bar
+        self.last_bar: list[Onset] = []     # onsets from previous bar
+        self._prev_phase: float = 0.0
+
+    def update(
+        self,
+        is_onset: bool,
+        onset_strength: float,
+        phase: float,
+        spectrum_bands: np.ndarray | None,
+        volume: float,
+    ) -> None:
+        """Process one frame.
+
+        Args:
+            is_onset: True if spectral flux onset detected this frame
+            onset_strength: Strength of the onset (0 if no onset)
+            phase: Current BeatTracker phase (0→4, one full bar)
+            spectrum_bands: Normalized 16-band spectrum (or None)
+            volume: Current RMS volume
+        """
+        # Detect bar boundary: phase wrapped from >3 to <1
+        if self._prev_phase > 3.0 and phase < 1.0:
+            self.last_bar = self.active
+            self.active = []
+        self._prev_phase = phase
+
+        # Age all active onsets and extend envelopes
+        for onset in self.active:
+            onset.age += 1
+            if len(onset.envelope) < self.max_envelope_frames:
+                onset.envelope.append(volume)
+
+        # On onset: quantize and add
+        if is_onset and onset_strength > 0:
+            raw_16th = phase * 4.0
+            position = round(raw_16th) % 16
+            phase_error = raw_16th - round(raw_16th)
+
+            # Deduplicate: skip if same position already in current bar
+            # (keep stronger onset)
+            existing = None
+            for i, o in enumerate(self.active):
+                if o.position == position:
+                    existing = i
+                    break
+
+            snap = spectrum_bands.copy() if spectrum_bands is not None else np.zeros(16, dtype=np.float32)
+
+            if existing is not None:
+                if onset_strength > self.active[existing].strength:
+                    self.active[existing] = Onset(
+                        position=position,
+                        strength=onset_strength,
+                        spectrum=snap,
+                        envelope=[volume],
+                        age=0,
+                        phase_error=phase_error,
+                    )
+            else:
+                self.active.append(Onset(
+                    position=position,
+                    strength=onset_strength,
+                    spectrum=snap,
+                    envelope=[volume],
+                    age=0,
+                    phase_error=phase_error,
+                ))
+
+    def reset(self) -> None:
+        self.active = []
+        self.last_bar = []
+        self._prev_phase = 0.0
+
+    @property
+    def onset_grid(self) -> np.ndarray:
+        """float32[16] of onset strengths at each 16th-note position."""
+        grid = np.zeros(16, dtype=np.float32)
+        for onset in self.active:
+            grid[onset.position] = onset.strength
+        return grid
+
+    @property
+    def latest_onset(self) -> Onset | None:
+        """Most recently added onset (age==0), or None."""
+        for onset in reversed(self.active):
+            if onset.age == 0:
+                return onset
+        return None
+
+
 class AudioFeed:
     """Captures and analyzes audio for beat detection and spectrum.
 
@@ -254,9 +375,10 @@ class AudioFeed:
         self.spectrum: np.ndarray | None = None
         self.volume: float = 0.0
 
-        # Beat tracker
+        # Beat tracker + onset tracker
         analysis_fps = sample_rate / buffer_size  # ~21.5 Hz
         self._beat_tracker = BeatTracker(analysis_fps=analysis_fps)
+        self._onset_tracker = OnsetTracker()
         self._last_analyze_time: float = 0.0
 
         # Process
@@ -275,6 +397,7 @@ class AudioFeed:
         self.spectrum = None
         self.volume = 0.0
         self._beat_tracker.reset()
+        self._onset_tracker.reset()
         self._last_analyze_time = 0.0
 
     def _build_capture_command(self) -> list[str]:
@@ -458,6 +581,15 @@ class AudioFeed:
         if max_val > 0:
             self.spectrum = self.spectrum / max_val
 
+        # Update onset tracker
+        self._onset_tracker.update(
+            self._beat_tracker.is_onset,
+            self._beat_tracker.onset_strength,
+            self._beat_tracker._phase,
+            self.spectrum,
+            self.volume,
+        )
+
     def get_input(self) -> AudioInput:
         """Get current audio input state for drawers.
 
@@ -486,6 +618,9 @@ class AudioFeed:
             bass=bass,
             mids=mids,
             highs=highs,
+            onsets=self._onset_tracker.active,
+            onset_grid=self._onset_tracker.onset_grid,
+            latest_onset=self._onset_tracker.latest_onset,
         )
 
     async def stop(self) -> None:
@@ -564,6 +699,22 @@ class MockAudioFeed:
         spectrum = np.random.rand(16).astype(np.float32) * 0.3 + intensity * 0.7
         spectrum[:3] *= 1.5 if beat_onset else 1.0  # Boost bass on beat
 
+        # Mock onsets at quarter-note positions (0, 4, 8, 12)
+        mock_onsets = []
+        mock_grid = np.zeros(16, dtype=np.float32)
+        current_16th = int(bar_phase_raw * 4.0) % 16
+        for pos in (0, 4, 8, 12):
+            if pos <= current_16th:
+                o = Onset(
+                    position=pos,
+                    strength=0.8,
+                    spectrum=spectrum.copy(),
+                    envelope=[0.5 + intensity * 0.3],
+                )
+                mock_onsets.append(o)
+                mock_grid[pos] = 0.8
+        latest = mock_onsets[-1] if (mock_onsets and beat_onset) else None
+
         return AudioInput(
             bpm=self.bpm,
             beat_onset=beat_onset,
@@ -575,6 +726,9 @@ class MockAudioFeed:
             bass=float(np.mean(spectrum[:3])),
             mids=float(np.mean(spectrum[3:10])),
             highs=float(np.mean(spectrum[10:])),
+            onsets=mock_onsets,
+            onset_grid=mock_grid,
+            latest_onset=latest,
         )
 
     @property

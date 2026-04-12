@@ -173,12 +173,11 @@ async def lifespan(app: FastAPI):
     drawer_manager = DrawerManager(width, height)
     custom_drawers_api.set_drawer_manager(drawer_manager)
 
-    # Initialize video feed for camera drawer
+    # Initialize video feed for camera drawer (not started until Camera is selected)
     video_feed = VideoFeed(
         width=640, height=480, fps=30, rotation=180,
         enable_face_detection=True,
     )
-    await video_feed.start()
 
     # Initialize audio feed (shairport-sync AirPlay pipe)
     audio_feed = AudioFeed(
@@ -197,6 +196,17 @@ async def lifespan(app: FastAPI):
     drawer_manager.register_drawer(camera_drawer)
     drawer_manager.register_drawer(AudioVizDrawer(width, height))
 
+    # Start/stop video feed when switching to/from Camera drawer
+    def on_drawer_change(old_name, new_name):
+        loop = asyncio.get_event_loop()
+        if new_name == "Camera" and not video_feed.is_running:
+            loop.create_task(video_feed.start())
+            print("[Aurora Web] Started video feed for Camera drawer")
+        elif old_name == "Camera" and video_feed.is_running:
+            loop.create_task(video_feed.stop())
+            print("[Aurora Web] Stopped video feed (Camera deselected)")
+    drawer_manager._on_drawer_change = on_drawer_change
+
     # Wire audio feed into drawer manager so all drawers get ctx.audio
     drawer_manager.set_audio_feed(audio_feed)
 
@@ -210,12 +220,12 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[Aurora Web] Failed to load custom drawer {drawer_info['path']}: {e}")
 
-    # Start with AudioViz drawer in pattern mode
+    # Start with AlienBlob drawer in pattern mode (works without audio)
     drawer_manager.set_mode("pattern")
-    drawer_manager.set_active_drawer("AudioViz")
+    drawer_manager.set_active_drawer("AlienBlob")
     drawer_manager.current_palette_index = 110
     drawer_manager.palette.set_curated(110)
-    print("[Aurora Web] Auto-started with: AudioViz, palette #110")
+    print("[Aurora Web] Auto-started with: AlienBlob, palette #110")
 
     # Start serial output process
     serial_manager = SerialOutputManager(

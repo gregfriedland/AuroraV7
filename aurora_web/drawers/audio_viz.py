@@ -11,13 +11,13 @@ class AudioVizDrawer(Drawer):
         Rows 0-13:  16 spectrum bars (2 cols each, bottom-up fill)
         Rows 14-15: 4/4 beat bar (4 sections of 8 cols, fills L→R with flash on onset)
         Row 16:     Volume bar (horizontal)
-        Row 17:     Bass | Mids | Highs (3 separate bars)
+        Row 17:     Onset grid (16 positions x 2 cols, brightness = onset strength)
     """
 
     SPECTRUM_ROWS = 14   # rows 0-13
     BEAT_ROWS = 2        # rows 14-15
     VOLUME_ROW = 16
-    BANDS_ROW = 17
+    ONSETS_ROW = 17
 
     def __init__(self, width: int, height: int, palette_size: int = 4096):
         super().__init__("AudioViz", width, height, palette_size)
@@ -33,6 +33,7 @@ class AudioVizDrawer(Drawer):
         self._smoothed_bass = 0.0
         self._smoothed_mids = 0.0
         self._smoothed_highs = 0.0
+        self._smoothed_onset_grid = np.zeros(16, dtype=np.float32)
         self._smooth_factor = 0.15  # 0=frozen, 1=instant
 
     def reset(self) -> None:
@@ -42,6 +43,7 @@ class AudioVizDrawer(Drawer):
         self._smoothed_bass = 0.0
         self._smoothed_mids = 0.0
         self._smoothed_highs = 0.0
+        self._smoothed_onset_grid[:] = 0
 
     def draw(self, ctx: DrawerContext) -> np.ndarray:
         indices = np.zeros((ctx.height, ctx.width), dtype=np.int32)
@@ -71,7 +73,7 @@ class AudioVizDrawer(Drawer):
         self._draw_spectrum(indices, ctx, audio, sens, ps * 1 // 5)
         self._draw_beat_bar(indices, ctx, audio, ps * 2 // 5)
         self._draw_volume(indices, ctx, audio, ps * 3 // 5)
-        self._draw_bands(indices, ctx, audio, ps * 4 // 5)
+        self._draw_onsets(indices, ctx, audio, ps * 4 // 5)
 
         return indices
 
@@ -150,20 +152,29 @@ class AudioVizDrawer(Drawer):
         indices[self.VOLUME_ROW, :fill] = color
 
     # ------------------------------------------------------------------
-    # Bass / Mids / Highs  (row 17)
+    # Onset grid  (row 17, 16 positions x 2 cols)
     # ------------------------------------------------------------------
-    def _draw_bands(self, indices, ctx, audio, color):
-        if self.BANDS_ROW >= ctx.height:
+    def _draw_onsets(self, indices, ctx, audio, color):
+        if self.ONSETS_ROW >= ctx.height:
             return
 
-        regions = [
-            (0, 10, self._smoothed_bass),
-            (11, 21, self._smoothed_mids),
-            (22, 32, self._smoothed_highs),
-        ]
-        for start, end, level in regions:
-            end = min(end, ctx.width)
-            span = end - start
-            fill = int(level * span)
-            fill = min(fill, span)
-            indices[self.BANDS_ROW, start:start + fill] = color
+        if audio.onset_grid is not None:
+            # Smooth: onset_grid jumps to new values, decays via EMA
+            grid = audio.onset_grid
+            self._smoothed_onset_grid = np.maximum(
+                grid, self._smoothed_onset_grid * 0.9
+            )
+        else:
+            self._smoothed_onset_grid *= 0.9
+
+        for i in range(16):
+            val = self._smoothed_onset_grid[i]
+            if val < 0.01:
+                continue
+            brightness = min(1.0, val)
+            col_start = i * 2
+            c = max(1, int(color * brightness))
+            if col_start < ctx.width:
+                indices[self.ONSETS_ROW, col_start] = c
+            if col_start + 1 < ctx.width:
+                indices[self.ONSETS_ROW, col_start + 1] = c
