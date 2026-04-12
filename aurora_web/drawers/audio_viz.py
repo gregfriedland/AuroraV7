@@ -30,7 +30,6 @@ class AudioVizDrawer(Drawer):
             "sensitivity": (0, 100),
         }
         self._beat_flash = 0.0  # decaying flash intensity
-        self._last_beat_index = -1
         self._smoothed_volume = 0.0
         self._smoothed_onset_grid = np.zeros(16, dtype=np.float32)
         self._smooth_factor = 0.15
@@ -46,7 +45,6 @@ class AudioVizDrawer(Drawer):
 
     def reset(self) -> None:
         self._beat_flash = 0.0
-        self._last_beat_index = -1
         self._smoothed_volume = 0.0
         self._smoothed_onset_grid[:] = 0
 
@@ -59,10 +57,9 @@ class AudioVizDrawer(Drawer):
 
         ps = ctx.palette_size
 
-        # Trigger flash on beat onset
-        if audio.beat_onset:
+        # Trigger flash only on the downbeat (beat 0)
+        if audio.beat_onset and audio.beat_index == 0:
             self._beat_flash = 1.0
-            self._last_beat_index = audio.beat_index
 
         # Smooth volume
         a = self._smooth_factor
@@ -84,11 +81,7 @@ class AudioVizDrawer(Drawer):
         if self._beat_flash < 0.02:
             return
 
-        # Beat 4 (index 3) gets a different color region in the palette
-        if self._last_beat_index == 3:
-            color = ps * 3 // 5  # distinct color for beat 4
-        else:
-            color = ps * 1 // 5  # regular color for beats 1-3
+        color = ps * 1 // 5
 
         brightness = self._beat_flash
         c = max(1, int(color * brightness))
