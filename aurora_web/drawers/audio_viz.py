@@ -1,4 +1,4 @@
-"""Audio visualizer drawer — spectrum bars, beat phase, volume, and frequency bands."""
+"""Audio visualizer drawer — beat circle with onset grid."""
 
 import numpy as np
 from aurora_web.drawers.base import Drawer, DrawerContext
@@ -8,16 +8,18 @@ class AudioVizDrawer(Drawer):
     """Visualizes audio input on a 32x18 LED matrix.
 
     Layout:
-        Rows 0-13:  16 spectrum bars (2 cols each, bottom-up fill)
-        Rows 14-15: 4/4 beat bar (4 sections of 8 cols, fills L→R with flash on onset)
-        Row 16:     Volume bar (horizontal)
-        Row 17:     Onset grid (16 positions x 2 cols, brightness = onset strength)
+        Right side:  Circle that flashes on each beat (different color on beat 4)
+        Row 16:      Volume bar (horizontal)
+        Row 17:      Onset grid (16 positions x 2 cols, brightness = onset strength)
     """
 
-    SPECTRUM_ROWS = 14   # rows 0-13
-    BEAT_ROWS = 2        # rows 14-15
     VOLUME_ROW = 16
     ONSETS_ROW = 17
+
+    # Circle center on right side of display, vertically centered in rows 0-15
+    CIRCLE_CX = 23
+    CIRCLE_CY = 7
+    CIRCLE_RADIUS = 5
 
     def __init__(self, width: int, height: int, palette_size: int = 4096):
         super().__init__("AudioViz", width, height, palette_size)
@@ -27,22 +29,25 @@ class AudioVizDrawer(Drawer):
         self.settings_ranges = {
             "sensitivity": (0, 100),
         }
-        self._smoothed_spectrum = np.zeros(16, dtype=np.float32)
-        self._beat_section_flash: list[float] = [0.0, 0.0, 0.0, 0.0]
+        self._beat_flash = 0.0  # decaying flash intensity
+        self._last_beat_index = -1
         self._smoothed_volume = 0.0
-        self._smoothed_bass = 0.0
-        self._smoothed_mids = 0.0
-        self._smoothed_highs = 0.0
         self._smoothed_onset_grid = np.zeros(16, dtype=np.float32)
-        self._smooth_factor = 0.15  # 0=frozen, 1=instant
+        self._smooth_factor = 0.15
+
+        # Precompute circle mask
+        self._circle_pixels = []
+        for y in range(height):
+            for x in range(width):
+                dx = x - self.CIRCLE_CX
+                dy = y - self.CIRCLE_CY
+                if dx * dx + dy * dy <= self.CIRCLE_RADIUS * self.CIRCLE_RADIUS:
+                    self._circle_pixels.append((y, x))
 
     def reset(self) -> None:
-        self._smoothed_spectrum[:] = 0
-        self._beat_section_flash = [0.0, 0.0, 0.0, 0.0]
+        self._beat_flash = 0.0
+        self._last_beat_index = -1
         self._smoothed_volume = 0.0
-        self._smoothed_bass = 0.0
-        self._smoothed_mids = 0.0
-        self._smoothed_highs = 0.0
         self._smoothed_onset_grid[:] = 0
 
     def draw(self, ctx: DrawerContext) -> np.ndarray:
@@ -52,94 +57,45 @@ class AudioVizDrawer(Drawer):
         if audio is None or not audio.is_active or audio.spectrum is None:
             return indices
 
-        sens = self.settings["sensitivity"] / 50.0  # 0->0, 50->1, 100->2
         ps = ctx.palette_size
-        a = self._smooth_factor
 
-        # Flash the current beat section on onset
+        # Trigger flash on beat onset
         if audio.beat_onset:
-            self._beat_section_flash[audio.beat_index] = 1.0
+            self._beat_flash = 1.0
+            self._last_beat_index = audio.beat_index
 
-        # Decay all section flashes
-        for i in range(4):
-            self._beat_section_flash[i] *= 0.85
-
-        # Smooth volume and bands
+        # Smooth volume
+        a = self._smooth_factor
         self._smoothed_volume += a * (audio.volume - self._smoothed_volume)
-        self._smoothed_bass += a * (audio.bass - self._smoothed_bass)
-        self._smoothed_mids += a * (audio.mids - self._smoothed_mids)
-        self._smoothed_highs += a * (audio.highs - self._smoothed_highs)
 
-        self._draw_spectrum(indices, ctx, audio, sens, ps * 1 // 5)
-        self._draw_beat_bar(indices, ctx, audio, ps * 2 // 5)
+        self._draw_beat_circle(indices, ctx, audio, ps)
         self._draw_volume(indices, ctx, audio, ps * 3 // 5)
         self._draw_onsets(indices, ctx, audio, ps * 4 // 5)
+
+        # Decay flash after drawing
+        self._beat_flash *= 0.82
 
         return indices
 
     # ------------------------------------------------------------------
-    # Spectrum bars  (rows 0-13, 16 bars x 2 cols)
+    # Beat circle (right side, rows 0-15)
     # ------------------------------------------------------------------
-    def _draw_spectrum(self, indices, ctx, audio, sens, color):
-        num_bars = min(16, len(audio.spectrum))
-        max_h = self.SPECTRUM_ROWS
+    def _draw_beat_circle(self, indices, ctx, audio, ps):
+        if self._beat_flash < 0.02:
+            return
 
-        # Exponential moving average for smooth bars
-        a = self._smooth_factor
-        self._smoothed_spectrum[:num_bars] = (
-            a * audio.spectrum[:num_bars]
-            + (1 - a) * self._smoothed_spectrum[:num_bars]
-        )
+        # Beat 4 (index 3) gets a different color region in the palette
+        if self._last_beat_index == 3:
+            color = ps * 3 // 5  # distinct color for beat 4
+        else:
+            color = ps * 1 // 5  # regular color for beats 1-3
 
-        for i in range(num_bars):
-            bar_h = int(self._smoothed_spectrum[i] * sens * max_h)
-            bar_h = min(bar_h, max_h)
+        brightness = self._beat_flash
+        c = max(1, int(color * brightness))
 
-            col_start = i * 2
-            for row in range(bar_h):
-                y = max_h - 1 - row
-                if col_start < ctx.width:
-                    indices[y, col_start] = color
-                if col_start + 1 < ctx.width:
-                    indices[y, col_start + 1] = color
-
-    # ------------------------------------------------------------------
-    # 4/4 Beat bar  (rows 14-15, 4 sections of 8 cols each)
-    # ------------------------------------------------------------------
-    def _draw_beat_bar(self, indices, ctx, audio, color):
-        section_width = ctx.width // 4  # 8 cols per beat section
-
-        for section in range(4):
-            col_start = section * section_width
-            col_end = col_start + section_width
-
-            if section < audio.beat_index:
-                # Past beats: fully lit
-                brightness = 1.0
-            elif section == audio.beat_index:
-                # Current beat: proportional fill by beat_phase
-                brightness = audio.beat_phase
-            else:
-                # Future beats: dark
-                brightness = 0.0
-
-            # Add flash on top
-            flash = self._beat_section_flash[section]
-            brightness = min(1.0, brightness + flash)
-
-            if brightness <= 0.0:
-                continue
-
-            fill_cols = max(1, int(brightness * section_width))
-            fill_end = min(col_start + fill_cols, col_end, ctx.width)
-
-            # Compute dimmed color for partial brightness
-            dim_color = max(1, int(color * brightness))
-
-            for r in range(self.BEAT_ROWS):
-                y = self.SPECTRUM_ROWS + r
-                if y < ctx.height:
-                    indices[y, col_start:fill_end] = dim_color
+        for y, x in self._circle_pixels:
+            if 0 <= y < ctx.height and 0 <= x < ctx.width:
+                indices[y, x] = c
 
     # ------------------------------------------------------------------
     # Volume bar  (row 16)
@@ -159,7 +115,6 @@ class AudioVizDrawer(Drawer):
             return
 
         if audio.onset_grid is not None:
-            # Smooth: onset_grid jumps to new values, decays via EMA
             grid = audio.onset_grid
             self._smoothed_onset_grid = np.maximum(
                 grid, self._smoothed_onset_grid * 0.9
