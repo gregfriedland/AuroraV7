@@ -29,8 +29,9 @@ from aurora_web.drawers import (
     GrayScottDrawer,
     GinzburgLandauDrawer,
     BeatBouncerDrawer,
-    VideoDrawer,
+    CameraDrawer,
 )
+from aurora_web.inputs.video_feed import VideoFeed
 import math
 
 from aurora_web.drawers.custom import CustomDrawer, CustomDrawerLoader, EXAMPLE_DRAWER_YAML
@@ -125,6 +126,7 @@ drawer_manager: DrawerManager | None = None
 user_manager: UserManager | None = None
 custom_drawer_loader: CustomDrawerLoader | None = None
 beat_feed: ExternalBeatFeed | None = None
+video_feed: VideoFeed | None = None
 render_task: asyncio.Task | None = None
 connected_clients: set[WebSocket] = set()
 
@@ -240,7 +242,7 @@ async def broadcast_bytes(data: bytes):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
-    global config, serial_manager, drawer_manager, user_manager, custom_drawer_loader, beat_feed, render_task
+    global config, serial_manager, drawer_manager, user_manager, custom_drawer_loader, beat_feed, video_feed, render_task
 
     # Load config
     config = load_config()
@@ -289,7 +291,26 @@ async def lifespan(app: FastAPI):
     drawer_manager.register_drawer(GinzburgLandauDrawer(width, height))
     if beat_feed:
         drawer_manager.register_drawer(BeatBouncerDrawer(width, height))
-    drawer_manager.register_drawer(VideoDrawer(width, height))
+
+    # Camera drawer with lazy video feed (not started until Camera is selected)
+    video_cfg = config.get("inputs", {}).get("video", {})
+    video_feed = VideoFeed(
+        device=int(video_cfg.get("device", 0)),
+        enable_face_detection=bool(video_cfg.get("enable_face_detection", False)),
+    )
+    drawer_manager.register_drawer(CameraDrawer(width, height, video_feed=video_feed))
+
+    # Start/stop video feed when switching to/from Camera drawer
+    loop = asyncio.get_event_loop()
+
+    def on_drawer_change(old_name, new_name):
+        if new_name == "Camera" and not video_feed.is_running:
+            loop.create_task(video_feed.start())
+            print("[Aurora Web] Started video feed for Camera drawer")
+        elif old_name == "Camera" and video_feed.is_running:
+            loop.create_task(video_feed.stop())
+            print("[Aurora Web] Stopped video feed (Camera deselected)")
+    drawer_manager._on_drawer_change = on_drawer_change
 
     # Load and register custom drawers
     for drawer_info in custom_drawer_loader.list_drawers():
@@ -330,6 +351,8 @@ async def lifespan(app: FastAPI):
         serial_manager.stop()
     if beat_feed:
         beat_feed.stop()
+    if video_feed and video_feed.is_running:
+        await video_feed.stop()
 
 
 app = FastAPI(title="Aurora Web", lifespan=lifespan)

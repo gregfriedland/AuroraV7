@@ -59,6 +59,9 @@ class DrawerManager:
         self.low_entropy_start = None  # When low entropy was first detected
         self.last_entropy = 0.0
 
+        # Callback on drawer change: fn(old_name, new_name)
+        self._on_drawer_change: callable = None
+
         # Default black frame
         self.black_frame = np.zeros((height, width, 3), dtype=np.uint8)
 
@@ -108,8 +111,11 @@ class DrawerManager:
             True if drawer was found and set
         """
         if name in self.drawers:
+            old_name = self.active_drawer.name if self.active_drawer else None
             self.active_drawer = self.drawers[name]
             self.active_drawer.reset()
+            if self._on_drawer_change and old_name != name:
+                self._on_drawer_change(old_name, name)
             return True
         return False
 

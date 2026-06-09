@@ -26,3 +26,6 @@ inputs:
   beats:
     findBeatsCmd: ""
     onset_duration: 0.2
+  video:
+    device: 0
+    enable_face_detection: false
