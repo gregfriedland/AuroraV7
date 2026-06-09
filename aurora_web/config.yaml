@@ -5,10 +5,24 @@ server:
 matrix:
   width: 32
   height: 18
+  output_driver: "serial"  # serial or rgbmatrix
   serial_device: "/dev/ttyACM0"
   layout_left_to_right: true
   fps: 40
   gamma: 2.5
+  rgbmatrix:
+    rows: 32
+    cols: 32
+    hardware_mapping: "regular"
+    gpio_slowdown: 2
+    show_refresh_rate: false
+    luminance_correct: true
+    swap_framerate_fraction: 5
 
 canvas:
   decay_rate: 0.0  # 0 = permanent paint, >0 = fade rate per second
+
+inputs:
+  beats:
+    findBeatsCmd: ""
+    onset_duration: 0.2

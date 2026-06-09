@@ -5,7 +5,7 @@ import pytest
 import asyncio
 import time
 
-from aurora_web.inputs.audio_feed import AudioFeed, AudioInput, MockAudioFeed, BeatTracker, Onset, OnsetTracker
+from aurora_web.inputs.audio_feed import AudioFeed, AudioInput, MockAudioFeed
 
 
 class TestAudioInput:
@@ -17,8 +17,6 @@ class TestAudioInput:
         assert audio.bpm is None
         assert audio.beat_onset is False
         assert audio.beat_phase == 0.0
-        assert audio.beat_index == 0
-        assert audio.bar_phase == 0.0
         assert audio.spectrum is None
         assert audio.volume == 0.0
         assert audio.bass == 0.0
@@ -32,8 +30,6 @@ class TestAudioInput:
             bpm=120.0,
             beat_onset=True,
             beat_phase=0.5,
-            beat_index=2,
-            bar_phase=0.625,
             spectrum=spectrum,
             volume=0.8,
             bass=0.9,
@@ -43,91 +39,7 @@ class TestAudioInput:
         assert audio.bpm == 120.0
         assert audio.beat_onset is True
         assert audio.beat_phase == 0.5
-        assert audio.beat_index == 2
-        assert audio.bar_phase == 0.625
         assert audio.volume == 0.8
-
-
-class TestBeatTracker:
-    """Tests for BeatTracker class."""
-
-    def test_initialization(self):
-        """BeatTracker should initialize with defaults."""
-        tracker = BeatTracker()
-        assert tracker.bpm == 120.0
-        assert tracker.beat_onset is False
-        assert tracker.beat_phase == 0.0
-        assert tracker.beat_index == 0
-        assert tracker.bar_phase == 0.0
-
-    def test_reset(self):
-        """Reset should clear all state."""
-        tracker = BeatTracker()
-        # Advance phase
-        fft = np.ones(1025, dtype=np.float32)
-        for _ in range(10):
-            tracker.update(fft, 0.05)
-        tracker.reset()
-        assert tracker.bpm == 120.0
-        assert tracker.beat_phase == 0.0
-        assert tracker.beat_index == 0
-        assert tracker.bar_phase == 0.0
-
-    def test_phase_advances(self):
-        """Phase should advance with dt at the current BPM."""
-        tracker = BeatTracker()
-        fft = np.ones(1025, dtype=np.float32) * 0.01  # Quiet signal
-        tracker.update(fft, 0.0)  # Init prev_fft
-        tracker.update(fft, 0.5)  # 0.5s at 120 BPM = 1 beat
-        # Phase should have advanced by ~1 beat
-        assert tracker.bar_phase > 0.0
-
-    def test_beat_index_cycles(self):
-        """beat_index should cycle 0-3 over a full bar."""
-        tracker = BeatTracker()
-        fft = np.ones(1025, dtype=np.float32) * 0.01
-        # At 120 BPM, one beat = 0.5s, one bar = 2s
-        # Step through in small increments
-        tracker.update(fft, 0.0)  # Init prev_fft
-
-        seen_indices = set()
-        for _ in range(100):
-            tracker.update(fft, 0.025)  # 2.5s total = 1.25 bars
-            seen_indices.add(tracker.beat_index)
-
-        assert seen_indices == {0, 1, 2, 3}
-
-    def test_bar_phase_range(self):
-        """bar_phase should always be in [0, 1)."""
-        tracker = BeatTracker()
-        fft = np.ones(1025, dtype=np.float32) * 0.01
-        tracker.update(fft, 0.0)
-
-        for _ in range(200):
-            tracker.update(fft, 0.02)
-            assert 0.0 <= tracker.bar_phase < 1.0
-            assert 0.0 <= tracker.beat_phase < 1.0
-            assert 0 <= tracker.beat_index <= 3
-
-    def test_onset_nudges_phase(self):
-        """Detected onset should nudge phase toward nearest beat."""
-        tracker = BeatTracker()
-        n = 1025
-        # Create two FFT frames with big spectral change to trigger onset
-        fft_quiet = np.ones(n, dtype=np.float32) * 0.01
-        fft_loud = np.ones(n, dtype=np.float32) * 10.0
-
-        # Build up flux statistics with quiet frames
-        for _ in range(50):
-            tracker.update(fft_quiet, 0.01)
-
-        # Record phase before onset
-        phase_before = tracker._phase
-
-        # Big spectral change should trigger onset and nudge phase
-        tracker.update(fft_loud, 0.01)
-        # Phase should still be valid
-        assert 0.0 <= tracker._phase < 4.0
 
 
 class TestAudioFeed:
@@ -141,8 +53,6 @@ class TestAudioFeed:
         assert feed.num_bands == 16
         assert feed.bpm is None
         assert feed.beat_onset is False
-        assert feed.beat_index == 0
-        assert feed.bar_phase == 0.0
 
     def test_custom_initialization(self):
         """AudioFeed should accept custom parameters."""
@@ -192,6 +102,7 @@ class TestAudioFeed:
         samples = np.zeros(1024, dtype=np.float32)
         feed._analyze(samples)
         assert feed.volume == 0.0
+        assert feed.beat_onset is False
 
     def test_analyze_with_signal(self):
         """_analyze should detect signal properties."""
@@ -204,47 +115,183 @@ class TestAudioFeed:
         assert feed.spectrum is not None
         assert len(feed.spectrum) == 16
 
-    def test_analyze_updates_beat_tracker(self):
-        """_analyze should update beat tracker state."""
-        feed = AudioFeed()
-        n_samples = 2048
-        t = np.linspace(0, n_samples / 44100, n_samples)
-        samples = (np.sin(2 * np.pi * 100 * t) * 0.5).astype(np.float32)
+    def test_analyze_beat_detection(self):
+        """_analyze should detect beats from bass spikes."""
+        feed = AudioFeed(onset_threshold=0.3, min_beat_interval=0.05)
 
-        # Run several frames
-        for _ in range(10):
+        # Use 2048 samples for better FFT resolution
+        # At 44100Hz sample rate, FFT bin spacing is ~21.5Hz
+        # Bass bands 0-2 cover roughly 22-65Hz (logarithmic spacing)
+        n_samples = 2048
+        sample_rate = 44100
+        t = np.linspace(0, n_samples / sample_rate, n_samples)
+
+        # Build up a low bass_avg with high-frequency content (1kHz)
+        # This frequency is well outside the bass range (bands 0-2)
+        for _ in range(20):
+            samples = (np.sin(2 * np.pi * 1000 * t) * 0.5).astype(np.float32)
             feed._analyze(samples)
 
-        # Beat tracker should have been running (BPM set from tracker)
-        assert feed.bpm is not None
-        assert 60 <= feed.bpm <= 200
-        assert 0.0 <= feed.beat_phase < 1.0
-        assert 0 <= feed.beat_index <= 3
-        assert 0.0 <= feed.bar_phase < 1.0
+        # Verify we have a low bass average established
+        assert feed._bass_avg < 0.1, f"bass_avg should be near zero, got {feed._bass_avg}"
+
+        # Wait past min_beat_interval
+        time.sleep(0.1)
+
+        # Now hit with a 40Hz bass signal - this lands in band 1 (22-43Hz)
+        # After normalization, bass bands will have high energy
+        bass_samples = (np.sin(2 * np.pi * 40 * t) * 0.95).astype(np.float32)
+        feed._analyze(bass_samples)
+
+        # Verify bass energy is above threshold
+        bass_energy = float(np.mean(feed.spectrum[:3]))
+        assert bass_energy > feed.onset_threshold, \
+            f"bass_energy {bass_energy:.3f} should exceed threshold {feed.onset_threshold}"
+
+        # Should have detected a beat onset
+        assert feed.beat_onset is True, "beat_onset should be True after bass spike"
+        assert feed.volume > 0.3
+
+    def test_beat_not_detected_below_threshold(self):
+        """beat_onset should be False when bass energy is below threshold."""
+        feed = AudioFeed(onset_threshold=0.8, min_beat_interval=0.05)
+
+        n_samples = 2048
+        sample_rate = 44100
+        t = np.linspace(0, n_samples / sample_rate, n_samples)
+
+        time.sleep(0.1)  # Ensure min_beat_interval passes
+
+        # Moderate bass signal - not strong enough to exceed 0.8 threshold
+        # Use lower amplitude so normalized bass energy stays below threshold
+        samples = (np.sin(2 * np.pi * 40 * t) * 0.3).astype(np.float32)
+        # Add some high frequency to spread the energy
+        samples += (np.sin(2 * np.pi * 1000 * t) * 0.7).astype(np.float32)
+        feed._analyze(samples)
+
+        # Bass energy should be below threshold due to energy spread
+        bass_energy = float(np.mean(feed.spectrum[:3]))
+        assert feed.beat_onset is False, \
+            f"beat_onset should be False when bass_energy ({bass_energy:.3f}) < threshold ({feed.onset_threshold})"
+
+    def test_beat_not_detected_within_min_interval(self):
+        """beat_onset should be False when min_beat_interval hasn't passed."""
+        feed = AudioFeed(onset_threshold=0.3, min_beat_interval=1.0)  # 1 second interval
+
+        n_samples = 2048
+        sample_rate = 44100
+        t = np.linspace(0, n_samples / sample_rate, n_samples)
+
+        # Establish low bass baseline first
+        high_freq_samples = (np.sin(2 * np.pi * 1000 * t) * 0.5).astype(np.float32)
+        for _ in range(20):
+            feed._analyze(high_freq_samples)
+
+        # First beat - should trigger
+        time.sleep(0.1)
+        bass_samples = (np.sin(2 * np.pi * 40 * t) * 0.95).astype(np.float32)
+        feed._analyze(bass_samples)
+        assert feed.beat_onset is True, "First beat should be detected"
+
+        # Second beat immediately after - should NOT trigger (within 1s interval)
+        feed._analyze(bass_samples)
+        assert feed.beat_onset is False, \
+            "beat_onset should be False when min_beat_interval (1.0s) hasn't passed"
+
+    def test_beat_onset_resets_after_non_beat(self):
+        """beat_onset should reset to False after a non-beat frame."""
+        feed = AudioFeed(onset_threshold=0.3, min_beat_interval=0.05)
+
+        n_samples = 2048
+        sample_rate = 44100
+        t = np.linspace(0, n_samples / sample_rate, n_samples)
+
+        high_freq_samples = (np.sin(2 * np.pi * 1000 * t) * 0.5).astype(np.float32)
+        bass_samples = (np.sin(2 * np.pi * 40 * t) * 0.95).astype(np.float32)
+
+        # Establish low bass baseline first
+        for _ in range(20):
+            feed._analyze(high_freq_samples)
+
+        # Trigger a beat
+        time.sleep(0.1)
+        feed._analyze(bass_samples)
+        assert feed.beat_onset is True, "Beat should be detected"
+
+        # Next frame with high frequency (no bass) - beat_onset should reset
+        time.sleep(0.1)  # Wait past min_interval
+        feed._analyze(high_freq_samples)
+        assert feed.beat_onset is False, "beat_onset should reset to False after non-beat frame"
+
+    def test_bpm_estimation_from_beats(self):
+        """BPM should be estimated from beat intervals."""
+        feed = AudioFeed(onset_threshold=0.3, min_beat_interval=0.05)
+
+        n_samples = 2048
+        sample_rate = 44100
+        t = np.linspace(0, n_samples / sample_rate, n_samples)
+
+        bass_samples = (np.sin(2 * np.pi * 40 * t) * 0.95).astype(np.float32)
+        high_freq_samples = (np.sin(2 * np.pi * 1000 * t) * 0.5).astype(np.float32)
+
+        # Simulate beats at ~120 BPM (0.5s intervals)
+        beat_interval = 0.5
+        detected_beats = 0
+
+        for i in range(6):
+            # Bass hit
+            time.sleep(beat_interval if i > 0 else 0.1)
+            feed._analyze(bass_samples)
+            if feed.beat_onset:
+                detected_beats += 1
+
+            # Some non-beat frames
+            for _ in range(3):
+                feed._analyze(high_freq_samples)
+
+        # Should have detected multiple beats
+        assert detected_beats >= 4, f"Should detect at least 4 beats, got {detected_beats}"
+
+        # BPM should be estimated (requires 4+ intervals)
+        assert feed.bpm is not None, "BPM should be estimated after multiple beats"
+        # At 0.5s intervals, expected BPM is 120
+        assert 100 < feed.bpm < 140, f"BPM should be ~120, got {feed.bpm}"
+
+    def test_adaptive_threshold(self):
+        """Beat threshold should adapt to bass average."""
+        feed = AudioFeed(onset_threshold=0.3, min_beat_interval=0.05)
+
+        n_samples = 2048
+        sample_rate = 44100
+        t = np.linspace(0, n_samples / sample_rate, n_samples)
+
+        # Build up high bass average with sustained bass
+        bass_samples = (np.sin(2 * np.pi * 40 * t) * 0.6).astype(np.float32)
+        for _ in range(30):
+            feed._analyze(bass_samples)
+
+        # bass_avg should now be elevated
+        assert feed._bass_avg > 0.3, f"bass_avg should be elevated, got {feed._bass_avg}"
+
+        # Wait for min_interval
+        time.sleep(0.1)
+
+        # Same bass level should NOT trigger beat (adaptive threshold = bass_avg * 1.5)
+        feed._analyze(bass_samples)
+        # The adaptive threshold should be higher than the bass energy
+        adaptive_threshold = feed._bass_avg * 1.5
+        bass_energy = float(np.mean(feed.spectrum[:3]))
+
+        # If bass_energy <= adaptive_threshold, beat should not trigger
+        if bass_energy <= adaptive_threshold:
+            assert feed.beat_onset is False, \
+                "beat_onset should be False when bass doesn't exceed adaptive threshold"
 
     def test_get_input_returns_audio_input(self):
         """get_input should return AudioInput instance."""
         feed = AudioFeed()
         result = feed.get_input()
         assert isinstance(result, AudioInput)
-        assert result.beat_index == 0
-        assert result.bar_phase == 0.0
-
-    def test_get_input_includes_bar_fields(self):
-        """get_input should include beat_index and bar_phase."""
-        feed = AudioFeed()
-        # Run some analysis
-        n_samples = 2048
-        t = np.linspace(0, n_samples / 44100, n_samples)
-        samples = (np.sin(2 * np.pi * 100 * t) * 0.5).astype(np.float32)
-        for _ in range(5):
-            feed._analyze(samples)
-
-        result = feed.get_input()
-        assert isinstance(result.beat_index, int)
-        assert isinstance(result.bar_phase, float)
-        assert 0 <= result.beat_index <= 3
-        assert 0.0 <= result.bar_phase <= 1.0
 
     def test_spectrum_normalization(self):
         """Spectrum should be normalized to 0-1 range."""
@@ -257,23 +304,6 @@ class TestAudioFeed:
         if feed.spectrum is not None:
             assert np.all(feed.spectrum >= 0)
             assert np.all(feed.spectrum <= 1)
-
-    def test_reset_state(self):
-        """_reset_state should clear beat tracker and all state."""
-        feed = AudioFeed()
-        n_samples = 2048
-        t = np.linspace(0, n_samples / 44100, n_samples)
-        samples = (np.sin(2 * np.pi * 100 * t) * 0.5).astype(np.float32)
-
-        for _ in range(10):
-            feed._analyze(samples)
-
-        feed._reset_state()
-        assert feed.bpm is None
-        assert feed.beat_onset is False
-        assert feed.beat_index == 0
-        assert feed.bar_phase == 0.0
-        assert feed._beat_tracker._phase == 0.0
 
 
 class TestMockAudioFeed:
@@ -314,8 +344,6 @@ class TestMockAudioFeed:
             assert result.spectrum is not None
             assert len(result.spectrum) == 16
             assert result.volume > 0
-            assert 0 <= result.beat_index <= 3
-            assert 0.0 <= result.bar_phase <= 1.0
 
             await feed.stop()
 
@@ -360,27 +388,6 @@ class TestMockAudioFeed:
 
         asyncio.run(run_test())
 
-    def test_bar_aware_mock(self):
-        """MockAudioFeed should provide bar-aware values."""
-        async def run_test():
-            feed = MockAudioFeed(bpm=120.0)
-            await feed.start()
-
-            seen_indices = set()
-            for _ in range(100):
-                result = feed.get_input()
-                seen_indices.add(result.beat_index)
-                assert 0 <= result.beat_index <= 3
-                assert 0.0 <= result.bar_phase <= 1.0
-                time.sleep(0.025)  # 2.5s total > 1 bar at 120 BPM
-
-            await feed.stop()
-
-            # Should have cycled through all 4 beat indices
-            assert seen_indices == {0, 1, 2, 3}
-
-        asyncio.run(run_test())
-
     def test_spectrum_values(self):
         """Spectrum should have reasonable values."""
         async def run_test():
@@ -398,139 +405,3 @@ class TestMockAudioFeed:
             await feed.stop()
 
         asyncio.run(run_test())
-
-
-class TestOnsetTracker:
-    """Tests for OnsetTracker class."""
-
-    def _make_spectrum(self, val: float = 0.5) -> np.ndarray:
-        return np.full(16, val, dtype=np.float32)
-
-    def test_onset_quantization(self):
-        """Onset at phase 1.5 should quantize to 16th-note position 6."""
-        tracker = OnsetTracker()
-        # phase=1.5 → raw_16th = 1.5*4 = 6.0 → position=6
-        tracker.update(True, 1.0, 1.5, self._make_spectrum(), 0.5)
-        assert len(tracker.active) == 1
-        assert tracker.active[0].position == 6
-
-    def test_onset_quantization_wraps(self):
-        """Phase near 4.0 should wrap to position 0."""
-        tracker = OnsetTracker()
-        # phase=3.99 → raw_16th = 15.96 → round=16 → %16 = 0
-        tracker.update(True, 1.0, 3.99, self._make_spectrum(), 0.5)
-        assert tracker.active[0].position == 0
-
-    def test_onset_quantization_various(self):
-        """Check a few phase→position mappings."""
-        cases = [
-            (0.0, 0),    # raw=0
-            (0.25, 1),   # raw=1
-            (1.0, 4),    # raw=4
-            (2.0, 8),    # raw=8
-            (3.0, 12),   # raw=12
-        ]
-        for phase, expected_pos in cases:
-            tracker = OnsetTracker()
-            tracker.update(True, 1.0, phase, self._make_spectrum(), 0.5)
-            assert tracker.active[0].position == expected_pos, f"phase={phase}"
-
-    def test_envelope_grows_to_max(self):
-        """Envelope should grow to max_envelope_frames then stop."""
-        tracker = OnsetTracker(max_envelope_frames=4)
-        tracker.update(True, 1.0, 0.5, self._make_spectrum(), 0.8)
-        assert len(tracker.active[0].envelope) == 1  # initial volume
-
-        # Subsequent frames (no onset) should extend envelope
-        for i in range(10):
-            tracker.update(False, 0.0, 0.5 + 0.01 * (i + 1), self._make_spectrum(), 0.5)
-
-        assert len(tracker.active[0].envelope) == 4  # capped at max
-
-    def test_bar_boundary_clears_active(self):
-        """When phase wraps from >3 to <1, active moves to last_bar."""
-        tracker = OnsetTracker()
-        # Add onset at phase 2.0
-        tracker.update(True, 1.0, 2.0, self._make_spectrum(), 0.5)
-        assert len(tracker.active) == 1
-        assert len(tracker.last_bar) == 0
-
-        # Advance to near end of bar
-        tracker.update(False, 0.0, 3.5, self._make_spectrum(), 0.5)
-
-        # Cross bar boundary
-        tracker.update(False, 0.0, 0.1, self._make_spectrum(), 0.5)
-        assert len(tracker.active) == 0
-        assert len(tracker.last_bar) == 1
-        assert tracker.last_bar[0].position == 8  # phase 2.0 → pos 8
-
-    def test_deduplication_keeps_stronger(self):
-        """Same 16th-note position should keep the stronger onset."""
-        tracker = OnsetTracker()
-        tracker.update(True, 0.5, 1.0, self._make_spectrum(), 0.5)
-        assert tracker.active[0].strength == 0.5
-
-        # Same position (phase=1.0 → pos 4), stronger
-        tracker.update(True, 2.0, 1.0, self._make_spectrum(), 0.7)
-        assert len(tracker.active) == 1
-        assert tracker.active[0].strength == 2.0
-
-    def test_deduplication_rejects_weaker(self):
-        """Weaker onset at same position should be rejected."""
-        tracker = OnsetTracker()
-        tracker.update(True, 2.0, 1.0, self._make_spectrum(), 0.5)
-        tracker.update(True, 0.5, 1.0, self._make_spectrum(), 0.3)
-        assert len(tracker.active) == 1
-        assert tracker.active[0].strength == 2.0
-
-    def test_onset_grid(self):
-        """onset_grid should reflect active onsets."""
-        tracker = OnsetTracker()
-        tracker.update(True, 0.8, 0.0, self._make_spectrum(), 0.5)   # pos 0
-        tracker.update(True, 1.2, 1.0, self._make_spectrum(), 0.5)   # pos 4
-
-        grid = tracker.onset_grid
-        assert grid.shape == (16,)
-        assert grid[0] == pytest.approx(0.8)
-        assert grid[4] == pytest.approx(1.2)
-        assert grid[1] == 0.0  # no onset here
-
-    def test_latest_onset(self):
-        """latest_onset should return the most recent age==0 onset."""
-        tracker = OnsetTracker()
-        tracker.update(True, 1.0, 0.5, self._make_spectrum(), 0.5)
-        assert tracker.latest_onset is not None
-        assert tracker.latest_onset.position == 2  # phase 0.5 → raw 2.0
-
-        # Next frame without onset: all onsets aged, no latest
-        tracker.update(False, 0.0, 0.6, self._make_spectrum(), 0.5)
-        assert tracker.latest_onset is None
-
-    def test_reset_clears_everything(self):
-        """reset() should clear active, last_bar, and prev_phase."""
-        tracker = OnsetTracker()
-        tracker.update(True, 1.0, 2.0, self._make_spectrum(), 0.5)
-        tracker.update(False, 0.0, 3.5, self._make_spectrum(), 0.5)
-        tracker.update(False, 0.0, 0.1, self._make_spectrum(), 0.5)
-        # Now last_bar has data
-        assert len(tracker.last_bar) > 0
-
-        tracker.reset()
-        assert tracker.active == []
-        assert tracker.last_bar == []
-        assert tracker._prev_phase == 0.0
-
-    def test_spectrum_snapshot_is_copy(self):
-        """Onset spectrum should be a copy, not a reference."""
-        tracker = OnsetTracker()
-        spec = self._make_spectrum(0.5)
-        tracker.update(True, 1.0, 1.0, spec, 0.5)
-        spec[:] = 999.0  # mutate original
-        assert tracker.active[0].spectrum[0] == pytest.approx(0.5)
-
-    def test_phase_error_recorded(self):
-        """phase_error should reflect distance from exact grid point."""
-        tracker = OnsetTracker()
-        # phase=1.1 → raw=4.4 → round=4 → error = 4.4 - 4 = 0.4
-        tracker.update(True, 1.0, 1.1, self._make_spectrum(), 0.5)
-        assert tracker.active[0].phase_error == pytest.approx(0.4, abs=0.01)

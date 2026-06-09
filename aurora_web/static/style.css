@@ -49,23 +49,6 @@ header h1 {
     background: #7e0a0a;
 }
 
-.header-right {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.audio-indicator {
-    font-size: 1.2rem;
-    color: #4fc3f7;
-    animation: pulse-audio 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-audio {
-    0%, 100% { opacity: 0.6; }
-    50% { opacity: 1; }
-}
-
 main {
     flex: 1;
     display: flex;
@@ -165,6 +148,26 @@ input[type="range"] {
     background: #a33545;
 }
 
+.btn:disabled {
+    background: #444;
+    color: #777;
+    cursor: not-allowed;
+}
+
+.btn:disabled:hover {
+    background: #444;
+}
+
+.btn-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-icon {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+}
+
 footer {
     display: flex;
     justify-content: space-between;
@@ -206,32 +209,47 @@ footer {
     border-color: #e94560;
 }
 
-/* Pattern Info */
-.pattern-info {
+/* Content area: holds code editor + preview side by side */
+#content-area {
     flex: 1;
     display: flex;
-    justify-content: center;
-    align-items: center;
-    background: #2a2a4a;
-    border-radius: 12px;
-    min-height: 50vh;
-    padding: 3%;
-    border: 3px solid #3a3a6a;
+    flex-direction: row;
+    gap: 1rem;
+    min-height: 0;
+    overflow: hidden;
+    justify-content: flex-end;
 }
 
-.pattern-display {
+/* In code mode, editor takes remaining space */
+#content-area.code-layout {
+    justify-content: stretch;
+}
+
+#content-area.code-layout #code-container {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Preview container — always on the right, fixed width */
+#preview-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #0a0a14;
+    border-radius: 12px;
+    border: 3px solid #3a3a6a;
+    padding: 1rem;
+    gap: 0.75rem;
+    flex-shrink: 0;
+}
+
+#preview-label {
     text-align: center;
 }
 
-.pattern-label {
-    font-size: 0.9rem;
-    color: #888;
-    display: block;
-    margin-bottom: 0.5rem;
-}
-
 #current-pattern-name {
-    font-size: 2rem;
+    font-size: 1.2rem;
     font-weight: bold;
     color: #e94560;
 }
@@ -259,11 +277,119 @@ footer {
 }
 
 #paint-controls,
-#pattern-controls {
+#pattern-controls,
+#code-controls {
     display: flex;
     flex-wrap: wrap;
     gap: 1rem;
     width: 100%;
+}
+
+/* Code Editor */
+#code-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 30vh;
+    background: #1a1a2e;
+    border-radius: 12px;
+    border: 3px solid #3a3a6a;
+    overflow: hidden;
+}
+
+.code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: #16213e;
+    border-bottom: 1px solid #3a3a6a;
+    gap: 0.5rem;
+}
+
+.code-sig {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.75rem;
+    color: #888;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.btn-run {
+    background: #0a7e35;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.btn-run:hover {
+    background: #0b9940;
+}
+
+.btn-run:active {
+    background: #086b2c;
+}
+
+.btn-stop {
+    background: #8b1a1a;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.btn-stop:hover:not(:disabled) {
+    background: #a52222;
+}
+
+.btn-stop:active:not(:disabled) {
+    background: #6e1414;
+}
+
+/* Code body: editor on left, preview on right */
+.code-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.code-editor-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+#preview-canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border: 2px solid #3a3a6a;
+}
+
+/* CodeMirror fills the editor wrap */
+.code-editor-wrap .CodeMirror {
+    flex: 1;
+    height: auto;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+/* On narrow screens, stack content area vertically */
+@media (max-width: 700px) {
+    #content-area {
+        flex-direction: column;
+    }
+}
+
+.code-error {
+    padding: 0.5rem 0.75rem;
+    background: #2a0a0a;
+    color: #ff6b6b;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.8rem;
+    border-top: 1px solid #7e0a0a;
+    white-space: pre-wrap;
+    max-height: 6rem;
+    overflow-y: auto;
 }
 
 /* Mobile optimizations */

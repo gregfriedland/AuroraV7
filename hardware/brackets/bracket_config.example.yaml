@@ -1,0 +1,40 @@
+shared:
+  # Replace these with caliper measurements from the exact panels in the wall.
+  panel_width_mm: 256.0
+  panel_height_mm: 128.0
+  panel_gap_x_mm: 0.8
+  panel_gap_y_mm: 0.8
+
+  # Distance from the nearest panel edge to the screw hole used by the bracket.
+  hole_offset_x_from_panel_edge_mm: 35.0
+  hole_offset_y_from_panel_edge_mm: 35.0
+
+  # M3 clearance defaults. Increase screw_head_diameter_mm for washers.
+  screw_clearance_diameter_mm: 3.4
+  screw_head_diameter_mm: 6.2
+  counterbore_depth_mm: 1.8
+
+  # PETG/ASA starting point. Confirm this clears electronics and cables.
+  bracket_thickness_mm: 5.0
+  arm_width_mm: 22.0
+  # Set to 0.0 for the fastest/export-stable first fit model. Increase after
+  # dimensions are confirmed if you want softened vertical outside edges.
+  edge_roundover_mm: 0.0
+  minimum_wall_mm: 3.0
+
+cross:
+  arm_extension_past_hole_mm: 24.0
+  center_relief_diameter_mm: 0.0
+  screw_pair_spacing_mm: 12.0
+
+column:
+  # Standoff: a flat mounting plate in the panel plane, with a smaller support
+  # post protruding out from the opposite end of that plate.
+  plate_width_mm: 34.0
+  plate_height_mm: 60.0
+  plate_hole_spacing_mm: 18.0
+  plate_hole_offset_y_mm: 18.0
+  post_width_mm: 18.0
+  post_height_mm: 16.0
+  post_depth_mm: 45.0
+  post_offset_y_mm: -16.0

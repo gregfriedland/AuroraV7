@@ -1,16 +1,12 @@
 """Video feed for motion detection and light level analysis."""
 
-import logging
 import numpy as np
 import asyncio
 import time
 import cv2
-from dataclasses import dataclass
-from pathlib import Path
+from dataclasses import dataclass, field
 
 from concurrent.futures import ThreadPoolExecutor
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -24,20 +20,11 @@ class VideoInput:
     faces: list[tuple[int, int, int, int | None]] = None  # Detected face regions (x, y, w, h)
 
 
-def _has_picamera2() -> bool:
-    """Check if picamera2 is available (Raspberry Pi)."""
-    try:
-        import picamera2  # noqa: F401
-        return True
-    except ImportError:
-        return False
-
-
 class VideoFeed:
     """Captures and analyzes video for motion and light levels.
 
-    Uses picamera2 (Raspberry Pi). If picamera2 is not available,
-    the feed will not start and the camera pattern will be disabled.
+    Uses OpenCV to capture from camera and perform real-time analysis
+    including motion detection, light level, and optional face detection.
     """
 
     def __init__(
@@ -48,7 +35,6 @@ class VideoFeed:
         fps: int = 30,
         motion_threshold: float = 0.02,
         enable_face_detection: bool = False,
-        rotation: int = 0,
     ):
         """Initialize video feed.
 
@@ -59,7 +45,6 @@ class VideoFeed:
             fps: Target frames per second
             motion_threshold: Minimum motion to register (0-1)
             enable_face_detection: Whether to detect faces (requires haarcascade)
-            rotation: Rotate captured frames (0, 90, 180, or 270 degrees)
         """
         self.device = device
         self.width = width
@@ -67,7 +52,6 @@ class VideoFeed:
         self.fps = fps
         self.motion_threshold = motion_threshold
         self.enable_face_detection = enable_face_detection
-        self.rotation = rotation
 
         # State
         self.frame: np.ndarray | None = None
@@ -81,9 +65,9 @@ class VideoFeed:
         # Motion history for smoothing
         self._motion_history: list[float] = []
 
-        # Camera backend
-        self._picam: object | None = None
-        self._face_detector = None
+        # OpenCV objects
+        self._cap: cv2.VideoCapture | None = None
+        self._face_cascade = None
 
         # Async control
         self._running: bool = False
@@ -95,58 +79,42 @@ class VideoFeed:
         if self._running:
             return
 
-        if not _has_picamera2():
-            logger.warning("picamera2 not available — camera pattern disabled")
-            return
-
         self._running = True
 
+        # Open camera in thread pool (blocking operation)
         loop = asyncio.get_event_loop()
-        opened = await loop.run_in_executor(self._executor, self._open_camera)
+        self._cap = await loop.run_in_executor(
+            self._executor,
+            self._open_camera
+        )
 
-        if not opened:
-            logger.warning("Failed to open camera device %d — camera pattern disabled",
-                           self.device)
+        if self._cap is None or not self._cap.isOpened():
+            print(f"[VideoFeed] Failed to open camera device {self.device}")
             self._running = False
             return
 
-        # Load face detector if needed (YuNet DNN — rotation-invariant)
+        # Load face cascade if needed
         if self.enable_face_detection:
             try:
-                model_path = str(Path(__file__).parent.parent / "models" / "face_detection_yunet_2023mar.onnx")
-                self._face_detector = cv2.FaceDetectorYN.create(
-                    model_path,
-                    "",
-                    (self.width, self.height),
-                    score_threshold=0.3,
-                    nms_threshold=0.3,
-                    top_k=10,
-                )
-                print("[VideoFeed] Face detection enabled (YuNet)")
+                cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+                self._face_cascade = cv2.CascadeClassifier(cascade_path)
+                print("[VideoFeed] Face detection enabled")
             except Exception as e:
                 print(f"[VideoFeed] Face detection unavailable: {e}")
-                self._face_detector = None
+                self._face_cascade = None
 
         self._task = asyncio.create_task(self._capture_loop())
-        logger.info("VideoFeed started — device %d at %dx%d (rotation=%d°)",
-                     self.device, self.width, self.height, self.rotation)
+        print(f"[VideoFeed] Started - device {self.device} at {self.width}x{self.height}")
 
-    def _open_camera(self) -> bool:
-        """Open camera with picamera2."""
-        try:
-            from picamera2 import Picamera2
-            self._picam = Picamera2(self.device)
-            config = self._picam.create_video_configuration(
-                main={"size": (self.width, self.height), "format": "RGB888"},
-                controls={"FrameRate": self.fps},
-            )
-            self._picam.configure(config)
-            self._picam.start()
-            return True
-        except Exception as e:
-            logger.warning("picamera2 open failed: %s", e)
-            self._picam = None
-            return False
+    def _open_camera(self) -> cv2.VideoCapture | None:
+        """Open camera (runs in thread pool)."""
+        cap = cv2.VideoCapture(self.device)
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            cap.set(cv2.CAP_PROP_FPS, self.fps)
+            return cap
+        return None
 
     async def _capture_loop(self) -> None:
         """Main capture loop."""
@@ -154,15 +122,17 @@ class VideoFeed:
         loop = asyncio.get_event_loop()
 
         try:
-            while self._running:
+            while self._running and self._cap and self._cap.isOpened():
                 start = time.perf_counter()
 
-                frame = await loop.run_in_executor(
+                # Read frame in thread pool (blocking operation)
+                ret, frame = await loop.run_in_executor(
                     self._executor,
                     self._read_frame
                 )
 
-                if frame is not None:
+                if ret and frame is not None:
+                    # Analyze frame
                     self._analyze(frame)
 
                 # Maintain target FPS
@@ -176,38 +146,20 @@ class VideoFeed:
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            logger.error("Capture error: %s", e)
+            print(f"[VideoFeed] Capture error: {e}")
 
-    def _read_frame(self) -> np.ndarray | None:
-        """Read frame from picamera2 (runs in thread pool).
-
-        Returns:
-            BGR frame for analysis, or None on failure.
-        """
-        if self._picam is None:
-            return None
-        try:
-            # picamera2 returns RGB directly
-            rgb = self._picam.capture_array()
-            # Convert to BGR for _analyze() compatibility
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        except Exception:
-            return None
+    def _read_frame(self) -> tuple[bool, np.ndarray | None]:
+        """Read frame from camera (runs in thread pool)."""
+        if self._cap:
+            return self._cap.read()
+        return False, None
 
     def _analyze(self, frame: np.ndarray) -> None:
         """Analyze frame for motion, light level, and optional features.
 
         Args:
-            frame: BGR frame from camera
+            frame: BGR frame from OpenCV
         """
-        # Apply rotation
-        if self.rotation == 180:
-            frame = cv2.rotate(frame, cv2.ROTATE_180)
-        elif self.rotation == 90:
-            frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-        elif self.rotation == 270:
-            frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
-
         # Convert to RGB for storage
         self.frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -245,26 +197,22 @@ class VideoFeed:
         # Convert BGR to RGB
         self.dominant_color = (int(avg_color[2]), int(avg_color[1]), int(avg_color[0]))
 
-        # Face detection (YuNet DNN, run every 5th frame)
-        if self._face_detector is not None:
+        # Face detection (expensive, run less frequently)
+        if self._face_cascade is not None:
+            # Only run every 5th frame to reduce CPU load
             if not hasattr(self, '_face_frame_count'):
                 self._face_frame_count = 0
             self._face_frame_count += 1
 
             if self._face_frame_count >= 5:
                 self._face_frame_count = 0
-                _, raw_faces = self._face_detector.detect(frame)
-                if raw_faces is not None:
-                    # YuNet returns [x, y, w, h, ...landmarks, score] per row
-                    self.faces = [(int(r[0]), int(r[1]), int(r[2]), int(r[3]))
-                                  for r in raw_faces]
-                else:
-                    self.faces = []
-                if not hasattr(self, '_face_log_count'):
-                    self._face_log_count = 0
-                self._face_log_count += 1
-                if self._face_log_count <= 5 or (self.faces and self._face_log_count % 30 == 0):
-                    print(f"[VideoFeed] Face detect: {len(self.faces)} faces {self.faces}")
+                faces = self._face_cascade.detectMultiScale(
+                    gray,
+                    scaleFactor=1.1,
+                    minNeighbors=5,
+                    minSize=(30, 30)
+                )
+                self.faces = [(int(x), int(y), int(w), int(h)) for (x, y, w, h) in faces]
 
     def get_input(self) -> VideoInput:
         """Get current video input state for drawers.
@@ -292,21 +240,17 @@ class VideoFeed:
             except asyncio.CancelledError:
                 pass
 
-        if self._picam is not None:
-            try:
-                self._picam.stop()
-                self._picam.close()
-            except Exception:
-                pass
-            self._picam = None
+        if self._cap:
+            self._cap.release()
+            self._cap = None
 
         self._executor.shutdown(wait=False)
-        logger.info("VideoFeed stopped")
+        print("[VideoFeed] Stopped")
 
     @property
     def is_running(self) -> bool:
         """Check if video feed is running."""
-        return self._running and self._picam is not None
+        return self._running and self._cap is not None and self._cap.isOpened()
 
 
 class MockVideoFeed:

@@ -18,7 +18,7 @@ class AuroraApp {
         this.decayRate = 0;
         this.lastFrameTime = 0;
 
-        // Mode: "paint" or "pattern"
+        // Mode: "paint", "pattern", or "code"
         this.mode = "paint";
 
         // Available drawers
@@ -28,13 +28,22 @@ class AuroraApp {
         // Float buffer for smooth fading
         this.floatBuffer = null;
 
+        // Stroke history for undo/redo
+        this.undoStack = [];       // Array of Float32Array snapshots
+        this.redoStack = [];       // Array of Float32Array snapshots
+        this.maxUndoLevels = 50;
+        this.currentStroke = null;  // Tracks in-progress stroke metadata
+        this.strokeHistory = [];    // Completed stroke metadata (color, radius, path)
+
         this.init();
     }
 
     init() {
         this.setupCanvas();
+        this.setupPreviewCanvas();
         this.setupControls();
         this.setupModeToggle();
+        this.setupKeyboardShortcuts();
         this.connect();
         this.startRenderLoop();
     }
@@ -76,9 +85,12 @@ class AuroraApp {
         const maxWidth = container.clientWidth * 0.94;
         const maxHeight = container.clientHeight * 0.94;
 
+        // Skip if container is hidden (0 dimensions)
+        if (maxWidth <= 0 || maxHeight <= 0) return;
+
         const scaleX = maxWidth / this.matrixWidth;
         const scaleY = maxHeight / this.matrixHeight;
-        this.scale = Math.floor(Math.min(scaleX, scaleY));
+        this.scale = Math.max(1, Math.floor(Math.min(scaleX, scaleY)));
 
         this.canvas.width = this.matrixWidth * this.scale;
         this.canvas.height = this.matrixHeight * this.scale;
@@ -91,35 +103,56 @@ class AuroraApp {
     }
 
     setupModeToggle() {
-        const paintBtn = document.getElementById('mode-paint');
-        const patternBtn = document.getElementById('mode-pattern');
-
-        paintBtn.addEventListener('click', () => this.setMode('paint'));
-        patternBtn.addEventListener('click', () => this.setMode('pattern'));
+        document.getElementById('mode-paint').addEventListener('click', () => this.setMode('paint'));
+        document.getElementById('mode-pattern').addEventListener('click', () => this.setMode('pattern'));
+        document.getElementById('mode-code').addEventListener('click', () => this.setMode('code'));
     }
 
-    setMode(mode) {
+    setMode(mode, fromServer = false) {
         this.mode = mode;
 
-        // Update UI
+        // Update mode toggle buttons
         document.getElementById('mode-paint').classList.toggle('active', mode === 'paint');
         document.getElementById('mode-pattern').classList.toggle('active', mode === 'pattern');
+        document.getElementById('mode-code').classList.toggle('active', mode === 'code');
 
-        document.getElementById('canvas-container').classList.toggle('hidden', mode === 'pattern');
-        document.getElementById('pattern-info').classList.toggle('hidden', mode === 'paint');
+        // Show/hide main content areas
+        const showPreview = mode === 'pattern' || mode === 'code';
+        document.getElementById('canvas-container').classList.toggle('hidden', mode !== 'paint');
+        document.getElementById('content-area').classList.toggle('hidden', !showPreview);
+        document.getElementById('content-area').classList.toggle('code-layout', mode === 'code');
+        document.getElementById('code-container').classList.toggle('hidden', mode !== 'code');
 
-        document.getElementById('paint-controls').classList.toggle('hidden', mode === 'pattern');
-        document.getElementById('pattern-controls').classList.toggle('hidden', mode === 'paint');
+        // Show/hide control sections
+        document.getElementById('paint-controls').classList.toggle('hidden', mode !== 'paint');
+        document.getElementById('pattern-controls').classList.toggle('hidden', mode !== 'pattern');
+        document.getElementById('code-controls').classList.toggle('hidden', mode !== 'code');
 
-        // Notify server
-        this.sendMessage({ type: 'set_mode', mode: mode });
+        // Recalculate canvas size when switching to paint mode
+        if (mode === 'paint') {
+            requestAnimationFrame(() => this.updateCanvasSize());
+        }
+
+        // Refresh CodeMirror when code tab becomes visible
+        if (mode === 'code') {
+            if (!this.codeTemplateLoaded) {
+                this.sendMessage({ type: 'get_code_template' });
+            }
+            requestAnimationFrame(() => this.codeMirror.refresh());
+        }
+
+        // Notify server — but skip if this was triggered by server to avoid feedback loop
+        if (!fromServer) {
+            const serverMode = mode === 'code' ? 'pattern' : mode;
+            this.sendMessage({ type: 'set_mode', mode: serverMode });
+        }
     }
 
     setupControls() {
         // Color picker
         const swatches = document.querySelectorAll('.color-swatch');
         swatches.forEach((swatch, index) => {
-            if (index === 0) swatch.classList.add('selected');
+            if (index === 1) swatch.classList.add('selected');  // default to white
             swatch.addEventListener('click', () => {
                 swatches.forEach(s => s.classList.remove('selected'));
                 swatch.classList.add('selected');
@@ -149,6 +182,15 @@ class AuroraApp {
             this.clearCanvas();
         });
 
+        // Undo/Redo buttons
+        document.getElementById('undo-btn').addEventListener('click', () => {
+            this.undo();
+        });
+        document.getElementById('redo-btn').addEventListener('click', () => {
+            this.redo();
+        });
+        this.updateUndoRedoButtons();
+
         // Drawer select
         document.getElementById('drawer-select').addEventListener('change', (e) => {
             const drawerName = e.target.value;
@@ -168,6 +210,41 @@ class AuroraApp {
         paletteSlider.addEventListener('input', () => {
             const index = parseInt(paletteSlider.value);
             paletteLabel.textContent = index;
+            this.sendMessage({ type: 'set_palette', index: index });
+        });
+
+        // Code editor (CodeMirror)
+        this.codeTemplateLoaded = false;
+        this.codeMirror = CodeMirror.fromTextArea(document.getElementById('code-editor'), {
+            mode: 'python',
+            theme: 'material-darker',
+            lineNumbers: true,
+            indentUnit: 4,
+            tabSize: 4,
+            indentWithTabs: false,
+            lineWrapping: false,
+            extraKeys: {
+                'Cmd-Enter': () => this.submitCode(),
+                'Ctrl-Enter': () => this.submitCode(),
+            },
+        });
+
+        // Run button
+        document.getElementById('run-code-btn').addEventListener('click', () => {
+            this.submitCode();
+        });
+
+        // Stop button
+        document.getElementById('stop-code-btn').addEventListener('click', () => {
+            this.stopCode();
+        });
+
+        // Code palette slider
+        const codePaletteSlider = document.getElementById('code-palette-slider');
+        const codePaletteLabel = document.getElementById('code-palette-label');
+        codePaletteSlider.addEventListener('input', () => {
+            const index = parseInt(codePaletteSlider.value);
+            codePaletteLabel.textContent = index;
             this.sendMessage({ type: 'set_palette', index: index });
         });
     }
@@ -297,6 +374,24 @@ class AuroraApp {
         }
 
         this.ctx.putImageData(imageData, 0, 0);
+
+        // Draw pixel grid lines
+        if (this.scale >= 4) {
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            this.ctx.lineWidth = 1;
+            this.ctx.beginPath();
+            for (let x = 0; x <= this.matrixWidth; x++) {
+                const px = x * this.scale + 0.5;
+                this.ctx.moveTo(px, 0);
+                this.ctx.lineTo(px, this.canvas.height);
+            }
+            for (let y = 0; y <= this.matrixHeight; y++) {
+                const py = y * this.scale + 0.5;
+                this.ctx.moveTo(0, py);
+                this.ctx.lineTo(this.canvas.width, py);
+            }
+            this.ctx.stroke();
+        }
     }
 
     sendCanvasFrame() {
@@ -332,8 +427,13 @@ class AuroraApp {
             this.updateStatus('Error', 'error');
         };
 
+        this.ws.binaryType = 'arraybuffer';
         this.ws.onmessage = (event) => {
-            this.handleMessage(JSON.parse(event.data));
+            if (event.data instanceof ArrayBuffer) {
+                this.handlePreviewFrame(event.data);
+            } else {
+                this.handleMessage(JSON.parse(event.data));
+            }
         };
     }
 
@@ -345,13 +445,13 @@ class AuroraApp {
                 this.matrixHeight = msg.height;
                 this.initFloatBuffer();
                 this.updateCanvasSize();
+                this.updatePreviewCanvasSize();
                 document.getElementById('matrix-info').textContent =
                     `Matrix: ${msg.width}x${msg.height}`;
 
                 // Handle initial mode and drawers
                 if (msg.mode) {
-                    this.mode = msg.mode;
-                    this.setMode(msg.mode);
+                    this.setMode(msg.mode, true);
                 }
                 if (msg.drawers) {
                     this.populateDrawerSelect(msg.drawers);
@@ -375,17 +475,13 @@ class AuroraApp {
                 if (msg.drawer) {
                     document.getElementById('current-pattern-name').textContent = msg.drawer;
                 }
-                // Audio indicator
-                const audioEl = document.getElementById('audio-indicator');
-                if (audioEl) {
-                    audioEl.classList.toggle('hidden', !msg.audio_active);
-                }
                 break;
 
             case 'mode_changed':
-                this.mode = msg.mode;
-                document.getElementById('mode-paint').classList.toggle('active', msg.mode === 'paint');
-                document.getElementById('mode-pattern').classList.toggle('active', msg.mode === 'pattern');
+                // Server only knows paint/pattern — don't override if we're in code mode
+                if (this.mode !== 'code') {
+                    this.setMode(msg.mode, true);
+                }
                 break;
 
             case 'drawer_changed':
@@ -413,6 +509,14 @@ class AuroraApp {
             case 'drawers_list':
                 this.populateDrawerSelect(msg.drawers);
                 break;
+
+            case 'code_result':
+                this.handleCodeResult(msg);
+                break;
+
+            case 'code_template':
+                this.handleCodeTemplate(msg);
+                break;
         }
     }
 
@@ -430,8 +534,8 @@ class AuroraApp {
 
     getCanvasPos(event) {
         const rect = this.canvas.getBoundingClientRect();
-        const x = (event.clientX - rect.left) / this.canvas.width;
-        const y = (event.clientY - rect.top) / this.canvas.height;
+        const x = (event.clientX - rect.left) / rect.width;
+        const y = (event.clientY - rect.top) / rect.height;
         return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
     }
 
@@ -440,6 +544,17 @@ class AuroraApp {
         this.isDrawing = true;
         const pos = this.getCanvasPos(event);
         this.lastPos = pos;
+
+        // Save buffer snapshot for undo before the stroke begins
+        this.pushUndoSnapshot();
+
+        // Begin tracking stroke metadata
+        this.currentStroke = {
+            color: [...this.color],
+            radius: this.radius,
+            points: [{ x: pos.x, y: pos.y }]
+        };
+
         this.drawPointToBuffer(pos.x, pos.y);
     }
 
@@ -450,11 +565,33 @@ class AuroraApp {
             this.drawLineToBuffer(this.lastPos.x, this.lastPos.y, pos.x, pos.y);
         }
         this.lastPos = pos;
+
+        // Track stroke path
+        if (this.currentStroke) {
+            this.currentStroke.points.push({ x: pos.x, y: pos.y });
+        }
     }
 
     handlePointerEnd() {
+        if (this.isDrawing && this.currentStroke) {
+            // Save completed stroke metadata
+            this.strokeHistory.push(this.currentStroke);
+            this.currentStroke = null;
+
+            // New stroke clears redo stack
+            this.redoStack = [];
+            this.updateUndoRedoButtons();
+        }
         this.isDrawing = false;
         this.lastPos = null;
+    }
+
+    setPixel(mx, my) {
+        if (mx < 0 || mx >= this.matrixWidth || my < 0 || my >= this.matrixHeight) return;
+        const idx = (my * this.matrixWidth + mx) * 3;
+        this.floatBuffer[idx] = this.color[0];
+        this.floatBuffer[idx + 1] = this.color[1];
+        this.floatBuffer[idx + 2] = this.color[2];
     }
 
     drawPointToBuffer(x, y) {
@@ -463,17 +600,20 @@ class AuroraApp {
         const cx = x * this.matrixWidth;
         const cy = y * this.matrixHeight;
 
-        for (let my = 0; my < this.matrixHeight; my++) {
-            for (let mx = 0; mx < this.matrixWidth; mx++) {
-                const dx = mx + 0.5 - cx;
-                const dy = my + 0.5 - cy;
-                const dist = Math.sqrt(dx * dx + dy * dy);
+        if (this.radius <= 1) {
+            // Single pixel: just the pixel under the cursor
+            this.setPixel(Math.floor(cx), Math.floor(cy));
+        } else {
+            const effectiveRadius = this.radius - 0.5;
+            for (let my = 0; my < this.matrixHeight; my++) {
+                for (let mx = 0; mx < this.matrixWidth; mx++) {
+                    const dx = mx + 0.5 - cx;
+                    const dy = my + 0.5 - cy;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
 
-                if (dist <= this.radius) {
-                    const idx = (my * this.matrixWidth + mx) * 3;
-                    this.floatBuffer[idx] = this.color[0];
-                    this.floatBuffer[idx + 1] = this.color[1];
-                    this.floatBuffer[idx + 2] = this.color[2];
+                    if (dist <= effectiveRadius) {
+                        this.setPixel(mx, my);
+                    }
                 }
             }
         }
@@ -497,17 +637,19 @@ class AuroraApp {
             const cx = mx1 + dx * t;
             const cy = my1 + dy * t;
 
-            for (let my = 0; my < this.matrixHeight; my++) {
-                for (let mx = 0; mx < this.matrixWidth; mx++) {
-                    const pdx = mx + 0.5 - cx;
-                    const pdy = my + 0.5 - cy;
-                    const pdist = Math.sqrt(pdx * pdx + pdy * pdy);
+            if (this.radius <= 1) {
+                this.setPixel(Math.floor(cx), Math.floor(cy));
+            } else {
+                const effectiveRadius = this.radius - 0.5;
+                for (let my = 0; my < this.matrixHeight; my++) {
+                    for (let mx = 0; mx < this.matrixWidth; mx++) {
+                        const pdx = mx + 0.5 - cx;
+                        const pdy = my + 0.5 - cy;
+                        const pdist = Math.sqrt(pdx * pdx + pdy * pdy);
 
-                    if (pdist <= this.radius) {
-                        const idx = (my * this.matrixWidth + mx) * 3;
-                        this.floatBuffer[idx] = this.color[0];
-                        this.floatBuffer[idx + 1] = this.color[1];
-                        this.floatBuffer[idx + 2] = this.color[2];
+                        if (pdist <= effectiveRadius) {
+                            this.setPixel(mx, my);
+                        }
                     }
                 }
             }
@@ -516,10 +658,181 @@ class AuroraApp {
 
     clearCanvas() {
         if (this.floatBuffer) {
+            // Save snapshot so clear is undoable
+            this.pushUndoSnapshot();
+            this.redoStack = [];
+
             this.floatBuffer.fill(0);
         }
         this.renderBufferToCanvas();
         this.sendMessage({ type: 'clear_canvas' });
+        this.updateUndoRedoButtons();
+    }
+
+    // --- Undo/Redo ---
+
+    pushUndoSnapshot() {
+        if (!this.floatBuffer) return;
+        this.undoStack.push(new Float32Array(this.floatBuffer));
+        if (this.undoStack.length > this.maxUndoLevels) {
+            this.undoStack.shift();
+        }
+    }
+
+    undo() {
+        if (this.undoStack.length === 0 || !this.floatBuffer) return;
+
+        // Save current state to redo stack
+        this.redoStack.push(new Float32Array(this.floatBuffer));
+
+        // Restore previous state
+        const snapshot = this.undoStack.pop();
+        this.floatBuffer.set(snapshot);
+        this.renderBufferToCanvas();
+        this.sendCanvasFrame();
+        this.updateUndoRedoButtons();
+    }
+
+    redo() {
+        if (this.redoStack.length === 0 || !this.floatBuffer) return;
+
+        // Save current state to undo stack
+        this.undoStack.push(new Float32Array(this.floatBuffer));
+
+        // Restore redo state
+        const snapshot = this.redoStack.pop();
+        this.floatBuffer.set(snapshot);
+        this.renderBufferToCanvas();
+        this.sendCanvasFrame();
+        this.updateUndoRedoButtons();
+    }
+
+    updateUndoRedoButtons() {
+        const undoBtn = document.getElementById('undo-btn');
+        const redoBtn = document.getElementById('redo-btn');
+        if (undoBtn) undoBtn.disabled = this.undoStack.length === 0;
+        if (redoBtn) redoBtn.disabled = this.redoStack.length === 0;
+    }
+
+    // --- Preview Canvas ---
+
+    setupPreviewCanvas() {
+        this.previewCanvas = document.getElementById('preview-canvas');
+        this.previewCtx = this.previewCanvas.getContext('2d');
+        this.updatePreviewCanvasSize();
+    }
+
+    updatePreviewCanvasSize() {
+        // Scale preview to a reasonable size while maintaining aspect ratio
+        const previewScale = 8;
+        this.previewCanvas.width = this.matrixWidth * previewScale;
+        this.previewCanvas.height = this.matrixHeight * previewScale;
+        this.previewScale = previewScale;
+    }
+
+    handlePreviewFrame(buffer) {
+        if (!this.previewCtx) return;
+
+        const data = new Uint8Array(buffer);
+        const expectedSize = this.matrixWidth * this.matrixHeight * 3;
+        if (data.length !== expectedSize) return;
+
+        const scale = this.previewScale;
+        const imageData = this.previewCtx.createImageData(
+            this.previewCanvas.width, this.previewCanvas.height
+        );
+        const pixels = imageData.data;
+
+        for (let my = 0; my < this.matrixHeight; my++) {
+            for (let mx = 0; mx < this.matrixWidth; mx++) {
+                const srcIdx = (my * this.matrixWidth + mx) * 3;
+                const r = data[srcIdx];
+                const g = data[srcIdx + 1];
+                const b = data[srcIdx + 2];
+
+                for (let sy = 0; sy < scale; sy++) {
+                    for (let sx = 0; sx < scale; sx++) {
+                        const cx = mx * scale + sx;
+                        const cy = my * scale + sy;
+                        const dstIdx = (cy * this.previewCanvas.width + cx) * 4;
+                        pixels[dstIdx] = r;
+                        pixels[dstIdx + 1] = g;
+                        pixels[dstIdx + 2] = b;
+                        pixels[dstIdx + 3] = 255;
+                    }
+                }
+            }
+        }
+
+        this.previewCtx.putImageData(imageData, 0, 0);
+    }
+
+    // --- Code Editor ---
+
+    submitCode() {
+        const code = this.codeMirror.getValue();
+        if (!code.trim()) return;
+
+        const errorEl = document.getElementById('code-error');
+        errorEl.classList.add('hidden');
+        errorEl.textContent = '';
+
+        // Disable run button while submitting
+        const runBtn = document.getElementById('run-code-btn');
+        runBtn.disabled = true;
+        runBtn.textContent = '... Running';
+
+        this.sendMessage({ type: 'submit_code', code: code });
+    }
+
+    handleCodeResult(msg) {
+        const runBtn = document.getElementById('run-code-btn');
+        const stopBtn = document.getElementById('stop-code-btn');
+        runBtn.disabled = false;
+        runBtn.textContent = '\u25B6 Run';
+
+        const errorEl = document.getElementById('code-error');
+        if (msg.success) {
+            errorEl.classList.add('hidden');
+            stopBtn.disabled = false;
+            // Brief green flash on run button
+            runBtn.style.background = '#0a7e35';
+            setTimeout(() => { runBtn.style.background = ''; }, 600);
+        } else {
+            errorEl.textContent = msg.error;
+            errorEl.classList.remove('hidden');
+        }
+    }
+
+    stopCode() {
+        this.sendMessage({ type: 'stop_code' });
+        const stopBtn = document.getElementById('stop-code-btn');
+        stopBtn.disabled = true;
+    }
+
+    handleCodeTemplate(msg) {
+        if (!this.codeTemplateLoaded && this.codeMirror.getValue() === '') {
+            this.codeMirror.setValue(msg.code);
+            this.codeTemplateLoaded = true;
+        }
+    }
+
+    setupKeyboardShortcuts() {
+        document.addEventListener('keydown', (e) => {
+            if (this.mode !== 'paint') return;
+
+            const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+            if (isCtrlOrCmd && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                this.undo();
+            } else if (isCtrlOrCmd && e.key === 'z' && e.shiftKey) {
+                e.preventDefault();
+                this.redo();
+            } else if (isCtrlOrCmd && e.key === 'y') {
+                e.preventDefault();
+                this.redo();
+            }
+        });
     }
 }
 

@@ -4,16 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Aurora - LED Matrix</title>
-    <link rel="stylesheet" href="/static/style.css?v=3">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+    <link rel="stylesheet" href="/static/style.css?v=9">
 </head>
 <body>
     <div id="app">
         <header>
             <h1>Aurora</h1>
-            <span class="header-right">
-                <span id="audio-indicator" class="audio-indicator hidden" title="AirPlay audio active">&#9835;</span>
-                <span id="status" class="status">Connecting...</span>
-            </span>
+            <span id="status" class="status">Connecting...</span>
         </header>
 
         <main>
@@ -21,6 +20,7 @@
             <div id="mode-toggle" class="mode-toggle">
                 <button id="mode-paint" class="mode-btn active">Paint</button>
                 <button id="mode-pattern" class="mode-btn">Pattern</button>
+                <button id="mode-code" class="mode-btn">Code</button>
             </div>
 
             <!-- Canvas Container (visible in paint mode) -->
@@ -28,11 +28,29 @@
                 <canvas id="paint-canvas"></canvas>
             </div>
 
-            <!-- Pattern Info (visible in pattern mode) -->
-            <div id="pattern-info" class="pattern-info hidden">
-                <div class="pattern-display">
-                    <span class="pattern-label">Current Pattern:</span>
-                    <span id="current-pattern-name">--</span>
+            <!-- Content Area (visible in pattern and code modes) -->
+            <div id="content-area" class="hidden">
+                <!-- Code Editor (visible in code mode only) -->
+                <div id="code-container" class="hidden">
+                    <div class="code-header">
+                        <span class="code-sig">def draw(canvas, t, dt) &mdash; canvas: uint8[h,w,3]</span>
+                        <button id="run-code-btn" class="btn btn-run">&#9654; Run</button>
+                        <button id="stop-code-btn" class="btn btn-stop" disabled>&#9632; Stop</button>
+                    </div>
+                    <div class="code-body">
+                        <div class="code-editor-wrap">
+                            <textarea id="code-editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+                            <div id="code-error" class="code-error hidden"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview Canvas (shared between pattern and code modes) -->
+                <div id="preview-container">
+                    <canvas id="preview-canvas"></canvas>
+                    <div id="preview-label">
+                        <span id="current-pattern-name">--</span>
+                    </div>
                 </div>
             </div>
 
@@ -42,14 +60,20 @@
                     <div class="control-group">
                         <label>Color</label>
                         <div id="color-picker">
+                            <div class="color-swatch" data-color="0,0,0" style="background: #000; border-color: #555"></div>
                             <div class="color-swatch" data-color="255,255,255" style="background: #fff"></div>
+                            <div class="color-swatch" data-color="128,128,128" style="background: #808080"></div>
                             <div class="color-swatch" data-color="255,0,0" style="background: #f00"></div>
                             <div class="color-swatch" data-color="255,127,0" style="background: #ff7f00"></div>
                             <div class="color-swatch" data-color="255,255,0" style="background: #ff0"></div>
                             <div class="color-swatch" data-color="0,255,0" style="background: #0f0"></div>
+                            <div class="color-swatch" data-color="0,128,0" style="background: #008000"></div>
                             <div class="color-swatch" data-color="0,255,255" style="background: #0ff"></div>
                             <div class="color-swatch" data-color="0,0,255" style="background: #00f"></div>
+                            <div class="color-swatch" data-color="128,0,255" style="background: #8000ff"></div>
                             <div class="color-swatch" data-color="255,0,255" style="background: #f0f"></div>
+                            <div class="color-swatch" data-color="255,105,180" style="background: #ff69b4"></div>
+                            <div class="color-swatch" data-color="139,69,19" style="background: #8b4513"></div>
                         </div>
                     </div>
 
@@ -64,7 +88,19 @@
                     </div>
 
                     <div class="control-group">
-                        <button id="clear-btn" class="btn">Clear Canvas</button>
+                        <div class="btn-row">
+                            <button id="undo-btn" class="btn btn-icon" disabled title="Undo (Ctrl+Z)">↩ Undo</button>
+                            <button id="redo-btn" class="btn btn-icon" disabled title="Redo (Ctrl+Shift+Z)">↪ Redo</button>
+                            <button id="clear-btn" class="btn">Clear</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Code Controls -->
+                <div id="code-controls" class="hidden">
+                    <div class="control-group">
+                        <label>Palette: <span id="code-palette-label">0</span></label>
+                        <input type="range" id="code-palette-slider" min="0" max="199" value="0">
                     </div>
                 </div>
 
@@ -99,6 +135,8 @@
         </footer>
     </div>
 
-    <script src="/static/app.js?v=4"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+    <script src="/static/app.js?v=13"></script>
 </body>
 </html>

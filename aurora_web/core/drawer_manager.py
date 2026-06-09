@@ -1,17 +1,12 @@
 """Drawer manager for mode switching and drawer orchestration."""
 
-from __future__ import annotations
-
 import random
 import time
-from typing import TYPE_CHECKING
 import numpy as np
+from scipy.stats import entropy
 
 from aurora_web.core.palette import Palette
 from aurora_web.drawers.base import Drawer, DrawerContext
-
-if TYPE_CHECKING:
-    from aurora_web.inputs.audio_feed import AudioFeed
 
 
 class DrawerManager:
@@ -24,8 +19,10 @@ class DrawerManager:
     # Auto-rotation settings
     AUTO_ROTATE_INTERVAL = 60.0  # seconds between auto-rotations
     USER_INTERACTION_COOLDOWN = 15 * 60.0  # 15 minutes cooldown after user interaction
+    LOW_ENTROPY_THRESHOLD = 1.0  # bits - below this is considered "stuck"
+    LOW_ENTROPY_DURATION = 1.0  # seconds of low entropy before triggering rotation
 
-    def __init__(self, width: int, height: int, palette_size: int = 4096):
+    def __init__(self, width: int, height: int, palette_size: int = 4096, beat_feed=None):
         """Initialize drawer manager.
 
         Args:
@@ -36,6 +33,7 @@ class DrawerManager:
         self.width = width
         self.height = height
         self.palette_size = palette_size
+        self.beat_feed = beat_feed
 
         # Drawer registry
         self.drawers: dict[str, Drawer] = {}
@@ -57,18 +55,12 @@ class DrawerManager:
         self.last_rotation_time = time.time()
         self.last_user_interaction = 0.0  # No interaction yet
 
-        # Audio feed (optional)
-        self._audio_feed: AudioFeed | None = None
-
-        # Callback on drawer change: fn(old_name, new_name)
-        self._on_drawer_change: callable = None
+        # Entropy tracking for stuck pattern detection
+        self.low_entropy_start = None  # When low entropy was first detected
+        self.last_entropy = 0.0
 
         # Default black frame
         self.black_frame = np.zeros((height, width, 3), dtype=np.uint8)
-
-    def set_audio_feed(self, audio_feed: AudioFeed) -> None:
-        """Set the audio feed for providing audio data to drawers."""
-        self._audio_feed = audio_feed
 
     def register_drawer(self, drawer: Drawer) -> None:
         """Register a drawer.
@@ -116,11 +108,8 @@ class DrawerManager:
             True if drawer was found and set
         """
         if name in self.drawers:
-            old_name = self.active_drawer.name if self.active_drawer else None
             self.active_drawer = self.drawers[name]
             self.active_drawer.reset()
-            if self._on_drawer_change and old_name != name:
-                self._on_drawer_change(old_name, name)
             return True
         return False
 
@@ -166,10 +155,6 @@ class DrawerManager:
 
         elif self.mode == "pattern" and self.active_drawer:
             # Generate frame from drawer
-            audio_input = None
-            if self._audio_feed:
-                audio_input = self._audio_feed.get_input()
-
             ctx = DrawerContext(
                 width=self.width,
                 height=self.height,
@@ -177,14 +162,27 @@ class DrawerManager:
                 time=current_time - self.start_time,
                 delta_time=delta_time,
                 palette_size=self.palette_size,
-                audio=audio_input,
+                beat_onsets=self.beat_feed.get_onsets() if self.beat_feed else (),
             )
 
-            # Get palette indices from drawer
-            indices = self.active_drawer.draw(ctx)
+            # Get frame from drawer
+            result = self.active_drawer.draw(ctx)
 
-            # Convert to RGB
-            return self.palette.indices_to_rgb(indices)
+            # Drawer returns RGB directly (e.g. LiveCodeDrawer)
+            if getattr(self.active_drawer, "returns_rgb", False):
+                return result
+
+            # Otherwise result is palette indices — convert to RGB
+            self._update_entropy(result, current_time)
+            rgb = self.palette.indices_to_rgb(result)
+
+            # Restart with random settings if stuck (all one color for 2s)
+            if self.is_entropy_stuck():
+                print(f"[DrawerManager] Pattern stuck ({self.last_entropy:.2f} bits), randomizing settings")
+                self.low_entropy_start = None
+                self.active_drawer.randomize_settings()
+
+            return rgb
 
         else:
             return self.black_frame
@@ -201,6 +199,7 @@ class DrawerManager:
             "drawers": list(self.drawers.keys()),
             "auto_rotate_active": self.is_auto_rotate_active(),
             "palette_index": self.current_palette_index,
+            "entropy": round(self.last_entropy, 2),
         }
 
     def user_interacted(self) -> None:
@@ -217,18 +216,22 @@ class DrawerManager:
         return time_since_interaction >= self.USER_INTERACTION_COOLDOWN
 
     def randomize_all(self) -> dict:
-        """Randomize palette and color speed, keeping the current drawer.
+        """Randomize drawer, settings, and palette.
 
         Returns:
-            Dict with drawer name, palette index, and settings
+            Dict with new drawer name, palette index, and settings
         """
-        if not self.active_drawer:
+        # Pick a random drawer (excluding "Off")
+        available_drawers = [name for name in self.drawers.keys() if name != "Off"]
+        if not available_drawers:
             return {}
 
-        # Randomize color speed if the drawer supports it
-        if "colorSpeed" in self.active_drawer.settings_ranges:
-            min_val, max_val = self.active_drawer.settings_ranges["colorSpeed"]
-            self.active_drawer.settings["colorSpeed"] = random.randint(min_val, max_val)
+        drawer_name = random.choice(available_drawers)
+        self.set_active_drawer(drawer_name)
+
+        # Randomize the drawer's settings
+        if self.active_drawer:
+            self.active_drawer.randomize_settings()
 
         # Pick a random curated palette
         self.current_palette_index = random.randint(0, Palette.curated_count() - 1)
@@ -238,10 +241,45 @@ class DrawerManager:
         self.last_rotation_time = time.time()
 
         return {
-            "drawer": self.active_drawer.name,
+            "drawer": drawer_name,
             "palette_index": self.current_palette_index,
-            "settings": self.active_drawer.get_settings_info(),
+            "settings": self.active_drawer.get_settings_info() if self.active_drawer else {},
         }
+
+    def _update_entropy(self, indices: np.ndarray, current_time: float) -> None:
+        """Update entropy tracking for stuck pattern detection.
+
+        Args:
+            indices: Array of palette indices
+            current_time: Current timestamp
+        """
+        # Calculate entropy using histogram of index values
+        # Use 256 bins for efficiency (quantize indices)
+        flat = indices.flatten()
+        hist, _ = np.histogram(flat, bins=256, range=(0, self.palette_size))
+        hist = hist[hist > 0]  # Remove zero bins
+        if len(hist) > 0:
+            probs = hist / hist.sum()
+            self.last_entropy = entropy(probs, base=2)
+        else:
+            self.last_entropy = 0.0
+
+        # Track low entropy duration
+        if self.last_entropy < self.LOW_ENTROPY_THRESHOLD:
+            if self.low_entropy_start is None:
+                self.low_entropy_start = current_time
+        else:
+            self.low_entropy_start = None
+
+    def is_entropy_stuck(self) -> bool:
+        """Check if pattern has been stuck (low entropy) for too long.
+
+        Returns:
+            True if entropy has been low for longer than LOW_ENTROPY_DURATION
+        """
+        if self.low_entropy_start is None:
+            return False
+        return (time.time() - self.low_entropy_start) >= self.LOW_ENTROPY_DURATION
 
     def check_auto_rotate(self) -> dict | None:
         """Check if it's time to auto-rotate and do so if needed.
@@ -255,12 +293,10 @@ class DrawerManager:
         if self.mode != "pattern":
             return None
 
-        # Don't auto-rotate when AudioViz is active
-        if self.active_drawer and self.active_drawer.name == "AudioViz":
-            return None
-
+        # Check for time-based rotation
         time_since_rotation = time.time() - self.last_rotation_time
         if time_since_rotation >= self.AUTO_ROTATE_INTERVAL:
+            print(f"[DrawerManager] Auto-rotating after {self.AUTO_ROTATE_INTERVAL}s")
             return self.randomize_all()
 
         return None

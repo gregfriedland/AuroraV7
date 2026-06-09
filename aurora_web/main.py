@@ -17,7 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import numpy as np
 
-from aurora_web.core.serial_process import SerialOutputManager
+from aurora_web.core.find_beats import ExternalBeatFeed
+from aurora_web.core.output_factory import OutputManager, OutputManagerFactory
 from aurora_web.core.drawer_manager import DrawerManager
 from aurora_web.core.users import UserManager
 from aurora_web.core.palette import Palette
@@ -27,25 +28,103 @@ from aurora_web.drawers import (
     BzrDrawer,
     GrayScottDrawer,
     GinzburgLandauDrawer,
-    CameraDrawer,
-    AudioVizDrawer,
+    BeatBouncerDrawer,
+    VideoDrawer,
 )
-from aurora_web.drawers.custom import CustomDrawerLoader
-from aurora_web.inputs.video_feed import VideoFeed
-from aurora_web.inputs.audio_feed import AudioFeed
+import math
+
+from aurora_web.drawers.custom import CustomDrawer, CustomDrawerLoader, EXAMPLE_DRAWER_YAML
+from aurora_web.drawers.base import Drawer, DrawerContext
 from aurora_web.api import users_router, custom_drawers_router
 from aurora_web.api import users as users_api
 from aurora_web.api import custom_drawers as custom_drawers_api
 
 
+class LiveCodeDrawer(Drawer):
+    """Drawer that runs user code with a simple canvas-based API.
+
+    The user's draw function receives (canvas, t, dt) and writes RGB
+    values directly into the canvas array.
+    """
+
+    # Flag so DrawerManager knows to skip palette conversion
+    returns_rgb = True
+
+    def __init__(self, width: int, height: int, code: str):
+        super().__init__("LiveCode", width, height)
+        self.paused = False
+        self._last_frame = np.zeros((height, width, 3), dtype=np.uint8)
+        self._compile(code)
+
+    # Color constants available in user code
+    COLORS = {
+        "BLACK": np.array([0, 0, 0], dtype=np.uint8),
+        "WHITE": np.array([255, 255, 255], dtype=np.uint8),
+        "RED": np.array([255, 0, 0], dtype=np.uint8),
+        "GREEN": np.array([0, 255, 0], dtype=np.uint8),
+        "BLUE": np.array([0, 0, 255], dtype=np.uint8),
+        "YELLOW": np.array([255, 255, 0], dtype=np.uint8),
+        "CYAN": np.array([0, 255, 255], dtype=np.uint8),
+        "MAGENTA": np.array([255, 0, 255], dtype=np.uint8),
+        "ORANGE": np.array([255, 127, 0], dtype=np.uint8),
+        "PURPLE": np.array([128, 0, 255], dtype=np.uint8),
+        "PINK": np.array([255, 105, 180], dtype=np.uint8),
+        "GRAY": np.array([128, 128, 128], dtype=np.uint8),
+    }
+
+    def _compile(self, code: str) -> None:
+        namespace = {
+            "np": np,
+            "numpy": np,
+            "math": math,
+            **self.COLORS,
+            "__builtins__": {
+                "range": range,
+                "len": len,
+                "int": int,
+                "float": float,
+                "abs": abs,
+                "min": min,
+                "max": max,
+                "sum": sum,
+                "enumerate": enumerate,
+                "zip": zip,
+                "map": map,
+                "list": list,
+                "tuple": tuple,
+                "bool": bool,
+                "print": print,
+                "round": round,
+            },
+        }
+        exec(code, namespace)
+        if "draw" not in namespace:
+            raise ValueError("Code must define a 'draw(canvas, t, dt)' function")
+        self._draw_func = namespace["draw"]
+
+    def reset(self) -> None:
+        pass
+
+    def draw(self, ctx: DrawerContext) -> np.ndarray:
+        if self.paused:
+            return self._last_frame
+
+        canvas = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+        try:
+            self._draw_func(canvas, ctx.time, ctx.delta_time)
+        except Exception as e:
+            print(f"[LiveCode] Error in draw(): {e}")
+        self._last_frame = np.clip(canvas, 0, 255).astype(np.uint8)
+        return self._last_frame
+
+
 # Global state
 config: dict = {}
-serial_manager: SerialOutputManager | None = None
+serial_manager: OutputManager | None = None
 drawer_manager: DrawerManager | None = None
 user_manager: UserManager | None = None
 custom_drawer_loader: CustomDrawerLoader | None = None
-video_feed: VideoFeed | None = None
-audio_feed: AudioFeed | None = None
+beat_feed: ExternalBeatFeed | None = None
 render_task: asyncio.Task | None = None
 connected_clients: set[WebSocket] = set()
 
@@ -68,6 +147,7 @@ def load_config(config_path: str = "aurora_web/config.yaml") -> dict:
             "width": 32,
             "height": 18,
             "serial_device": "/dev/ttyACM0",
+            "output_driver": "serial",
             "fps": 40,
             "gamma": 2.5,
             "layout_left_to_right": True,
@@ -110,6 +190,10 @@ async def render_loop():
                     "settings": rotation_result.get("settings"),
                 }))
 
+            # Broadcast preview frame to clients every 4 frames (~10fps)
+            if local_frame_num % 4 == 0 and connected_clients and drawer_manager.mode == "pattern":
+                await broadcast_bytes(rgb.tobytes())
+
             # Broadcast status to clients every 30 frames
             if local_frame_num % 30 == 0 and connected_clients:
                 actual_fps = 1.0 / max(delta_time, 0.001)
@@ -119,7 +203,6 @@ async def render_loop():
                     "frame": local_frame_num,
                     "mode": drawer_manager.mode,
                     "drawer": drawer_manager.active_drawer.name if drawer_manager.active_drawer else None,
-                    "audio_active": audio_feed.is_active if audio_feed else False,
                 }
                 await broadcast(json.dumps(status))
 
@@ -133,7 +216,7 @@ async def render_loop():
 
 
 async def broadcast(message: str):
-    """Broadcast message to all connected WebSocket clients."""
+    """Broadcast text message to all connected WebSocket clients."""
     disconnected = set()
     for ws in list(connected_clients):  # Iterate over a copy
         try:
@@ -143,10 +226,21 @@ async def broadcast(message: str):
     connected_clients.difference_update(disconnected)
 
 
+async def broadcast_bytes(data: bytes):
+    """Broadcast binary data to all connected WebSocket clients."""
+    disconnected = set()
+    for ws in list(connected_clients):
+        try:
+            await ws.send_bytes(data)
+        except Exception:
+            disconnected.add(ws)
+    connected_clients.difference_update(disconnected)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
-    global config, serial_manager, drawer_manager, user_manager, custom_drawer_loader, render_task, audio_feed
+    global config, serial_manager, drawer_manager, user_manager, custom_drawer_loader, beat_feed, render_task
 
     # Load config
     config = load_config()
@@ -169,22 +263,23 @@ async def lifespan(app: FastAPI):
     custom_drawers_api.set_custom_drawer_loader(custom_drawer_loader)
     print(f"[Aurora Web] Custom drawers path: {custom_drawers_path}")
 
+    # Start external beat feed if configured
+    beats_cfg = config.get("inputs", {}).get("beats", {})
+    find_beats_cmd = (
+        config.get("findBeatsCmd")
+        or beats_cfg.get("findBeatsCmd")
+        or beats_cfg.get("find_beats_cmd")
+    )
+    if find_beats_cmd:
+        beat_feed = ExternalBeatFeed(
+            str(find_beats_cmd),
+            onset_duration=float(beats_cfg.get("onset_duration", 0.2)),
+        )
+        beat_feed.start()
+
     # Initialize drawer manager
-    drawer_manager = DrawerManager(width, height)
+    drawer_manager = DrawerManager(width, height, beat_feed=beat_feed)
     custom_drawers_api.set_drawer_manager(drawer_manager)
-
-    # Initialize video feed for camera drawer (not started until Camera is selected)
-    video_feed = VideoFeed(
-        width=640, height=480, fps=30, rotation=180,
-        enable_face_detection=True,
-    )
-
-    # Initialize audio feed (shairport-sync AirPlay pipe)
-    audio_feed = AudioFeed(
-        source="pipe:/tmp/shairport-audio",
-        channels=2,  # shairport-sync outputs stereo
-    )
-    await audio_feed.start()
 
     # Register built-in drawers
     drawer_manager.register_drawer(OffDrawer(width, height))
@@ -192,23 +287,9 @@ async def lifespan(app: FastAPI):
     drawer_manager.register_drawer(BzrDrawer(width, height))
     drawer_manager.register_drawer(GrayScottDrawer(width, height))
     drawer_manager.register_drawer(GinzburgLandauDrawer(width, height))
-    camera_drawer = CameraDrawer(width, height, video_feed=video_feed)
-    drawer_manager.register_drawer(camera_drawer)
-    drawer_manager.register_drawer(AudioVizDrawer(width, height))
-
-    # Start/stop video feed when switching to/from Camera drawer
-    def on_drawer_change(old_name, new_name):
-        loop = asyncio.get_event_loop()
-        if new_name == "Camera" and not video_feed.is_running:
-            loop.create_task(video_feed.start())
-            print("[Aurora Web] Started video feed for Camera drawer")
-        elif old_name == "Camera" and video_feed.is_running:
-            loop.create_task(video_feed.stop())
-            print("[Aurora Web] Stopped video feed (Camera deselected)")
-    drawer_manager._on_drawer_change = on_drawer_change
-
-    # Wire audio feed into drawer manager so all drawers get ctx.audio
-    drawer_manager.set_audio_feed(audio_feed)
+    if beat_feed:
+        drawer_manager.register_drawer(BeatBouncerDrawer(width, height))
+    drawer_manager.register_drawer(VideoDrawer(width, height))
 
     # Load and register custom drawers
     for drawer_info in custom_drawer_loader.list_drawers():
@@ -220,22 +301,13 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[Aurora Web] Failed to load custom drawer {drawer_info['path']}: {e}")
 
-    # Start with AlienBlob drawer in pattern mode (works without audio)
+    # Start with random pattern, settings, and palette (pattern mode)
     drawer_manager.set_mode("pattern")
-    drawer_manager.set_active_drawer("AlienBlob")
-    drawer_manager.current_palette_index = 110
-    drawer_manager.palette.set_curated(110)
-    print("[Aurora Web] Auto-started with: AlienBlob, palette #110")
+    result = drawer_manager.randomize_all()
+    print(f"[Aurora Web] Auto-started with: {result.get('drawer')}, palette #{result.get('palette_index')}")
 
-    # Start serial output process
-    serial_manager = SerialOutputManager(
-        device=matrix_cfg.get("serial_device", "/dev/ttyACM0"),
-        width=width,
-        height=height,
-        fps=matrix_cfg.get("fps", 40),
-        gamma=matrix_cfg.get("gamma", 2.5),
-        layout_ltr=matrix_cfg.get("layout_left_to_right", True),
-    )
+    # Start hardware output process
+    serial_manager = OutputManagerFactory.create(matrix_cfg)
     serial_manager.start()
 
     # Start render loop
@@ -254,12 +326,10 @@ async def lifespan(app: FastAPI):
             await render_task
         except asyncio.CancelledError:
             pass
-    if audio_feed:
-        await audio_feed.stop()
-    if video_feed:
-        await video_feed.stop()
     if serial_manager:
         serial_manager.stop()
+    if beat_feed:
+        beat_feed.stop()
 
 
 app = FastAPI(title="Aurora Web", lifespan=lifespan)
@@ -422,6 +492,58 @@ async def websocket_endpoint(websocket: WebSocket):
                             "type": "drawers_list",
                             "drawers": drawer_manager.get_drawer_list()
                         }))
+
+                elif msg_type == "submit_code":
+                    # Compile and activate user-submitted draw code
+                    code = msg.get("code", "")
+                    if drawer_manager and code:
+                        try:
+                            live_drawer = LiveCodeDrawer(width, height, code)
+                            drawer_manager.register_drawer(live_drawer)
+                            drawer_manager.set_active_drawer("LiveCode")
+                            drawer_manager.set_mode("pattern")
+                            drawer_manager.user_interacted()
+
+                            await websocket.send_text(json.dumps({
+                                "type": "code_result",
+                                "success": True,
+                            }))
+                            await broadcast(json.dumps({
+                                "type": "drawer_changed",
+                                "drawer": "LiveCode",
+                                "settings": live_drawer.get_settings_info(),
+                                "palette_index": drawer_manager.current_palette_index,
+                            }))
+                        except Exception as e:
+                            await websocket.send_text(json.dumps({
+                                "type": "code_result",
+                                "success": False,
+                                "error": str(e),
+                            }))
+
+                elif msg_type == "stop_code":
+                    # Pause live code — freeze on last rendered frame
+                    if drawer_manager and drawer_manager.active_drawer and drawer_manager.active_drawer.name == "LiveCode":
+                        drawer_manager.active_drawer.paused = True
+                        drawer_manager.user_interacted()
+
+                elif msg_type == "get_code_template":
+                    # Send example draw function code
+                    template_code = (
+                        "# Colors: BLACK, WHITE, RED, GREEN, BLUE,\n"
+                        "#   YELLOW, CYAN, MAGENTA, ORANGE, PURPLE,\n"
+                        "#   PINK, GRAY\n"
+                        "\n"
+                        "def draw(canvas, t, dt):\n"
+                        "    h, w, _ = canvas.shape\n"
+                        "    x = int(t * 5) % w\n"
+                        "    y = h // 2\n"
+                        "    canvas[y, x] = WHITE\n"
+                    )
+                    await websocket.send_text(json.dumps({
+                        "type": "code_template",
+                        "code": template_code,
+                    }))
 
     except WebSocketDisconnect:
         pass
