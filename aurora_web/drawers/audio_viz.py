@@ -52,13 +52,13 @@ class AudioVizDrawer(Drawer):
         indices = np.zeros((ctx.height, ctx.width), dtype=np.int32)
         audio = ctx.audio
 
-        if audio is None or not audio.is_active or audio.spectrum is None:
+        if audio is None or audio.spectrum is None:
             return indices
 
         ps = ctx.palette_size
 
-        # Trigger flash only on the downbeat (beat 0)
-        if audio.beat_onset and audio.beat_index == 0:
+        # Trigger flash on beat onset
+        if audio.beat_onset:
             self._beat_flash = 1.0
 
         # Smooth volume
@@ -67,7 +67,7 @@ class AudioVizDrawer(Drawer):
 
         self._draw_beat_circle(indices, ctx, audio, ps)
         self._draw_volume(indices, ctx, audio, ps * 3 // 5)
-        self._draw_onsets(indices, ctx, audio, ps * 4 // 5)
+        self._draw_onsets(indices, ctx, ps * 4 // 5)
 
         # Decay flash after drawing
         self._beat_flash *= 0.82
@@ -102,13 +102,16 @@ class AudioVizDrawer(Drawer):
 
     # ------------------------------------------------------------------
     # Onset grid  (row 17, 16 positions x 2 cols)
+    # Driven by the external 16th-note beat feed (ctx.beat_onsets).
     # ------------------------------------------------------------------
-    def _draw_onsets(self, indices, ctx, audio, color):
+    def _draw_onsets(self, indices, ctx, color):
         if self.ONSETS_ROW >= ctx.height:
             return
 
-        if audio.onset_grid is not None:
-            grid = audio.onset_grid
+        if ctx.beat_onsets:
+            grid = np.zeros(16, dtype=np.float32)
+            n = min(16, len(ctx.beat_onsets))
+            grid[:n] = [1.0 if onset else 0.0 for onset in ctx.beat_onsets[:n]]
             self._smoothed_onset_grid = np.maximum(
                 grid, self._smoothed_onset_grid * 0.9
             )

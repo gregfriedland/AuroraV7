@@ -28,9 +28,11 @@ from aurora_web.drawers import (
     BzrDrawer,
     GrayScottDrawer,
     GinzburgLandauDrawer,
+    AudioVizDrawer,
     BeatBouncerDrawer,
     CameraDrawer,
 )
+from aurora_web.inputs.audio_feed import AudioFeed
 from aurora_web.inputs.video_feed import VideoFeed
 import math
 
@@ -126,6 +128,7 @@ drawer_manager: DrawerManager | None = None
 user_manager: UserManager | None = None
 custom_drawer_loader: CustomDrawerLoader | None = None
 beat_feed: ExternalBeatFeed | None = None
+audio_feed: AudioFeed | None = None
 video_feed: VideoFeed | None = None
 render_task: asyncio.Task | None = None
 connected_clients: set[WebSocket] = set()
@@ -242,7 +245,7 @@ async def broadcast_bytes(data: bytes):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
-    global config, serial_manager, drawer_manager, user_manager, custom_drawer_loader, beat_feed, video_feed, render_task
+    global config, serial_manager, drawer_manager, user_manager, custom_drawer_loader, beat_feed, audio_feed, video_feed, render_task
 
     # Load config
     config = load_config()
@@ -279,8 +282,18 @@ async def lifespan(app: FastAPI):
         )
         beat_feed.start()
 
+    # Start audio feed if enabled
+    audio_cfg = config.get("inputs", {}).get("audio", {})
+    if audio_cfg.get("enabled", False):
+        try:
+            audio_feed = AudioFeed(source=audio_cfg.get("source", "pulse"))
+            await audio_feed.start()
+        except Exception as e:
+            print(f"[Aurora Web] Audio feed unavailable: {e}")
+            audio_feed = None
+
     # Initialize drawer manager
-    drawer_manager = DrawerManager(width, height, beat_feed=beat_feed)
+    drawer_manager = DrawerManager(width, height, beat_feed=beat_feed, audio_feed=audio_feed)
     custom_drawers_api.set_drawer_manager(drawer_manager)
 
     # Register built-in drawers
@@ -291,6 +304,8 @@ async def lifespan(app: FastAPI):
     drawer_manager.register_drawer(GinzburgLandauDrawer(width, height))
     if beat_feed:
         drawer_manager.register_drawer(BeatBouncerDrawer(width, height))
+    if audio_feed:
+        drawer_manager.register_drawer(AudioVizDrawer(width, height))
 
     # Camera drawer with lazy video feed (not started until Camera is selected)
     video_cfg = config.get("inputs", {}).get("video", {})
@@ -351,6 +366,8 @@ async def lifespan(app: FastAPI):
         serial_manager.stop()
     if beat_feed:
         beat_feed.stop()
+    if audio_feed and audio_feed.is_running:
+        await audio_feed.stop()
     if video_feed and video_feed.is_running:
         await video_feed.stop()
 

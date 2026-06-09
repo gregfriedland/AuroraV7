@@ -15,6 +15,7 @@ class DrawerContext:
     delta_time: float
     palette_size: int = 4096
     beat_onsets: tuple[bool, ...] = ()
+    audio: "AudioInput | None" = None  # aurora_web.inputs.audio_feed.AudioInput
 
 
 class Drawer(ABC):

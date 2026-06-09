@@ -22,7 +22,7 @@ class DrawerManager:
     LOW_ENTROPY_THRESHOLD = 1.0  # bits - below this is considered "stuck"
     LOW_ENTROPY_DURATION = 1.0  # seconds of low entropy before triggering rotation
 
-    def __init__(self, width: int, height: int, palette_size: int = 4096, beat_feed=None):
+    def __init__(self, width: int, height: int, palette_size: int = 4096, beat_feed=None, audio_feed=None):
         """Initialize drawer manager.
 
         Args:
@@ -34,6 +34,7 @@ class DrawerManager:
         self.height = height
         self.palette_size = palette_size
         self.beat_feed = beat_feed
+        self.audio_feed = audio_feed
 
         # Drawer registry
         self.drawers: dict[str, Drawer] = {}
@@ -169,6 +170,7 @@ class DrawerManager:
                 delta_time=delta_time,
                 palette_size=self.palette_size,
                 beat_onsets=self.beat_feed.get_onsets() if self.beat_feed else (),
+                audio=self.audio_feed.get_input() if self.audio_feed else None,
             )
 
             # Get frame from drawer

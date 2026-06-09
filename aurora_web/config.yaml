@@ -26,6 +26,9 @@ inputs:
   beats:
     findBeatsCmd: ""
     onset_duration: 0.2
+  audio:
+    enabled: false  # enables AudioViz drawer
+    source: "pulse"  # pulse, alsa:hw:0, or pipe:/path
   video:
     device: 0
     enable_face_detection: false
