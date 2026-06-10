@@ -364,6 +364,20 @@ footer {
     border: 2px solid #3a3a6a;
 }
 
+/* Pattern mode (no code editor): preview fills the whole content area */
+#content-area:not(.code-layout) #preview-container {
+    flex: 1;
+    width: 100%;
+}
+
+#content-area:not(.code-layout) #preview-canvas {
+    flex: 1;
+    min-height: 0;
+    align-self: stretch;
+    width: 100%;
+    object-fit: contain;
+}
+
 /* CodeMirror fills the editor wrap */
 .code-editor-wrap .CodeMirror {
     flex: 1;
