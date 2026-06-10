@@ -184,8 +184,9 @@ class DrawerManager:
             self._update_entropy(result, current_time)
             rgb = self.palette.indices_to_rgb(result)
 
-            # Restart with random settings if stuck (all one color for 2s)
-            if self.is_entropy_stuck():
+            # Restart with random settings if stuck (all one color for 2s).
+            # Audio-driven drawers are exempt: silence legitimately renders black.
+            if self.is_entropy_stuck() and not getattr(self.active_drawer, "reacts_to_audio", False):
                 print(f"[DrawerManager] Pattern stuck ({self.last_entropy:.2f} bits), randomizing settings")
                 self.low_entropy_start = None
                 self.active_drawer.randomize_settings()

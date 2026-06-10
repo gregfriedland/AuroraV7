@@ -293,6 +293,8 @@ async def lifespan(app: FastAPI):
                 latency_ms=float(audio_cfg.get("latency_ms", 60.0)),
             )
             await audio_feed.start()
+            if not audio_feed.is_running:
+                audio_feed = None
         except Exception as e:
             print(f"[Aurora Web] Audio feed unavailable: {e}")
             audio_feed = None

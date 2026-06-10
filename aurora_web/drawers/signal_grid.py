@@ -20,6 +20,9 @@ from aurora_web.drawers.base import Drawer, DrawerContext
 class SignalGridDrawer(Drawer):
     """Debug/reference grid showing all extracted music features."""
 
+    # Silence legitimately renders black; exempt from stuck detection
+    reacts_to_audio = True
+
     def __init__(self, width: int, height: int, palette_size: int = 4096):
         super().__init__("SignalGrid", width, height, palette_size)
         self.settings = {

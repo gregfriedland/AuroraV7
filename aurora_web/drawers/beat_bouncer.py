@@ -8,6 +8,9 @@ from aurora_web.drawers.base import Drawer, DrawerContext
 class BeatBouncerDrawer(Drawer):
     """Draw vertical onset bands from an external beat detector."""
 
+    # Silence legitimately renders black; exempt from stuck detection
+    reacts_to_audio = True
+
     def __init__(self, width: int, height: int, palette_size: int = 4096):
         super().__init__("BeatBouncer", width, height, palette_size)
         self.settings = {

@@ -13,6 +13,9 @@ class AudioVizDrawer(Drawer):
         Row 17:      Onset grid (16 positions x 2 cols, brightness = onset strength)
     """
 
+    # Silence legitimately renders black; exempt from stuck detection
+    reacts_to_audio = True
+
     VOLUME_ROW = 16
     ONSETS_ROW = 17
 
