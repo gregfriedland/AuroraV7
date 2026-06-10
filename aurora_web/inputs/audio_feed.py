@@ -35,7 +35,7 @@ class AudioFeed:
         sample_rate: int = 44100,
         buffer_size: int = 2048,
         num_bands: int = 16,
-        onset_threshold: float = 0.6,
+        onset_threshold: float = 0.12,
         min_beat_interval: float = 0.2,
     ):
         """Initialize audio feed.
@@ -220,7 +220,10 @@ class AudioFeed:
         now = time.time()
         time_since_last = now - self._last_beat_time
 
-        threshold = max(self.onset_threshold, self._bass_avg * 1.5)
+        # Spike relative to the running average, with an absolute floor so
+        # silence/noise doesn't trigger. Real-music bass rarely exceeds ~0.5
+        # of the normalized spectrum, so the floor must stay low.
+        threshold = max(self.onset_threshold, self._bass_avg * 1.4)
         is_beat = (
             bass_energy > threshold and
             time_since_last > self.min_beat_interval

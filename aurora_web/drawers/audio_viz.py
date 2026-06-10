@@ -61,9 +61,11 @@ class AudioVizDrawer(Drawer):
         if audio.beat_onset:
             self._beat_flash = 1.0
 
-        # Smooth volume
+        # Smooth volume, boosted by sensitivity (real-music RMS is ~0.02-0.3)
+        gain = 1.0 + self.settings["sensitivity"] / 10.0
+        level = min(1.0, audio.volume * gain)
         a = self._smooth_factor
-        self._smoothed_volume += a * (audio.volume - self._smoothed_volume)
+        self._smoothed_volume += a * (level - self._smoothed_volume)
 
         self._draw_beat_circle(indices, ctx, audio, ps)
         self._draw_volume(indices, ctx, audio, ps * 3 // 5)
