@@ -35,7 +35,7 @@ class AudioFeed:
         sample_rate: int = 44100,
         buffer_size: int = 2048,
         num_bands: int = 16,
-        onset_threshold: float = 0.12,
+        onset_threshold: float = 0.4,
         min_beat_interval: float = 0.2,
     ):
         """Initialize audio feed.
@@ -45,7 +45,8 @@ class AudioFeed:
             sample_rate: Audio sample rate
             buffer_size: FFT buffer size
             num_bands: Number of spectrum bands
-            onset_threshold: Threshold for beat detection (0-1)
+            onset_threshold: Fractional bass spike over its running average
+                that counts as a beat (0.4 = 40% above average)
             min_beat_interval: Minimum seconds between beats
         """
         self.source = source
@@ -67,6 +68,7 @@ class AudioFeed:
         self._beat_intervals: list[float] = []
         self._bass_history: list[float] = []
         self._bass_avg: float = 0.0
+        self._armed: bool = True  # re-arm gate: bass must dip before next beat
 
         # Process
         self._process: asyncio.subprocess.Process | None = None
@@ -202,32 +204,40 @@ class AudioFeed:
                 for i in range(self.num_bands)
             ], dtype=np.float32)
 
-        # Normalize spectrum
+        # Raw bass energy BEFORE normalization — per-chunk normalization makes
+        # bass relative to the loudest band, which decorrelates it from actual
+        # kick-drum energy (quiet hi-hat-only passages read as "high bass")
+        raw_bass = float(np.mean(self.spectrum[:3]))
+
+        # Normalize spectrum for display
         max_val = np.max(self.spectrum)
         if max_val > 0:
             self.spectrum = self.spectrum / max_val
 
-        # Beat detection using bass energy
-        bass_energy = float(np.mean(self.spectrum[:3])) if self.spectrum is not None else 0
-
-        # Maintain running average for adaptive threshold
-        self._bass_history.append(bass_energy)
-        if len(self._bass_history) > 43:  # ~1 second at 43 fps
+        # Maintain running average of raw bass for adaptive threshold
+        self._bass_history.append(raw_bass)
+        if len(self._bass_history) > 43:  # ~2 seconds of chunks
             self._bass_history.pop(0)
         self._bass_avg = np.mean(self._bass_history) if self._bass_history else 0
 
-        # Detect beat: bass energy spike above threshold and average
+        # Detect beat: raw bass spikes above its own recent average.
+        # The volume floor stops silence/noise from triggering.
         now = time.time()
         time_since_last = now - self._last_beat_time
 
-        # Spike relative to the running average, with an absolute floor so
-        # silence/noise doesn't trigger. Real-music bass rarely exceeds ~0.5
-        # of the normalized spectrum, so the floor must stay low.
-        threshold = max(self.onset_threshold, self._bass_avg * 1.4)
+        # Re-arm only after bass dips back near its average, so a sustained
+        # kick doesn't re-trigger every chunk
+        if raw_bass < self._bass_avg:
+            self._armed = True
+
         is_beat = (
-            bass_energy > threshold and
+            self._armed and
+            raw_bass > self._bass_avg * (1.0 + self.onset_threshold) and
+            self.volume > 0.01 and
             time_since_last > self.min_beat_interval
         )
+        if is_beat:
+            self._armed = False
 
         if is_beat:
             self.beat_onset = True

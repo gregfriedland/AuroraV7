@@ -286,7 +286,10 @@ async def lifespan(app: FastAPI):
     audio_cfg = config.get("inputs", {}).get("audio", {})
     if audio_cfg.get("enabled", False):
         try:
-            audio_feed = AudioFeed(source=audio_cfg.get("source", "pulse"))
+            audio_feed = AudioFeed(
+                source=audio_cfg.get("source", "pulse"),
+                onset_threshold=float(audio_cfg.get("onset_threshold", 0.4)),
+            )
             await audio_feed.start()
         except Exception as e:
             print(f"[Aurora Web] Audio feed unavailable: {e}")

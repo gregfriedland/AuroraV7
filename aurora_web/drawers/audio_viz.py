@@ -61,18 +61,19 @@ class AudioVizDrawer(Drawer):
         if audio.beat_onset:
             self._beat_flash = 1.0
 
-        # Smooth volume, boosted by sensitivity (real-music RMS is ~0.02-0.3)
+        # Smooth volume, boosted by sensitivity (real-music RMS is ~0.02-0.3).
+        # Time-based smoothing (~100ms) so behavior is frame-rate independent.
         gain = 1.0 + self.settings["sensitivity"] / 10.0
         level = min(1.0, audio.volume * gain)
-        a = self._smooth_factor
+        a = 1.0 - np.exp(-ctx.delta_time / 0.1)
         self._smoothed_volume += a * (level - self._smoothed_volume)
 
         self._draw_beat_circle(indices, ctx, audio, ps)
         self._draw_volume(indices, ctx, audio, ps * 3 // 5)
         self._draw_onsets(indices, ctx, ps * 4 // 5)
 
-        # Decay flash after drawing
-        self._beat_flash *= 0.82
+        # Decay flash after drawing (~125ms time constant, frame-rate independent)
+        self._beat_flash *= float(np.exp(-ctx.delta_time / 0.125))
 
         return indices
 

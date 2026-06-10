@@ -8,7 +8,7 @@ matrix:
   output_driver: "serial"  # serial or rgbmatrix
   serial_device: "/dev/ttyACM0"
   layout_left_to_right: true
-  fps: 40
+  fps: 60
   gamma: 2.5
   rgbmatrix:
     rows: 32
@@ -31,6 +31,7 @@ inputs:
   audio:
     enabled: true  # enables AudioViz drawer
     source: "mac:BlackHole 2ch"  # pulse, alsa:hw:0, mac:<device>, pipe:/path, file:/path
+    onset_threshold: 0.4  # bass spike over running average to count as beat (higher = fewer beats)
   video:
     device: 0
     enable_face_detection: false
