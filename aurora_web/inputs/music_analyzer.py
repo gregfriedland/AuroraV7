@@ -279,8 +279,10 @@ class PredictiveBeatOscillator:
     `beat_now` fires ON the beat instead of after detection latency.
     """
 
-    SLEW = 0.25             # fraction of phase error corrected per detection
-    MAX_STEP = 0.08         # max fraction of a period corrected at once
+    # Corrections apply once per BAR (not per detection), so the gains are
+    # higher than a per-detection PLL would use
+    SLEW = 0.6              # fraction of median phase error corrected per bar
+    MAX_STEP = 0.15         # max fraction of a period corrected at once
     BPM_BLEND = 0.15
 
     def __init__(self, latency_s: float = 0.06):
@@ -291,29 +293,49 @@ class PredictiveBeatOscillator:
         self._downbeat_offset = 0
         # accent histogram for the downbeat heuristic
         self._accents = np.zeros(4)
+        # Corrections are accumulated here and applied only at bar
+        # boundaries, so the beat stays metronome-steady within a measure.
+        self._pending_bpm: float | None = None
+        self._pending_errs: list[float] = []
 
     @property
     def period(self) -> float | None:
         return 60.0 / self.bpm if self.bpm else None
 
     def on_detection(self, t: float, bpm: float | None) -> None:
-        """Register a detected beat at capture time t (latency compensated)."""
+        """Register a detected beat at capture time t (latency compensated).
+
+        Detections do not move the schedule immediately — they accumulate
+        and are applied at the next bar boundary (see tick()).
+        """
         t -= self.latency_s
-        if bpm and bpm > 0:
-            self.bpm = bpm if self.bpm is None else (
-                self.bpm + self.BPM_BLEND * (bpm - self.bpm)
-            )
         if self.bpm is None:
+            # initial lock: take the first plausible tempo immediately
+            if bpm and bpm > 0:
+                self.bpm = bpm
+                self._pending_bpm = bpm
+                self._next_beat = t + self.period
             return
-        period = self.period
-        if self._next_beat is None:
-            self._next_beat = t + period
-            return
+        if bpm and bpm > 0:
+            target = self._pending_bpm if self._pending_bpm is not None else self.bpm
+            self._pending_bpm = target + self.BPM_BLEND * (bpm - target)
         # phase error to the NEAREST scheduled beat
+        period = self.period
         err = t - self._next_beat
         err -= round(err / period) * period
-        step = float(np.clip(err * self.SLEW, -self.MAX_STEP * period, self.MAX_STEP * period))
-        self._next_beat += step
+        self._pending_errs.append(err)
+
+    def _apply_bar_correction(self) -> None:
+        """Apply accumulated tempo/phase corrections (called at bar start)."""
+        period = self.period
+        if self._pending_bpm is not None:
+            self.bpm = self._pending_bpm
+        if self._pending_errs:
+            err = float(np.median(self._pending_errs))
+            step = float(np.clip(err * self.SLEW,
+                                 -self.MAX_STEP * period, self.MAX_STEP * period))
+            self._next_beat += step
+            self._pending_errs = []
 
     def on_kick(self, strength: float) -> None:
         """Feed kick accents into the downbeat histogram."""
@@ -330,9 +352,12 @@ class PredictiveBeatOscillator:
         beat_now = False
         while now >= self._next_beat:
             beat_now = True
-            self._next_beat += period
             self._beat_index = (self._beat_index + 1) % 4
-        phase = float(np.clip(1.0 - (self._next_beat - now) / period, 0.0, 1.0))
+            if (self._beat_index - self._downbeat_offset) % 4 == 0:
+                # bar boundary: the only place tempo/phase may change
+                self._apply_bar_correction()
+            self._next_beat += self.period
+        phase = float(np.clip(1.0 - (self._next_beat - now) / self.period, 0.0, 1.0))
         beat_in_bar = (self._beat_index - self._downbeat_offset) % 4 + 1
         downbeat = beat_now and beat_in_bar == 1
         return beat_now, phase, beat_in_bar, downbeat
@@ -364,6 +389,7 @@ class _InternalTempoBackend:
         self._maxlen = int(self.BUF_S / self._hop_dt)
         self._count = 0
         self._bpm: float | None = None
+        self._bpm_history: list[float] = []
 
     def add_onset_strength(self, odf: float) -> None:
         self._env.append(odf)
@@ -381,8 +407,22 @@ class _InternalTempoBackend:
                 lags = np.arange(lag_min, lag_max)
                 # mild preference for ~120 BPM
                 prior = np.exp(-0.5 * ((60.0 / (lags * self._hop_dt) - 120) / 80) ** 2)
-                best = lags[int(np.argmax(ac[lag_min:lag_max] * prior))]
-                self._bpm = 60.0 / (best * self._hop_dt)
+                best = int(lags[int(np.argmax(ac[lag_min:lag_max] * prior))])
+                # parabolic interpolation for sub-hop lag precision: whole-hop
+                # quantization (~2.3% at 120 BPM) otherwise forces a visible
+                # phase repair every bar
+                lag = float(best)
+                if 1 <= best < len(ac) - 1:
+                    a, b_, c_ = ac[best - 1], ac[best], ac[best + 1]
+                    denom = a - 2 * b_ + c_
+                    if abs(denom) > 1e-12:
+                        lag = best + float(np.clip(0.5 * (a - c_) / denom, -0.5, 0.5))
+                # median over recent estimates: individual autocorrelations
+                # oscillate between adjacent peaks as the window slides
+                self._bpm_history.append(60.0 / (lag * self._hop_dt))
+                if len(self._bpm_history) > 9:
+                    self._bpm_history.pop(0)
+                self._bpm = float(np.median(self._bpm_history))
         return self._bpm, (now if kick_fired else None)
 
 
@@ -581,10 +621,13 @@ class MusicAnalyzer:
         self._external_active = True
 
     def _fix_tempo_octave(self) -> None:
-        """Correct half-tempo octave errors using the kick-onset rate.
+        """Refine tempo using the kick-onset rate.
 
-        Beat trackers (aubio especially) often lock to half the true tempo.
-        If kicks consistently arrive at twice the tracked rate, double it.
+        Kick inter-onset intervals are the most direct tempo evidence:
+        - if the tracked period is ~2x the kick spacing, the tracker locked
+          to half tempo: double it
+        - if it is within ~15% of the kick spacing, snap to the kick spacing
+          (autocorrelation backends quantize/oscillate; kicks don't)
         """
         osc = self.oscillator
         if osc.bpm is None or len(self._kick_times) < 6:
