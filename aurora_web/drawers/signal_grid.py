@@ -3,13 +3,12 @@
 Layout on a 32x18 matrix (rows scale with matrix height):
 
     rows 0-5   band energy columns (16 bands x 2 px, GEQ-style bars)
-    rows 7-8   drum onsets: kick | snare | hat cells, flash + decay
-    rows 10-11 pitch: lit column = f0 (log scale), vibrato wobbles it,
-               note_on flashes it
-    rows 13-14 beat: phase sweep (left) + beat-in-bar boxes (right,
-               downbeat in a distinct color)
-    row  16    loudness bar (K-weighted, AGC'd)
-    row  17    expressive cells: vibrato/tremolo/sustain/bend/noisiness/brightness
+    rows 7-8   band onsets: kick | snare | hat cells, flash + decay
+    rows 10-12 note box: appears at the note's frequency on onset, holds
+               while sustained, slides/wobbles in x with bends and vibrato
+               (live f0, deviation magnified), fades on release
+    rows 14-15 beat-in-bar boxes (current beat lit, downbeat distinct)
+    row  17    loudness bar (K-weighted, AGC'd)
 """
 
 import numpy as np
@@ -32,22 +31,24 @@ class SignalGridDrawer(Drawer):
             "decay": (10, 100),
         }
         self._onset_flash = {"kick": 0.0, "snare": 0.0, "hat": 0.0}
-        self._pitch_flash = 0.0
         self._beat_flash = 0.0
+        # note-box state: the box lives as long as the note does
+        self._note_level = 0.0       # brightness; holds while sustained
+        self._note_base_cents = 0.0  # pitch at note onset (anchors x position)
+        self._note_x = 0.0
 
         # row layout, scaled to matrix height (designed for 18)
         h = height
         self._bands_rows = (0, max(1, h * 6 // 18))               # 0-5
         self._onset_rows = (h * 7 // 18, h * 9 // 18)             # 7-8
-        self._pitch_rows = (h * 10 // 18, h * 12 // 18)           # 10-11
-        self._beat_rows = (h * 13 // 18, h * 15 // 18)            # 13-14
-        self._loud_row = min(h - 2, h * 16 // 18)                 # 16
-        self._expr_row = min(h - 1, h * 17 // 18)                 # 17
+        self._note_rows = (h * 10 // 18, h * 13 // 18)            # 10-12
+        self._beat_rows = (h * 14 // 18, h * 16 // 18)            # 14-15
+        self._loud_row = min(h - 1, h * 17 // 18)                 # 17
 
     def reset(self) -> None:
         self._onset_flash = {"kick": 0.0, "snare": 0.0, "hat": 0.0}
-        self._pitch_flash = 0.0
         self._beat_flash = 0.0
+        self._note_level = 0.0
 
     # Palette color slots (fractions of palette size, like AudioViz)
     def _colors(self, ps: int) -> dict:
@@ -56,12 +57,10 @@ class SignalGridDrawer(Drawer):
             "kick": ps * 1 // 5,
             "snare": ps * 2 // 5,
             "hat": ps * 3 // 5,
-            "pitch": ps * 4 // 5,
-            "beat": ps * 1 // 5,
+            "note": ps * 4 // 5,
             "bar": ps * 3 // 5,
             "downbeat": ps - 1,
             "loud": ps * 3 // 5,
-            "expr": ps * 4 // 5,
         }
 
     @staticmethod
@@ -79,10 +78,9 @@ class SignalGridDrawer(Drawer):
 
         self._draw_bands(indices, ctx, audio, c)
         self._draw_onsets(indices, ctx, audio, c, fade)
-        self._draw_pitch(indices, ctx, audio, c, fade)
+        self._draw_note(indices, ctx, audio, c, fade)
         self._draw_beat(indices, ctx, audio, c, fade)
         self._draw_loudness(indices, ctx, audio, c)
-        self._draw_expressive(indices, ctx, audio, c)
         return indices
 
     def _draw_bands(self, indices, ctx, audio, c):
@@ -123,26 +121,56 @@ class SignalGridDrawer(Drawer):
                 indices[r0:r1, x0:x1] = self._scaled(c[name], level)
             self._onset_flash[name] *= fade
 
-    def _draw_pitch(self, indices, ctx, audio, c, fade):
-        r0, r1 = self._pitch_rows
+    # cents of x movement per pixel for in-note pitch deviation. True scale
+    # (one octave = ~6.4 px) would make a 50-cent vibrato invisible (~0.3 px),
+    # so deviation from the note's starting pitch is magnified.
+    CENTS_PER_PIXEL = 18.0
+
+    def _draw_note(self, indices, ctx, audio, c, fade):
+        """One box per note, alive for the note's whole life.
+
+        Onset: box appears at the note's frequency (log-x). Sustain: box
+        holds. Bend/vibrato: the box slides/wobbles in x, tracking the live
+        f0 (deviation from the onset pitch, magnified to be visible).
+        Release/short note: box fades at the decay rate.
+        """
+        r0, r1 = self._note_rows
         f0 = getattr(audio, "f0_hz", 0.0)
         conf = getattr(audio, "pitch_confidence", 0.0)
-        if getattr(audio, "note_on", False):
-            self._pitch_flash = 1.0
-        if f0 and f0 > 0 and conf > 0.3:
-            # map 55 Hz (A1) .. 1760 Hz (A6) -> 0 .. width, log scale
-            col = int(np.clip(np.log2(f0 / 55.0) / 5.0, 0.0, 1.0) * (ctx.width - 1))
-            # vibrato wobbles the dot at its detected rate
-            vib = getattr(audio, "vibrato_amount", 0.0)
-            if vib > 0.1:
-                rate = max(getattr(audio, "vibrato_rate", 5.0), 0.5)
-                col += int(round(np.sin(2 * np.pi * rate * ctx.time) * 2 * vib))
-                col = int(np.clip(col, 0, ctx.width - 1))
-            brightness = float(np.clip(conf, 0.3, 1.0))
-            brightness = min(1.0, brightness + self._pitch_flash)
+        volume = getattr(audio, "volume", 0.0)
+        voiced = bool(f0 and f0 > 0 and conf > 0.3 and volume > 0.005)
+
+        if voiced:
+            cents = 1200.0 * np.log2(f0 / 55.0)
+            new_note = (
+                getattr(audio, "note_on", False)
+                or self._note_level < 0.05
+                or abs(cents - self._note_base_cents) > 300  # jumped >3 semitones
+            )
+            if new_note:
+                self._note_base_cents = cents
+                # base x from absolute pitch: 55 Hz (A1) .. 1760 Hz (A6), log
+                self._note_x = float(np.clip(cents / 6000.0, 0.0, 1.0) * (ctx.width - 1))
+                self._note_level = 1.0
+            else:
+                # the box follows the live pitch: bends slide it, vibrato
+                # wobbles it around the onset position
+                deviation = cents - self._note_base_cents
+                base_x = float(np.clip(self._note_base_cents / 6000.0, 0.0, 1.0) * (ctx.width - 1))
+                self._note_x = base_x + deviation / self.CENTS_PER_PIXEL
+                # held note: brightness tracks the envelope, never below a
+                # visible floor while the note sounds
+                sustain = getattr(audio, "sustain_level", None)
+                level = sustain if sustain is not None else min(1.0, volume * 6)
+                self._note_level = max(0.35, float(level))
+        else:
+            # note ended (or was short): fade out in place
+            self._note_level *= fade
+
+        if self._note_level > 0.03:
+            col = int(np.clip(self._note_x, 0, ctx.width - 1))
             x0, x1 = max(0, col - 1), min(ctx.width, col + 2)
-            indices[r0:r1, x0:x1] = self._scaled(c["pitch"], brightness)
-        self._pitch_flash *= fade
+            indices[r0:r1, x0:x1] = self._scaled(c["note"], self._note_level)
 
     def _draw_beat(self, indices, ctx, audio, c, fade):
         """Four full-width beat-in-bar boxes; current beat lit, downbeat distinct."""
@@ -172,22 +200,3 @@ class SignalGridDrawer(Drawer):
         fill = int(np.clip(loud, 0.0, 1.0) * ctx.width)
         if fill > 0:
             indices[row, :fill] = self._scaled(c["loud"], 0.4 + 0.6 * loud)
-
-    def _draw_expressive(self, indices, ctx, audio, c):
-        row = self._expr_row
-        cells = [
-            getattr(audio, "vibrato_amount", 0.0),
-            getattr(audio, "tremolo_amount", 0.0),
-            getattr(audio, "sustain_level", 0.0),
-            abs(getattr(audio, "bend_amount", 0.0)),
-            getattr(audio, "noisiness", 0.0),
-            getattr(audio, "brightness", 0.0),
-        ]
-        cell_w = max(1, ctx.width // len(cells))
-        for i, level in enumerate(cells):
-            level = float(np.clip(level, 0.0, 1.0))
-            if level < 0.05:
-                continue
-            x0 = i * cell_w
-            x1 = ctx.width if i == len(cells) - 1 else x0 + cell_w - 1
-            indices[row, x0:x1] = self._scaled(c["expr"], level)

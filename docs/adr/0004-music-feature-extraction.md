@@ -179,10 +179,9 @@ PCM (1024 samples ≈ 23 ms) ─→ rfft once
 |------|---------|---------------|
 | 0–5 | Band energy | 16 GEQ columns, 40 Hz (left) → 16 kHz (right). Height = per-band auto-gained energy, so quiet bands get full visual range and the display is volume-independent. Fast attack / slow release. |
 | 7–8 | Drum onsets | Three cells — kick \| snare \| hat. Flash on a spectral-flux onset in that band, brightness = hit strength, decay rate set by the `decay` setting. *Reactive*: lights when the hit happened. |
-| 10–11 | Pitch | Dot at the dominant note's frequency, log scale A1 (55 Hz) → A6 (1760 Hz), ~6.4 px per octave. Brightness = confidence; note-on flashes it; detected vibrato physically oscillates the dot at the measured rate. |
-| 13–14 | Beat / bar | *Predictive*: four full-width boxes = beats 1–4 of the bar. The current beat lights when the oscillator's scheduled beat lands (on the beat, not after detection) and fades; downbeat (beat 1) uses the brightest palette slot. |
-| 16 | Loudness | K-weighted loudness (BS.1770 weighting, 150 ms window — shortened from the 400 ms broadcast standard to avoid visible display lag), auto-gained 0–1. |
-| 17 | Expressive | Six cells, brightness = amount: vibrato (4–8 Hz pitch wobble), tremolo (4–10 Hz amplitude wobble), sustain (ADSR envelope level), bend (sustained pitch glide), noisiness (spectral flatness), brightness (spectral centroid). |
+| 10–12 | Note box | One box per note, alive for the note's whole life. Onset: appears at the note's frequency (log x, A1 55 Hz → A6 1760 Hz). Sustain: holds, brightness tracking the envelope. Bend/vibrato: slides/wobbles in x following the live f0 (deviation from the onset pitch, magnified ~18 cents/px so a 50-cent vibrato is visible). Release or short note: fades at the decay rate. Expression is shown *in the note's behavior*, not as separate indicators. |
+| 14–15 | Beat / bar | *Predictive*: four full-width boxes = beats 1–4 of the bar. The current beat lights when the oscillator's scheduled beat lands (on the beat, not after detection) and fades; downbeat (beat 1) uses the brightest palette slot. |
+| 17 | Loudness | K-weighted loudness (BS.1770 weighting, 150 ms window — shortened from the 400 ms broadcast standard to avoid visible display lag), auto-gained 0–1. |
 
 Reading tip: the onset row shows what *just happened*; the beat row shows
 what is *about to happen*. Disagreement between them is usually syncopation,

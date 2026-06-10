@@ -52,14 +52,12 @@ class TestSignalGrid:
         assert np.count_nonzero(frame[0:6]) > 10
         # onset row (rows 7-8)
         assert np.count_nonzero(frame[7:9]) > 10
-        # pitch row (rows 10-11)
-        assert np.count_nonzero(frame[10:12]) > 0
-        # beat row (rows 13-15)
-        assert np.count_nonzero(frame[13:15]) > 10
+        # note box (rows 10-12)
+        assert np.count_nonzero(frame[10:13]) > 0
+        # beat row (rows 14-15)
+        assert np.count_nonzero(frame[14:16]) > 10
         # loudness row
-        assert np.count_nonzero(frame[16]) > 10
-        # expressive row
-        assert np.count_nonzero(frame[17]) > 5
+        assert np.count_nonzero(frame[17]) > 10
 
     def test_onset_flash_decays(self):
         d = SignalGridDrawer(W, H)
@@ -81,22 +79,48 @@ class TestSignalGrid:
         f2.beat_in_bar = 2
         f2.downbeat_now = False
         frame_2 = d2.draw(make_ctx(audio=f2))
-        box_region = frame_down[13:15, :8]
-        box_region_2 = frame_2[13:15, :8]
+        box_region = frame_down[14:16, :8]
+        box_region_2 = frame_2[14:16, :8]
         assert box_region.max() > box_region_2.max(), \
             "downbeat box should use the brightest palette slot"
 
-    def test_pitch_position_scales_with_f0(self):
+    def test_note_position_scales_with_f0(self):
         cols = []
         for f0 in (110.0, 880.0):
             d = SignalGridDrawer(W, H)
-            f = MusicFeatures(f0_hz=f0, pitch_confidence=0.9,
+            f = MusicFeatures(f0_hz=f0, pitch_confidence=0.9, volume=0.3,
                               bands=np.zeros(16, dtype=np.float32))
             frame = d.draw(make_ctx(audio=f))
             lit = np.nonzero(frame[10])[0]
-            assert len(lit) > 0, f"pitch row dark for f0={f0}"
+            assert len(lit) > 0, f"note row dark for f0={f0}"
             cols.append(int(np.mean(lit)))
         assert cols[1] > cols[0], "higher pitch should light further right"
+
+    def test_note_box_holds_while_sustained_then_fades(self):
+        d = SignalGridDrawer(W, H)
+        held = MusicFeatures(f0_hz=220.0, pitch_confidence=0.9, volume=0.3,
+                             sustain_level=0.8,
+                             bands=np.zeros(16, dtype=np.float32))
+        for _ in range(120):  # 2 s of sustain at 60 fps
+            frame = d.draw(make_ctx(audio=held))
+        assert np.count_nonzero(frame[10:13]) > 0, "box should hold during sustain"
+        silent = MusicFeatures(bands=np.zeros(16, dtype=np.float32))
+        for _ in range(120):
+            frame = d.draw(make_ctx(audio=silent))
+        assert np.count_nonzero(frame[10:13]) == 0, "box should fade after release"
+
+    def test_note_box_moves_with_bend(self):
+        d = SignalGridDrawer(W, H)
+        def feats(f0):
+            return MusicFeatures(f0_hz=f0, pitch_confidence=0.9, volume=0.3,
+                                 sustain_level=0.8,
+                                 bands=np.zeros(16, dtype=np.float32))
+        d.draw(make_ctx(audio=feats(220.0)))         # note onset at 220 Hz
+        x_start = int(np.mean(np.nonzero(d.draw(make_ctx(audio=feats(220.0)))[10])[0]))
+        # bend up a whole step (+200 cents) without a new note_on
+        frame = d.draw(make_ctx(audio=feats(220.0 * 2 ** (200 / 1200))))
+        x_bent = int(np.mean(np.nonzero(frame[10])[0]))
+        assert x_bent > x_start, "bend should slide the box right"
 
     def test_works_with_old_audioinput(self):
         from aurora_web.inputs.audio_feed import AudioInput
