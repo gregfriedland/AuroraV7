@@ -10,6 +10,7 @@ from aurora_web.drawers.audio_viz import AudioVizDrawer
 from aurora_web.drawers.beat_bouncer import BeatBouncerDrawer
 from aurora_web.drawers.camera import CameraDrawer
 from aurora_web.drawers.custom import CustomDrawer, CustomDrawerLoader
+from aurora_web.drawers.signal_grid import SignalGridDrawer
 
 __all__ = [
     "Drawer",
@@ -24,4 +25,5 @@ __all__ = [
     "CameraDrawer",
     "CustomDrawer",
     "CustomDrawerLoader",
+    "SignalGridDrawer",
 ]

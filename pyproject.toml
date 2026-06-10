@@ -17,6 +17,7 @@ dependencies = [
     "pyserial>=3.5",
     "opencv-python-headless>=4.8.0",
     "pillow>=10.0.0",
+    "aubio-ledfx>=0.4.11",  # maintained aubio fork; plain aubio fails on py3.14
 ]
 
 [project.optional-dependencies]
@@ -24,6 +25,12 @@ dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
     "httpx2>=2.0",  # required by starlette TestClient
+]
+beatnet = [
+    # Real-time beat+downbeat tracking (ADR 0004). madmom needs Cython and
+    # setuptools preinstalled and --no-build-isolation to build from sdist.
+    "BeatNet>=1.1.0",
+    "torch>=2.0",
 ]
 
 [tool.setuptools.packages.find]

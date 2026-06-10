@@ -31,6 +31,7 @@ from aurora_web.drawers import (
     AudioVizDrawer,
     BeatBouncerDrawer,
     CameraDrawer,
+    SignalGridDrawer,
 )
 from aurora_web.inputs.audio_feed import AudioFeed
 from aurora_web.inputs.video_feed import VideoFeed
@@ -288,7 +289,8 @@ async def lifespan(app: FastAPI):
         try:
             audio_feed = AudioFeed(
                 source=audio_cfg.get("source", "pulse"),
-                onset_threshold=float(audio_cfg.get("onset_threshold", 0.4)),
+                beat_tracker=str(audio_cfg.get("beat_tracker", "internal")),
+                latency_ms=float(audio_cfg.get("latency_ms", 60.0)),
             )
             await audio_feed.start()
         except Exception as e:
@@ -309,6 +311,7 @@ async def lifespan(app: FastAPI):
         drawer_manager.register_drawer(BeatBouncerDrawer(width, height))
     if audio_feed:
         drawer_manager.register_drawer(AudioVizDrawer(width, height))
+        drawer_manager.register_drawer(SignalGridDrawer(width, height))
 
     # Camera drawer with lazy video feed (not started until Camera is selected)
     video_cfg = config.get("inputs", {}).get("video", {})

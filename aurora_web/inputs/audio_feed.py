@@ -1,12 +1,11 @@
-"""Audio feed for beat detection and spectrum analysis."""
+"""Audio feed: capture process management + MusicAnalyzer pipeline."""
 
 import numpy as np
 import asyncio
-import subprocess
 import time
-from dataclasses import dataclass, field
-from typing import Optional, List
-import struct
+from dataclasses import dataclass
+
+from aurora_web.inputs.music_analyzer import MusicAnalyzer, MusicFeatures
 
 
 @dataclass
@@ -33,42 +32,43 @@ class AudioFeed:
         self,
         source: str = "pulse",
         sample_rate: int = 44100,
-        buffer_size: int = 2048,
-        num_bands: int = 16,
-        onset_threshold: float = 0.4,
-        min_beat_interval: float = 0.2,
+        buffer_size: int = 1024,
+        beat_tracker: str = "internal",
+        latency_ms: float = 60.0,
     ):
         """Initialize audio feed.
 
         Args:
-            source: Audio source - "pulse", "alsa:hw:0", or "file:/path"
+            source: Audio source - "pulse", "alsa:hw:0", "mac:<device>",
+                "pipe:/path", or "file:/path"
             sample_rate: Audio sample rate
-            buffer_size: FFT buffer size
-            num_bands: Number of spectrum bands
-            onset_threshold: Fractional bass spike over its running average
-                that counts as a beat (0.4 = 40% above average)
-            min_beat_interval: Minimum seconds between beats
+            buffer_size: Samples per analysis hop (~23 ms at 1024/44100)
+            beat_tracker: "beatnet", "aubio", or "internal" (see ADR 0004)
+            latency_ms: Capture-to-display latency compensated by the
+                predictive beat oscillator
         """
         self.source = source
         self.sample_rate = sample_rate
         self.buffer_size = buffer_size
-        self.num_bands = num_bands
-        self.onset_threshold = onset_threshold
-        self.min_beat_interval = min_beat_interval
 
-        # State
+        self.analyzer = MusicAnalyzer(
+            sample_rate=sample_rate,
+            hop_size=buffer_size,
+            beat_tracker=beat_tracker,
+            latency_ms=latency_ms,
+        )
+
+        # Optional BeatNet subprocess (started in start(), ADR 0004)
+        self._beatnet = None
+        self._beatnet_requested = beat_tracker == "beatnet"
+        self._ext_beat_times: list[float] = []
+
+        # Legacy mirrors of the latest features (kept for old tests/drawers)
         self.bpm: float | None = None
         self.beat_onset: bool = False
         self.beat_phase: float = 0.0
         self.spectrum: np.ndarray | None = None
         self.volume: float = 0.0
-
-        # Beat detection state
-        self._last_beat_time: float = 0.0
-        self._beat_intervals: list[float] = []
-        self._bass_history: list[float] = []
-        self._bass_avg: float = 0.0
-        self._armed: bool = True  # re-arm gate: bass must dip before next beat
 
         # Process
         self._process: asyncio.subprocess.Process | None = None
@@ -108,8 +108,22 @@ class AudioFeed:
                 "-",
             ]
         elif self.source.startswith("mac:"):
-            # macOS AVFoundation capture via ffmpeg (e.g. "mac:BlackHole 2ch")
+            # macOS capture (e.g. "mac:BlackHole 2ch"). Prefer sox/coreaudio:
+            # ffmpeg's avfoundation input silently drops ~20% of audio
+            # packets, which corrupts all tempo estimation.
             device = self.source[4:]
+            import shutil
+            if shutil.which("sox"):
+                return [
+                    "sox", "-q",
+                    "-t", "coreaudio", device,
+                    "-t", "raw",
+                    "-r", str(self.sample_rate),
+                    "-e", "signed", "-b", "16", "-c", "1",
+                    "-",
+                ]
+            print("[AudioFeed] WARNING: sox not found; falling back to ffmpeg "
+                  "avfoundation, which drops audio packets (brew install sox)")
             return [
                 "ffmpeg",
                 "-hide_banner",
@@ -143,6 +157,14 @@ class AudioFeed:
             )
             self._task = asyncio.create_task(self._read_loop())
             print(f"[AudioFeed] Started with source: {self.source}")
+            if self._beatnet_requested:
+                try:
+                    from aurora_web.core.beatnet_process import BeatNetManager
+                    self._beatnet = BeatNetManager(self.sample_rate)
+                    self._beatnet.start()
+                except Exception as e:
+                    print(f"[AudioFeed] BeatNet unavailable: {e}")
+                    self._beatnet = None
         except FileNotFoundError as e:
             print(f"[AudioFeed] Failed to start - command not found: {cmd[0]}")
             self._running = False
@@ -178,124 +200,41 @@ class AudioFeed:
             print(f"[AudioFeed] Read error: {e}")
 
     def _analyze(self, samples: np.ndarray) -> None:
-        """Compute spectrum and detect beats.
+        """Run one hop through the MusicAnalyzer pipeline."""
+        if self._beatnet is not None:
+            self._beatnet.feed(samples)
+            for wall_t, is_downbeat in self._beatnet.poll():
+                self._ext_beat_times.append(wall_t)
+                if len(self._ext_beat_times) > 8:
+                    self._ext_beat_times.pop(0)
+                bpm = None
+                if len(self._ext_beat_times) >= 3:
+                    intervals = np.diff(self._ext_beat_times)
+                    med = float(np.median(intervals))
+                    if 0.25 <= med <= 1.5:
+                        bpm = 60.0 / med
+                self.analyzer.inject_beat(wall_t, bpm, is_downbeat)
 
-        Args:
-            samples: Audio samples as float array (-1 to 1)
-        """
-        # Compute FFT
-        window = np.hanning(len(samples))
-        fft = np.abs(np.fft.rfft(samples * window))
+        features = self.analyzer.process(samples)
 
-        # Volume (RMS)
-        self.volume = float(np.sqrt(np.mean(samples ** 2)))
+        # Legacy mirrors for old drawers/tests
+        self.volume = features.volume
+        self.spectrum = features.bands
+        self.bpm = features.bpm
+        self.beat_onset = features.beat_now
+        self.beat_phase = features.beat_phase
 
-        # Create spectrum bands (logarithmic spacing)
-        freq_bins = len(fft)
-        if freq_bins < self.num_bands:
-            self.spectrum = fft[:self.num_bands] if len(fft) >= self.num_bands else np.zeros(self.num_bands)
-        else:
-            # Logarithmic band edges
-            band_edges = np.logspace(0, np.log10(freq_bins), self.num_bands + 1).astype(int)
-            band_edges = np.clip(band_edges, 0, freq_bins)
-
-            self.spectrum = np.array([
-                np.mean(fft[band_edges[i]:band_edges[i+1]]) if band_edges[i+1] > band_edges[i] else 0
-                for i in range(self.num_bands)
-            ], dtype=np.float32)
-
-        # Raw bass energy BEFORE normalization — per-chunk normalization makes
-        # bass relative to the loudest band, which decorrelates it from actual
-        # kick-drum energy (quiet hi-hat-only passages read as "high bass")
-        raw_bass = float(np.mean(self.spectrum[:3]))
-
-        # Normalize spectrum for display
-        max_val = np.max(self.spectrum)
-        if max_val > 0:
-            self.spectrum = self.spectrum / max_val
-
-        # Maintain running average of raw bass for adaptive threshold
-        self._bass_history.append(raw_bass)
-        if len(self._bass_history) > 43:  # ~2 seconds of chunks
-            self._bass_history.pop(0)
-        self._bass_avg = np.mean(self._bass_history) if self._bass_history else 0
-
-        # Detect beat: raw bass spikes above its own recent average.
-        # The volume floor stops silence/noise from triggering.
-        now = time.time()
-        time_since_last = now - self._last_beat_time
-
-        # Re-arm only after bass dips back near its average, so a sustained
-        # kick doesn't re-trigger every chunk
-        if raw_bass < self._bass_avg:
-            self._armed = True
-
-        is_beat = (
-            self._armed and
-            raw_bass > self._bass_avg * (1.0 + self.onset_threshold) and
-            self.volume > 0.01 and
-            time_since_last > self.min_beat_interval
-        )
-        if is_beat:
-            self._armed = False
-
-        if is_beat:
-            self.beat_onset = True
-            self._last_beat_time = now
-
-            # Update BPM estimate
-            if time_since_last < 2.0:  # Only use reasonable intervals
-                self._beat_intervals.append(time_since_last)
-                # Keep last 8 intervals
-                if len(self._beat_intervals) > 8:
-                    self._beat_intervals.pop(0)
-
-                if len(self._beat_intervals) >= 4:
-                    median_interval = float(np.median(self._beat_intervals))
-                    if median_interval > 0:
-                        self.bpm = 60.0 / median_interval
-                        # Clamp to reasonable range
-                        self.bpm = float(np.clip(self.bpm, 60, 200))
-        else:
-            self.beat_onset = False
-
-        # Update beat phase (0-1 position within beat)
-        if self.bpm and self.bpm > 0:
-            beat_duration = 60.0 / self.bpm
-            self.beat_phase = (time_since_last % beat_duration) / beat_duration
-        else:
-            self.beat_phase = 0.0
-
-    def get_input(self) -> AudioInput:
-        """Get current audio input state for drawers.
-
-        Returns:
-            AudioInput dataclass with current audio state
-        """
-        spectrum = self.spectrum
-
-        # Calculate bass/mids/highs from spectrum
-        if spectrum is not None and len(spectrum) >= self.num_bands:
-            bass = float(np.mean(spectrum[:3]))
-            mids = float(np.mean(spectrum[3:10]))
-            highs = float(np.mean(spectrum[10:]))
-        else:
-            bass = mids = highs = 0.0
-
-        return AudioInput(
-            bpm=self.bpm,
-            beat_onset=self.beat_onset,
-            beat_phase=self.beat_phase,
-            spectrum=spectrum.copy() if spectrum is not None else None,
-            volume=self.volume,
-            bass=bass,
-            mids=mids,
-            highs=highs,
-        )
+    def get_input(self) -> MusicFeatures:
+        """Get the latest MusicFeatures snapshot for drawers."""
+        return self.analyzer.features
 
     async def stop(self) -> None:
         """Stop audio capture."""
         self._running = False
+
+        if self._beatnet is not None:
+            self._beatnet.stop()
+            self._beatnet = None
 
         if self._task:
             self._task.cancel()
