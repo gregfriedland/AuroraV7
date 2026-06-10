@@ -144,9 +144,15 @@ class MultiBandOnsets:
         "hat": [(5000, 16000)],
     }
     WHITEN_DECAY = 0.997
-    HISTORY = 43            # ~1 s of ODF history for the adaptive threshold
-    MIN_IOI = 0.09          # seconds
-    THRESH = 1.6            # odf must exceed mean * THRESH
+    HISTORY = 22            # ~0.5 s of ODF history for the adaptive threshold
+    MIN_IOI = 0.09          # seconds (refractory; the only re-fire limit)
+    THRESH = 1.5            # odf must exceed mean * THRESH ...
+    # ... and a per-band absolute floor (whitened units). Floors are
+    # calibrated to ~p90 of each band's ODF on real music: hat energy
+    # spreads across many bins so its per-bin mean runs ~3x lower than
+    # kick. The floor doubles as the cross-band leakage guard (windowing
+    # leakage whitens well below it; real hits well above).
+    FLOORS = {"kick": 0.15, "snare": 0.09, "hat": 0.055}
 
     def __init__(self, sample_rate: int, fft_size: int):
         freqs = np.fft.rfftfreq(fft_size, 1.0 / sample_rate)
@@ -161,7 +167,6 @@ class MultiBandOnsets:
         self._prev_white = np.zeros(len(freqs))
         self._odf_hist = {n: [] for n in self.BANDS}
         self._last_onset = {n: 0.0 for n in self.BANDS}
-        self._armed = {n: True for n in self.BANDS}
 
     def process(self, mag: np.ndarray, now: float) -> dict:
         # Adaptive whitening: normalize each bin by its decaying peak.
@@ -177,32 +182,24 @@ class MultiBandOnsets:
 
         out = {}
         for name, mask in self._masks.items():
-            odf = float(np.sum(flux[mask]))
+            # mean (not sum) over the band's bins: every band's ODF lives on
+            # the same 0..~1 scale regardless of how many bins it spans
+            odf = float(np.mean(flux[mask]))
             hist = self._odf_hist[name]
             mean = float(np.mean(hist)) if hist else 0.0
-            std = float(np.std(hist)) if len(hist) > 4 else 1.0
             hist.append(odf)
             if len(hist) > self.HISTORY:
                 hist.pop(0)
 
-            if odf < mean:
-                self._armed[name] = True
-
-            # Energy gate: the band must hold a real share of spectral energy,
-            # not just windowing leakage from transients in other bands
-            band_level = float(np.mean(mag[mask]))
+            floor = self.FLOORS[name]
             fire = (
-                self._armed[name]
-                and odf > mean * self.THRESH
-                and odf > 0.05
-                and band_level > 0.02 * self._global_max
+                odf > max(floor, mean * self.THRESH)
                 and (now - self._last_onset[name]) > self.MIN_IOI
             )
             strength = 0.0
             if fire:
-                self._armed[name] = False
                 self._last_onset[name] = now
-                strength = float(np.clip((odf - mean) / (3.0 * std + 1e-6), 0.0, 1.0))
+                strength = float(np.clip((odf - floor) / (3.0 * floor), 0.0, 1.0))
             out[name] = (fire, strength, odf)
         return out
 

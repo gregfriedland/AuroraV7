@@ -57,19 +57,27 @@ def kick_track(duration_s, bpm=120, freq=55.0, burst_s=0.1):
 
 
 def hat_track(duration_s, bpm=120, burst_s=0.03):
-    """High-frequency noise bursts at the given tempo."""
+    """High-frequency noise bursts at the given tempo.
+
+    The burst envelope is smoothed (4 ms raised ramps) and the noise is
+    high-passed steeply at 5 kHz so the gating itself doesn't inject
+    low-frequency energy the way a raw rectangular gate would — real
+    hi-hats carry nothing below a few kHz.
+    """
+    from scipy import signal as sps
     rng = np.random.default_rng(42)
     n = int(duration_s * SR)
     t = np.arange(n) / SR
     period = 60.0 / bpm
-    gate = (t % period) < burst_s
+    phase = t % period
+    gate = (phase < burst_s).astype(np.float32)
+    ramp = np.clip(phase / 0.004, 0.0, 1.0) * np.clip((burst_s - phase) / 0.004, 0.0, 1.0)
     noise = rng.standard_normal(n).astype(np.float32)
-    # crude high-pass: difference filter applied a few times
-    for _ in range(4):
-        noise = np.diff(noise, prepend=noise[0])
-    noise /= max(np.max(np.abs(noise)), 1e-6)
-    ramp = np.minimum((t % period) / 0.002, 1.0)
-    return (noise * gate * ramp * 0.8).astype(np.float32)
+    env = (noise * gate * np.clip(ramp, 0, 1)).astype(np.float32)
+    sos = sps.butter(8, 5000 / (SR / 2), "highpass", output="sos")
+    out = sps.sosfilt(sos, env).astype(np.float32)
+    out /= max(np.max(np.abs(out)), 1e-6)
+    return (out * 0.8).astype(np.float32)
 
 
 class TestBandOnsets:
