@@ -47,7 +47,9 @@ class TestSignalGrid:
 
     def test_rich_features_light_all_sections(self):
         d = SignalGridDrawer(W, H)
-        frame = d.draw(make_ctx(audio=rich_features()))
+        # a few frames so the loudness EMA settles
+        for _ in range(30):
+            frame = d.draw(make_ctx(audio=rich_features()))
         # band bars (rows 0-5)
         assert np.count_nonzero(frame[0:6]) > 10
         # onset row (rows 7-8)

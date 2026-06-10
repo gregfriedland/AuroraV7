@@ -32,6 +32,7 @@ class SignalGridDrawer(Drawer):
         }
         self._onset_flash = {"kick": 0.0, "snare": 0.0, "hat": 0.0}
         self._beat_flash = 0.0
+        self._smoothed_loudness = 0.0
         # note-box state: the box lives as long as the note does
         self._note_level = 0.0       # brightness; holds while sustained
         self._note_base_cents = 0.0  # pitch at note onset (anchors x position)
@@ -197,6 +198,10 @@ class SignalGridDrawer(Drawer):
         loud = getattr(audio, "loudness", None)
         if loud is None:
             loud = getattr(audio, "volume", 0.0)
-        fill = int(np.clip(loud, 0.0, 1.0) * ctx.width)
+        # time-based EMA (~80 ms) smooths bar jitter without adding much lag
+        a = 1.0 - float(np.exp(-ctx.delta_time / 0.08))
+        self._smoothed_loudness += a * (float(loud) - self._smoothed_loudness)
+        level = self._smoothed_loudness
+        fill = int(np.clip(level, 0.0, 1.0) * ctx.width)
         if fill > 0:
-            indices[row, :fill] = self._scaled(c["loud"], 0.4 + 0.6 * loud)
+            indices[row, :fill] = self._scaled(c["loud"], 0.4 + 0.6 * level)
