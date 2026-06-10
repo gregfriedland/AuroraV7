@@ -337,10 +337,16 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[Aurora Web] Failed to load custom drawer {drawer_info['path']}: {e}")
 
-    # Start with random pattern, settings, and palette (pattern mode)
+    # Start in pattern mode with the configured default drawer,
+    # falling back to a random pattern
     drawer_manager.set_mode("pattern")
-    result = drawer_manager.randomize_all()
-    print(f"[Aurora Web] Auto-started with: {result.get('drawer')}, palette #{result.get('palette_index')}")
+    default_drawer = config.get("default_drawer", "AudioViz")
+    if default_drawer in drawer_manager.drawers:
+        drawer_manager.set_active_drawer(default_drawer)
+        print(f"[Aurora Web] Auto-started with: {default_drawer}")
+    else:
+        result = drawer_manager.randomize_all()
+        print(f"[Aurora Web] Auto-started with: {result.get('drawer')}, palette #{result.get('palette_index')}")
 
     # Start hardware output process
     serial_manager = OutputManagerFactory.create(matrix_cfg)
