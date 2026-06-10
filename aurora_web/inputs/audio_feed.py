@@ -105,6 +105,23 @@ class AudioFeed:
                 "-ac", "1",
                 "-",
             ]
+        elif self.source.startswith("mac:"):
+            # macOS AVFoundation capture via ffmpeg (e.g. "mac:BlackHole 2ch")
+            device = self.source[4:]
+            return [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel", "error",
+                "-f", "avfoundation",
+                "-i", f":{device}",
+                "-f", "s16le",
+                "-ar", str(self.sample_rate),
+                "-ac", "1",
+                "-",
+            ]
+        elif self.source.startswith("pipe:"):
+            # Raw PCM FIFO (e.g. shairport-sync pipe)
+            return ["cat", self.source[5:]]
         else:
             raise ValueError(f"Unknown audio source: {self.source}")
 
@@ -138,19 +155,20 @@ class AudioFeed:
 
         try:
             while self._running and self._process and self._process.returncode is None:
-                data = await self._process.stdout.read(bytes_needed)
-                if not data:
-                    await asyncio.sleep(0.01)
-                    continue
+                # readexactly accumulates a full analysis buffer; plain read()
+                # returns tiny bursts that would be too short to analyze
+                try:
+                    data = await self._process.stdout.readexactly(bytes_needed)
+                except asyncio.IncompleteReadError as e:
+                    data = e.partial
+                    if not data:
+                        break  # EOF
 
                 # Convert bytes to samples
                 samples = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
 
                 if len(samples) >= self.buffer_size // 2:
                     self._analyze(samples)
-
-                # Small sleep to prevent CPU spinning
-                await asyncio.sleep(0.005)
 
         except asyncio.CancelledError:
             pass
@@ -274,9 +292,11 @@ class AudioFeed:
                 pass
 
         if self._process:
-            self._process.terminate()
             try:
+                self._process.terminate()
                 await asyncio.wait_for(self._process.wait(), timeout=2.0)
+            except ProcessLookupError:
+                pass  # Process already exited
             except asyncio.TimeoutError:
                 self._process.kill()
 

@@ -27,8 +27,8 @@ inputs:
     findBeatsCmd: ""
     onset_duration: 0.2
   audio:
-    enabled: false  # enables AudioViz drawer
-    source: "pulse"  # pulse, alsa:hw:0, or pipe:/path
+    enabled: true  # enables AudioViz drawer
+    source: "mac:BlackHole 2ch"  # pulse, alsa:hw:0, mac:<device>, pipe:/path, file:/path
   video:
     device: 0
     enable_face_detection: false

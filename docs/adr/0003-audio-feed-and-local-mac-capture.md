@@ -1,6 +1,6 @@
 # ADR 0003: Audio Feed and Local Mac Capture
 
-**Status:** Proposed / Partially Implemented  
+**Status:** Accepted / Implemented (mac: and pipe: sources landed 2026-06-09)  
 **Date:** 2026-06-09
 
 ## Context
