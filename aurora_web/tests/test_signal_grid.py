@@ -1,4 +1,4 @@
-"""Tests for the SignalGrid drawer (instrument-class rows)."""
+"""Tests for the SignalGrid drawer (discovered source rows, ADR 0005)."""
 
 import numpy as np
 
@@ -8,11 +8,8 @@ from aurora_web.inputs.music_analyzer import MusicFeatures
 
 W, H = 32, 18
 
-SMOOTH = slice(0, 5)
-PLUCK = slice(6, 11)
-PERC = slice(12, 15)
-BEAT = 16
-LOUD = 17
+SOURCE_BLOCK = slice(0, 15)
+BEAT = slice(16, 18)
 
 
 def make_ctx(audio=None, t=1.0):
@@ -20,22 +17,15 @@ def make_ctx(audio=None, t=1.0):
                          delta_time=1 / 60, palette_size=4096, audio=audio)
 
 
-def tone(f0=440.0, note_on=False, snare=False, ts=1.0, volume=0.3, sustain=0.8):
-    return MusicFeatures(
-        timestamp=ts, f0_hz=f0, pitch_confidence=0.9, volume=volume,
-        sustain_level=sustain, note_on=note_on, onset_snare=snare,
-        bands=np.zeros(16, dtype=np.float32),
-    )
-
-
-def drums(ts=1.0):
-    return MusicFeatures(
-        timestamp=ts, volume=0.4,
-        onset_kick=True, kick_strength=0.9,
-        onset_snare=True, snare_strength=0.6,
-        onset_hat=True, hat_strength=0.4,
-        bands=np.zeros(16, dtype=np.float32),
-    )
+def features(sources=None, centroids=None, active=None, **kw):
+    f = MusicFeatures(timestamp=1.0, volume=0.3, **kw)
+    if sources is not None:
+        f.sources = np.array(sources, dtype=np.float32)
+        f.source_centroid = np.array(
+            centroids if centroids is not None else np.linspace(0.1, 0.9, len(sources)),
+            dtype=np.float32)
+        f.source_active = tuple(active) if active is not None else (False,) * len(sources)
+    return f
 
 
 class TestSignalGrid:
@@ -45,95 +35,61 @@ class TestSignalGrid:
         assert frame.shape == (H, W)
         assert np.all(frame == 0)
 
-    def test_zero_features_near_black(self):
+    def test_source_rows_light_by_slot(self):
         d = SignalGridDrawer(W, H)
-        frame = d.draw(make_ctx(audio=MusicFeatures()))
-        assert np.count_nonzero(frame) == 0
+        f = features(sources=[0.9, 0.0, 0.0, 0.0, 0.8])
+        frame = d.draw(make_ctx(audio=f))
+        # slot 0 (lowest frequency) renders on the BOTTOM row of the block
+        assert np.count_nonzero(frame[12:15]) > 0, "slot 0 should be bottom"
+        assert np.count_nonzero(frame[0:3]) > 0, "slot 4 should be top"
+        assert np.count_nonzero(frame[3:12]) == 0, "middle slots dark"
 
-    def test_smooth_tone_without_attack_goes_to_smooth_row(self):
-        """Harmonica: pitch fades in with no onset -> smooth row only."""
+    def test_box_x_follows_centroid(self):
         d = SignalGridDrawer(W, H)
-        frame = d.draw(make_ctx(audio=tone(note_on=False)))
-        assert np.count_nonzero(frame[SMOOTH]) > 0, "smooth row should light"
-        assert np.count_nonzero(frame[PLUCK]) == 0, "plucked row should stay dark"
+        f_low = features(sources=[0.9, 0, 0, 0, 0], centroids=[0.1, 1, 1, 1, 1])
+        x_low = np.nonzero(d.draw(make_ctx(audio=f_low))[13])[0].mean()
+        d2 = SignalGridDrawer(W, H)
+        f_high = features(sources=[0.9, 0, 0, 0, 0], centroids=[0.8, 1, 1, 1, 1])
+        x_high = np.nonzero(d2.draw(make_ctx(audio=f_high))[13])[0].mean()
+        assert x_high > x_low
 
-    def test_attacked_note_goes_to_plucked_row(self):
-        """Guitar: note arrives with an onset -> plucked row only."""
+    def test_rising_edge_flash_and_decay(self):
         d = SignalGridDrawer(W, H)
-        frame = d.draw(make_ctx(audio=tone(note_on=True)))
-        assert np.count_nonzero(frame[PLUCK]) > 0, "plucked row should light"
-        assert np.count_nonzero(frame[SMOOTH]) == 0, "smooth row should stay dark"
+        hit = features(sources=[0.0, 0, 0, 0, 0], active=[True, False, False, False, False])
+        frame = d.draw(make_ctx(audio=hit))
+        assert np.count_nonzero(frame[12:15]) > 0, "flash should light despite 0 activation"
+        quiet = features(sources=[0.0, 0, 0, 0, 0])
+        for _ in range(60):
+            frame = d.draw(make_ctx(audio=quiet))
+        assert np.count_nonzero(frame[12:15]) == 0, "flash should decay"
 
-    def test_plucked_note_sustains_then_fades(self):
+    def test_sustained_source_holds(self):
         d = SignalGridDrawer(W, H)
-        d.draw(make_ctx(audio=tone(note_on=True, ts=1.0)))
-        for i in range(120):  # 2 s sustain, no new onsets
-            frame = d.draw(make_ctx(audio=tone(ts=1.0 + i / 60)))
-        assert np.count_nonzero(frame[PLUCK]) > 0, "box should hold during sustain"
-        silent = MusicFeatures(bands=np.zeros(16, dtype=np.float32))
+        held = features(sources=[0, 0, 0.8, 0, 0])
         for _ in range(120):
-            frame = d.draw(make_ctx(audio=silent))
-        assert np.count_nonzero(frame[PLUCK]) == 0, "box should fade after release"
+            frame = d.draw(make_ctx(audio=held))
+        assert np.count_nonzero(frame[6:9]) > 0, "sustained activation should stay lit"
 
-    def test_bend_slides_plucked_box(self):
+    def test_cold_start_fallback_bands(self):
         d = SignalGridDrawer(W, H)
-        d.draw(make_ctx(audio=tone(220.0, note_on=True, ts=1.0)))
-        frame = d.draw(make_ctx(audio=tone(220.0, ts=1.02)))
-        x_start = int(np.mean(np.nonzero(frame[6])[0]))
-        bent = tone(220.0 * 2 ** (200 / 1200), ts=1.05)
-        frame = d.draw(make_ctx(audio=bent))
-        x_bent = int(np.mean(np.nonzero(frame[6])[0]))
-        assert x_bent > x_start, "bend should slide the box right"
+        f = MusicFeatures(volume=0.3, bands=np.ones(16, dtype=np.float32) * 0.8)
+        frame = d.draw(make_ctx(audio=f))  # sources is None
+        assert np.count_nonzero(frame[SOURCE_BLOCK]) > 20, "fallback bands should show"
 
-    def test_vibrato_moves_smooth_ribbon(self):
+    def test_beat_row(self):
         d = SignalGridDrawer(W, H)
-        d.draw(make_ctx(audio=tone(440.0, ts=1.0)))
-        frame = d.draw(make_ctx(audio=tone(440.0, ts=1.02)))
-        x_center = int(np.mean(np.nonzero(frame[0])[0]))
-        up = tone(440.0 * 2 ** (40 / 1200), ts=1.04)  # +40 cents
-        frame = d.draw(make_ctx(audio=up))
-        x_up = int(np.mean(np.nonzero(frame[0])[0]))
-        assert x_up > x_center, "pitch wobble should move the ribbon"
-
-    def test_position_scales_with_f0(self):
-        cols = []
-        for f0 in (110.0, 880.0):
-            d = SignalGridDrawer(W, H)
-            frame = d.draw(make_ctx(audio=tone(f0)))
-            lit = np.nonzero(frame[0])[0]
-            assert len(lit) > 0
-            cols.append(int(np.mean(lit)))
-        assert cols[1] > cols[0], "higher pitch should light further right"
-
-    def test_percussion_cells_flash_and_decay_fast(self):
-        d = SignalGridDrawer(W, H)
-        frame = d.draw(make_ctx(audio=drums()))
-        assert np.count_nonzero(frame[PERC]) > 10, "all three cells should flash"
-        silent = MusicFeatures(bands=np.zeros(16, dtype=np.float32))
-        for _ in range(30):  # 0.5 s
-            frame = d.draw(make_ctx(audio=silent))
-        assert np.count_nonzero(frame[PERC]) == 0, "percussion decays fast"
-
-    def test_beat_and_loudness_rows(self):
-        d = SignalGridDrawer(W, H)
-        f = MusicFeatures(bpm=120.0, beat_now=True, beat_in_bar=1,
-                          downbeat_now=True, loudness=0.8,
-                          bands=np.zeros(16, dtype=np.float32))
-        for _ in range(30):
-            frame = d.draw(make_ctx(audio=f))
+        f = features(sources=[0, 0, 0, 0, 0], bpm=120.0, beat_now=True, beat_in_bar=1)
+        frame = d.draw(make_ctx(audio=f))
         assert np.count_nonzero(frame[BEAT]) > 10
-        assert np.count_nonzero(frame[LOUD]) > 10
 
     def test_downbeat_distinct_color(self):
         d = SignalGridDrawer(W, H)
-        f1 = MusicFeatures(bpm=120.0, beat_now=True, beat_in_bar=1,
-                           bands=np.zeros(16, dtype=np.float32))
+        f1 = features(sources=[0, 0, 0, 0, 0], bpm=120.0, beat_now=True, beat_in_bar=1)
         frame_down = d.draw(make_ctx(audio=f1))
         d2 = SignalGridDrawer(W, H)
-        f2 = MusicFeatures(bpm=120.0, beat_now=True, beat_in_bar=2,
-                           bands=np.zeros(16, dtype=np.float32))
+        f2 = features(sources=[0, 0, 0, 0, 0], bpm=120.0, beat_now=True, beat_in_bar=2)
         frame_2 = d2.draw(make_ctx(audio=f2))
-        assert frame_down[BEAT, :8].max() > frame_2[BEAT, :8].max()
+        assert frame_down[16, :8].max() > frame_2[16, :8].max()
 
     def test_works_with_old_audioinput(self):
         from aurora_web.inputs.audio_feed import AudioInput
@@ -142,13 +98,12 @@ class TestSignalGrid:
                          bpm=120.0, beat_onset=True, beat_phase=0.3)
         frame = d.draw(make_ctx(audio=old))
         assert frame.shape == (H, W)
-        assert np.count_nonzero(frame) > 0
+        assert np.count_nonzero(frame) > 0  # fallback bands + beat row
 
     def test_reset_clears_state(self):
         d = SignalGridDrawer(W, H)
-        d.draw(make_ctx(audio=drums()))
-        d.draw(make_ctx(audio=tone(note_on=True)))
+        d.draw(make_ctx(audio=features(sources=[1, 1, 1, 1, 1],
+                                       active=[True] * 5, bpm=120.0, beat_now=True)))
         d.reset()
-        assert all(v == 0.0 for v in d._perc_flash.values())
+        assert np.all(d._flash == 0.0)
         assert d._beat_flash == 0.0
-        assert d._smooth_level == 0.0 and d._pluck_level == 0.0

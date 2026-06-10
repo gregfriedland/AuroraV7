@@ -1,4 +1,4 @@
-"""Synthetic-signal tests for the MusicAnalyzer pipeline (ADR 0004)."""
+"""Synthetic-signal tests for the MusicAnalyzer pipeline (ADR 0004/0005)."""
 
 import numpy as np
 import pytest
@@ -7,6 +7,7 @@ from aurora_web.inputs.music_analyzer import (
     HAVE_AUBIO,
     MusicAnalyzer,
     MusicFeatures,
+    SourceDiscovery,
 )
 
 SR = 44100
@@ -44,26 +45,18 @@ def run_signal(analyzer, clock, samples):
 
 
 def kick_track(duration_s, bpm=120, freq=55.0, burst_s=0.1):
-    """Bass bursts at the given tempo."""
+    """Bass bursts at the given tempo (3 ms attack ramp avoids clicks)."""
     n = int(duration_s * SR)
     t = np.arange(n) / SR
     period = 60.0 / bpm
     gate = (t % period) < burst_s
-    # exponential decay within each burst, like a kick drum; 3 ms attack
-    # ramp avoids broadband clicks at the gate edge
     decay = np.exp(-((t % period) / burst_s) * 3.0)
     ramp = np.minimum((t % period) / 0.003, 1.0)
     return (np.sin(2 * np.pi * freq * t) * gate * decay * ramp).astype(np.float32)
 
 
 def hat_track(duration_s, bpm=120, burst_s=0.03):
-    """High-frequency noise bursts at the given tempo.
-
-    The burst envelope is smoothed (4 ms raised ramps) and the noise is
-    high-passed steeply at 5 kHz so the gating itself doesn't inject
-    low-frequency energy the way a raw rectangular gate would — real
-    hi-hats carry nothing below a few kHz.
-    """
+    """High-passed noise bursts at the given tempo."""
     from scipy import signal as sps
     rng = np.random.default_rng(42)
     n = int(duration_s * SR)
@@ -80,33 +73,34 @@ def hat_track(duration_s, bpm=120, burst_s=0.03):
     return (out * 0.8).astype(np.float32)
 
 
-class TestBandOnsets:
-    def test_kick_fires_kick_not_hat(self):
+def bass_tone_track(duration_s, freq=220.0, note_s=0.4, gap_s=0.1):
+    """Repeated sustained bass-register tones with soft attacks."""
+    n = int(duration_s * SR)
+    t = np.arange(n) / SR
+    period = note_s + gap_s
+    phase = t % period
+    gate = (phase < note_s).astype(np.float32)
+    ramp = np.clip(phase / 0.02, 0.0, 1.0) * np.clip((note_s - phase) / 0.05, 0.0, 1.0)
+    return (0.5 * np.sin(2 * np.pi * freq * t) * gate * np.clip(ramp, 0, 1)).astype(np.float32)
+
+
+class TestKickOnsets:
+    def test_kick_fires_on_kick_track(self):
         a, clock = make_analyzer()
         feats = run_signal(a, clock, kick_track(8.0))
         kicks = sum(f.onset_kick for f in feats)
-        hats = sum(f.onset_hat for f in feats)
         assert kicks >= 10, f"expected kick onsets, got {kicks}"
-        assert hats <= kicks // 4, f"hat onsets should be rare on a kick track, got {hats}"
 
-    def test_hat_fires_hat_not_kick(self):
+    def test_kick_rare_on_hat_track(self):
         a, clock = make_analyzer()
         feats = run_signal(a, clock, hat_track(8.0))
-        hats = sum(f.onset_hat for f in feats)
         kicks = sum(f.onset_kick for f in feats)
-        assert hats >= 10, f"expected hat onsets, got {hats}"
-        assert kicks <= hats // 4, f"kick onsets should be rare on a hat track, got {kicks}"
-
-    def test_onset_strength_in_range(self):
-        a, clock = make_analyzer()
-        feats = run_signal(a, clock, kick_track(4.0))
-        for f in feats:
-            assert 0.0 <= f.kick_strength <= 1.0
+        assert kicks <= 4, f"kick onsets should be rare on a hat track, got {kicks}"
 
     def test_silence_no_onsets(self):
         a, clock = make_analyzer()
         feats = run_signal(a, clock, np.zeros(SR * 3, dtype=np.float32))
-        assert sum(f.onset_kick or f.onset_snare or f.onset_hat for f in feats) == 0
+        assert sum(f.onset_kick for f in feats) == 0
 
 
 class TestBeatTracking:
@@ -121,19 +115,16 @@ class TestBeatTracking:
     def test_predicted_beats_align_with_clicks(self):
         a, clock = make_analyzer(beat_tracker="internal")
         feats = run_signal(a, clock, kick_track(25.0, bpm=120))
-        # consider only the second half (after convergence)
         start_t = feats[0].timestamp
         beat_times = [f.timestamp for f in feats
                       if f.beat_now and (f.timestamp - start_t) > 12.0]
         assert len(beat_times) >= 8, "too few predicted beats"
-        period = 0.5  # 120 BPM
+        period = 0.5
         errs = []
         for bt in beat_times:
-            # clicks happen at start_t + k*period (signal starts at first hop)
             rel = (bt - start_t) % period
             errs.append(min(rel, period - rel))
         med = float(np.median(errs))
-        # within a hop and a half of the true click
         assert med < 0.06, f"median beat error {med*1000:.0f}ms"
 
     def test_beat_phase_advances(self):
@@ -154,8 +145,6 @@ class TestBeatTracking:
         a, clock = make_analyzer(beat_tracker="aubio")
         feats = run_signal(a, clock, kick_track(20.0, bpm=120))
         bpm = feats[-1].bpm
-        # aubio's tempo estimate is octave-error-prone (hence the internal
-        # default); just require a plausible musical tempo
         assert bpm is not None
         assert 40 <= bpm <= 240, f"bpm={bpm}"
 
@@ -174,96 +163,93 @@ class TestBeatTracking:
         assert any(f.beat_now for f in out[-86:]), "no predicted beats from injected tracker"
 
 
-class TestLoudness:
-    def test_monotonic_with_amplitude(self):
-        lufs = []
-        for amp in (0.05, 0.2, 0.8):
-            a, clock = make_analyzer()
-            t = np.arange(SR * 2) / SR
-            sig = (amp * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
-            feats = run_signal(a, clock, sig)
-            lufs.append(feats[-1].lufs)
-        assert lufs[0] < lufs[1] < lufs[2]
-
-    def test_agc_normalizes_quiet_and_loud(self):
-        norms = []
-        for amp in (0.05, 0.8):
-            a, clock = make_analyzer()
-            t = np.arange(SR * 10) / SR
-            # alternate loud/soft each second so AGC sees a range
-            env = np.where((t % 2) < 1, 1.0, 0.3)
-            sig = (amp * env * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
-            feats = run_signal(a, clock, sig)
-            loud_sections = [f.loudness for f in feats[-80:] if f.loudness > 0]
-            norms.append(np.max(loud_sections))
-        # after adaptation both reach a similar normalized peak
-        assert abs(norms[0] - norms[1]) < 0.35, f"AGC peaks differ: {norms}"
-
-    def test_silence_is_zero(self):
+class TestSourceDiscovery:
+    def test_nmf_activations_nonnegative_and_responsive(self):
         a, clock = make_analyzer()
-        feats = run_signal(a, clock, np.zeros(SR * 2, dtype=np.float32))
-        assert feats[-1].loudness == 0.0
+        run_signal(a, clock, kick_track(6.0))
+        sd = a.discovery
+        assert np.all(sd.h >= 0)
+        # peak activation during the kick track should beat silence
+        hist = sd._h_hist
+        h_active = float(np.max(hist.sum(axis=1)))
+        run_signal(a, clock, np.zeros(SR * 3, dtype=np.float32))
+        h_silent = float(np.sum(a.discovery.h))
+        assert h_active > h_silent * 10
 
-
-class TestPitchAndExpressive:
-    def test_steady_tone_pitch(self):
+    def test_w_columns_unit_norm(self):
         a, clock = make_analyzer()
-        t = np.arange(SR * 3) / SR
-        sig = (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
+        run_signal(a, clock, kick_track(8.0))
+        norms = np.linalg.norm(a.discovery.W, axis=0)
+        assert np.allclose(norms, 1.0, atol=1e-3)
+
+    def test_sources_appear_after_warmup(self):
+        a, clock = make_analyzer()
+        feats = run_signal(a, clock, kick_track(6.0))
+        assert feats[5].sources is None, "sources should be empty before first refresh"
+        assert feats[-1].sources is not None, "sources should exist after warmup"
+        assert len(feats[-1].sources) == 5
+        assert np.all(feats[-1].sources >= 0) and np.all(feats[-1].sources <= 1)
+
+    def test_kick_track_one_dominant_low_source(self):
+        a, clock = make_analyzer()
+        feats = run_signal(a, clock, kick_track(15.0))
+        f = feats[-1]
+        # p95 activation per slot over the last 4 s: kicks are silent ~80%
+        # of the time, so means are low by construction
+        acts = np.percentile([g.sources for g in feats[-170:] if g.sources is not None],
+                             95, axis=0)
+        dominant = int(np.argmax(acts))
+        assert acts[dominant] > 0.3, f"no dominant source: {acts}"
+        # the dominant source of a 55 Hz kick should sit low in frequency
+        assert f.source_centroid[dominant] < 0.45, \
+            f"kick centroid {f.source_centroid[dominant]} not low"
+
+    def test_kick_vs_hat_distinct_sources(self):
+        a, clock = make_analyzer()
+        sig = kick_track(15.0) + hat_track(15.0)
         feats = run_signal(a, clock, sig)
-        voiced = [f.f0_hz for f in feats[-40:] if f.pitch_confidence > 0.4]
-        assert len(voiced) > 10, "pitch not detected"
-        assert abs(np.median(voiced) - 440) < 15, f"f0={np.median(voiced)}"
-        assert feats[-1].pitch_class == 9  # A
+        valid = [g for g in feats[-170:] if g.sources is not None]
+        acts = np.percentile([g.sources for g in valid], 95, axis=0)
+        cents = feats[-1].source_centroid
+        strong = np.where(acts > 0.25)[0]
+        assert len(strong) >= 2, f"expected >=2 active sources, acts={acts}"
+        # at least two strong sources far apart in frequency
+        spread = cents[strong].max() - cents[strong].min()
+        assert spread > 0.25, f"sources not spectrally separated: {cents[strong]}"
 
-    def test_vibrato_detected(self):
+    def test_kick_vs_bass_tone_distinct(self):
         a, clock = make_analyzer()
-        t = np.arange(SR * 6) / SR
-        # 440 Hz with 6 Hz, +/-50 cent FM
-        cents = 50 * np.sin(2 * np.pi * 6 * t)
-        freq = 440 * 2 ** (cents / 1200)
-        phase = 2 * np.pi * np.cumsum(freq) / SR
-        sig = (0.5 * np.sin(phase)).astype(np.float32)
+        sig = kick_track(18.0) * 0.8 + bass_tone_track(18.0, freq=330.0) * 0.8
         feats = run_signal(a, clock, sig)
-        amounts = [f.vibrato_amount for f in feats[-80:]]
-        assert np.median(amounts) > 0.25, f"vibrato amount {np.median(amounts)}"
-        rates = [f.vibrato_rate for f in feats[-80:] if f.vibrato_rate > 0]
-        assert rates and 3.0 < np.median(rates) < 9.0, f"vibrato rate {np.median(rates) if rates else None}"
+        valid = [g for g in feats[-170:] if g.sources is not None]
+        acts = np.percentile([g.sources for g in valid], 95, axis=0)
+        strong = np.where(acts > 0.25)[0]
+        assert len(strong) >= 2, f"kick+tone should form >=2 sources, acts={acts}"
 
-    def test_steady_tone_no_vibrato(self):
+    def test_centroids_sorted_ascending(self):
         a, clock = make_analyzer()
-        t = np.arange(SR * 4) / SR
-        sig = (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
-        feats = run_signal(a, clock, sig)
-        assert np.median([f.vibrato_amount for f in feats[-40:]]) < 0.15
+        feats = run_signal(a, clock, kick_track(10.0) + hat_track(10.0))
+        cents = feats[-1].source_centroid
+        assert cents is not None
+        assert np.all(np.diff(cents) >= -1e-6), f"slots not sorted by centroid: {cents}"
 
-    def test_tremolo_detected(self):
+    def test_per_chunk_budget(self):
+        import time as _time
         a, clock = make_analyzer()
-        t = np.arange(SR * 6) / SR
-        env = 0.5 + 0.4 * np.sin(2 * np.pi * 6 * t)
-        sig = (env * np.sin(2 * np.pi * 220 * t) * 0.5).astype(np.float32)
-        feats = run_signal(a, clock, sig)
-        amounts = [f.tremolo_amount for f in feats[-80:]]
-        assert np.median(amounts) > 0.15, f"tremolo {np.median(amounts)}"
-
-    def test_sustain_state_on_held_tone(self):
-        a, clock = make_analyzer()
-        t = np.arange(SR * 4) / SR
-        sig = (0.5 * np.sin(2 * np.pi * 330 * t)).astype(np.float32)
-        feats = run_signal(a, clock, sig)
-        assert feats[-1].envelope_state in ("sustain", "decay")
-        assert feats[-1].sustain_level > 0.3
-
-    def test_release_to_idle_after_tone_stops(self):
-        a, clock = make_analyzer()
-        t = np.arange(SR * 2) / SR
-        tone = 0.5 * np.sin(2 * np.pi * 330 * t)
-        sig = np.concatenate([tone, np.zeros(SR * 2)]).astype(np.float32)
-        feats = run_signal(a, clock, sig)
-        assert feats[-1].envelope_state in ("idle", "release")
+        sig = kick_track(3.0) + hat_track(3.0)
+        chunks = [sig[i:i + HOP] for i in range(0, len(sig) - HOP, HOP)]
+        for c in chunks[:20]:
+            clock.advance(HOP_DT)
+            a.process(c)
+        t0 = _time.perf_counter()
+        for c in chunks:
+            clock.advance(HOP_DT)
+            a.process(c)
+        per_chunk = (_time.perf_counter() - t0) / len(chunks) * 1000
+        assert per_chunk < 8.0, f"{per_chunk:.2f} ms per 23 ms chunk (too slow)"
 
 
-class TestTextureAndCompat:
+class TestCompat:
     def test_bands_shape_and_range(self):
         a, clock = make_analyzer()
         feats = run_signal(a, clock, kick_track(2.0))
@@ -271,29 +257,9 @@ class TestTextureAndCompat:
         assert f.bands.shape == (16,)
         assert np.all(f.bands >= 0) and np.all(f.bands <= 1)
 
-    def test_brightness_high_for_noise_low_for_bass(self):
-        a, clock = make_analyzer()
-        feats_n = run_signal(a, clock, hat_track(3.0, bpm=600, burst_s=0.09))
-        bright_noise = np.median([f.brightness for f in feats_n[-20:] if f.volume > 0.01])
-        a2, clock2 = make_analyzer()
-        t = np.arange(SR * 3) / SR
-        feats_b = run_signal(a2, clock2, (0.5 * np.sin(2 * np.pi * 60 * t)).astype(np.float32))
-        bright_bass = np.median([f.brightness for f in feats_b[-20:]])
-        assert bright_noise > bright_bass
-
-    def test_noise_flatter_than_tone(self):
-        rng = np.random.default_rng(0)
-        a, clock = make_analyzer()
-        feats_n = run_signal(a, clock, (0.3 * rng.standard_normal(SR * 2)).astype(np.float32))
-        a2, clock2 = make_analyzer()
-        t = np.arange(SR * 2) / SR
-        feats_t = run_signal(a2, clock2, (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32))
-        assert feats_n[-1].noisiness > feats_t[-1].noisiness
-
     def test_audioinput_backcompat_fields(self):
         a, clock = make_analyzer()
         f = run_signal(a, clock, kick_track(1.0))[-1]
-        # old AudioInput API surface used by existing drawers
         assert f.spectrum is not None and len(f.spectrum) == 16
         assert isinstance(f.beat_onset, bool)
         for name in ("bpm", "beat_phase", "volume", "bass", "mids", "highs"):
@@ -302,3 +268,4 @@ class TestTextureAndCompat:
     def test_default_features_safe(self):
         f = MusicFeatures()
         assert f.spectrum is None and f.beat_onset is False
+        assert f.sources is None

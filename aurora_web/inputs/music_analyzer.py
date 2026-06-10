@@ -1,18 +1,24 @@
-"""Real-time music feature extraction pipeline (ADR 0004).
+"""Real-time music analysis: beat tracking + unsupervised source discovery.
 
-Consumes mono float32 PCM chunks and produces a MusicFeatures snapshot per
-hop. All components are causal and cheap enough for a Raspberry Pi 5:
-one rfft per hop plus stateful filters.
+ADR 0004 (beat tracking) + ADR 0005 (ML source discovery). The pipeline per
+1024-sample capture chunk:
 
-aubio (the aubio-ledfx fork) is optional: tempo/pitch fall back to
-pure-numpy implementations when it is unavailable.
+- SourceDiscovery splits the chunk into 4 hops of 256 samples (5.8 ms) and
+  runs a dual-resolution spectral frontend (2048-sample window below 500 Hz,
+  512 above), online KL-NMF (v ~= W h), and periodic DP-means clustering of
+  the NMF components into instrument sources.
+- A kick-band onset detector (inside the frontend) feeds the predictive
+  bar-locked beat oscillator (tempo evidence + downbeat accents).
+
+Hand-engineered extractors from earlier revisions (snare/hat onsets,
+K-weighted loudness, monophonic pitch, vibrato/ADSR heuristics) were removed
+per ADR 0005 — the learned model supersedes them.
 """
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
-from scipy import signal as sps
 
 try:
     import aubio
@@ -24,52 +30,33 @@ except Exception:  # pragma: no cover - import guard
 
 @dataclass
 class MusicFeatures:
-    """Feature snapshot passed to drawers (superset of the old AudioInput)."""
+    """Feature snapshot passed to drawers."""
 
     timestamp: float = 0.0
 
-    # Levels
-    volume: float = 0.0            # raw RMS 0-1
-    loudness: float = 0.0          # K-weighted momentary, AGC'd 0-1
-    lufs: float = -70.0            # K-weighted momentary loudness, absolute
-
-    # Texture
-    bands: np.ndarray | None = None  # 16 AGC'd band energies 0-1
+    # Levels / texture
+    volume: float = 0.0              # raw RMS 0-1
+    bands: np.ndarray | None = None  # 16-band fold of the ML frontend (0-1)
     bass: float = 0.0
     mids: float = 0.0
     highs: float = 0.0
-    brightness: float = 0.0        # spectral centroid, 0-1 (log scale)
-    noisiness: float = 0.0         # spectral flatness 0-1
 
-    # Drum onsets
+    # Kick onsets (beat-tracker evidence; also usable by drawers)
     onset_kick: bool = False
-    onset_snare: bool = False
-    onset_hat: bool = False
     kick_strength: float = 0.0
-    snare_strength: float = 0.0
-    hat_strength: float = 0.0
 
-    # Notes / pitch
-    note_on: bool = False
-    f0_hz: float = 0.0
-    pitch_class: int = -1          # 0-11 (C=0), -1 when unvoiced
-    pitch_confidence: float = 0.0
-
-    # Beat / bar (predictive)
+    # Beat / bar (predictive, bar-locked)
     bpm: float | None = None
-    beat_phase: float = 0.0        # 0-1 within beat
-    beat_now: bool = False         # predicted beat lands this hop
-    bar_phase: float = 0.0         # 0-1 within bar
-    beat_in_bar: int = 1           # 1-4
+    beat_phase: float = 0.0
+    beat_now: bool = False
+    bar_phase: float = 0.0
+    beat_in_bar: int = 1
     downbeat_now: bool = False
 
-    # Expressive
-    vibrato_amount: float = 0.0
-    vibrato_rate: float = 0.0      # Hz
-    tremolo_amount: float = 0.0
-    bend_amount: float = 0.0       # signed, cents/s scaled to -1..1
-    envelope_state: str = "idle"   # idle|attack|decay|sustain|release
-    sustain_level: float = 0.0
+    # Discovered sources (ADR 0005)
+    sources: np.ndarray | None = None          # activation 0-1 per slot
+    source_centroid: np.ndarray | None = None  # x position 0-1 per slot
+    source_active: tuple = ()                  # rising edge per slot
 
     # ---- Backward compatibility with the old AudioInput ----
     @property
@@ -81,202 +68,308 @@ class MusicFeatures:
         return self.beat_now
 
 
-class BandEnergies:
-    """16 log-spaced band energies with per-band AGC and asymmetric smoothing."""
+class SourceDiscovery:
+    """Dual-resolution frontend + online NMF + component clustering.
 
-    NUM_BANDS = 16
-
-    def __init__(self, sample_rate: int, fft_size: int):
-        self.sample_rate = sample_rate
-        freqs = np.fft.rfftfreq(fft_size, 1.0 / sample_rate)
-        edges = np.logspace(np.log10(40), np.log10(16000), self.NUM_BANDS + 1)
-        self._slices = []
-        for i in range(self.NUM_BANDS):
-            idx = np.where((freqs >= edges[i]) & (freqs < edges[i + 1]))[0]
-            if len(idx) == 0:  # guarantee at least one bin per band
-                idx = np.array([np.searchsorted(freqs, edges[i])])
-            self._slices.append(idx)
-        self._freqs = freqs
-        # AGC state: slow-decaying per-band maximum
-        self._agc_max = np.full(self.NUM_BANDS, 1e-4)
-        self.smoothed = np.zeros(self.NUM_BANDS, dtype=np.float32)
-
-    NOISE_FLOOR = 1e-5
-    AGC_DECAY = 0.999       # per hop (~16 s half-life at 43 hops/s)
-    ATTACK = 0.6
-    RELEASE = 0.15
-
-    def process(self, mag: np.ndarray) -> np.ndarray:
-        raw = np.array([float(np.mean(mag[s])) for s in self._slices])
-
-        # AGC: track decaying max per band; freeze decay in silence
-        active = raw > self.NOISE_FLOOR
-        self._agc_max = np.where(
-            active, np.maximum(raw, self._agc_max * self.AGC_DECAY), self._agc_max
-        )
-        norm = np.clip(raw / np.maximum(self._agc_max, 1e-6), 0.0, 1.0)
-
-        # Asymmetric smoothing: fast attack, slow release
-        coef = np.where(norm > self.smoothed, self.ATTACK, self.RELEASE)
-        self.smoothed = (self.smoothed + coef * (norm - self.smoothed)).astype(np.float32)
-        return self.smoothed
-
-    def spectral_stats(self, mag: np.ndarray) -> tuple[float, float]:
-        """Return (brightness, noisiness) from the magnitude spectrum."""
-        power = mag ** 2
-        total = float(np.sum(power))
-        if total < 1e-10:
-            return 0.0, 0.0
-        centroid = float(np.sum(self._freqs * power) / total)
-        # log-scale brightness: 100 Hz -> 0, 10 kHz -> 1
-        brightness = float(np.clip(np.log10(max(centroid, 1.0) / 100.0) / 2.0, 0.0, 1.0))
-        nz = power[power > 1e-12]
-        flatness = float(np.exp(np.mean(np.log(nz))) / np.mean(nz)) if len(nz) else 0.0
-        return brightness, float(np.clip(flatness, 0.0, 1.0))
-
-
-class MultiBandOnsets:
-    """Adaptive-whitened spectral flux onset detection in kick/snare/hat bands."""
-
-    BANDS = {
-        "kick": [(40, 130)],
-        "snare": [(200, 750), (2000, 5000)],
-        "hat": [(5000, 16000)],
-    }
-    WHITEN_DECAY = 0.997
-    HISTORY = 22            # ~0.5 s of ODF history for the adaptive threshold
-    MIN_IOI = 0.09          # seconds (refractory; the only re-fire limit)
-    THRESH = 1.5            # odf must exceed mean * THRESH ...
-    # ... and a per-band absolute floor (whitened units). Floors are
-    # calibrated to ~p90 of each band's ODF on real music: hat energy
-    # spreads across many bins so its per-bin mean runs ~3x lower than
-    # kick. The floor doubles as the cross-band leakage guard (windowing
-    # leakage whitens well below it; real hits well above).
-    FLOORS = {"kick": 0.15, "snare": 0.09, "hat": 0.055}
-
-    def __init__(self, sample_rate: int, fft_size: int):
-        freqs = np.fft.rfftfreq(fft_size, 1.0 / sample_rate)
-        self._masks = {}
-        for name, ranges in self.BANDS.items():
-            mask = np.zeros(len(freqs), dtype=bool)
-            for lo, hi in ranges:
-                mask |= (freqs >= lo) & (freqs < hi)
-            self._masks[name] = mask
-        self._peak = np.full(len(freqs), 1e-6)
-        self._global_max = 1e-6
-        self._prev_white = np.zeros(len(freqs))
-        self._odf_hist = {n: [] for n in self.BANDS}
-        self._last_onset = {n: 0.0 for n in self.BANDS}
-
-    def process(self, mag: np.ndarray, now: float) -> dict:
-        # Adaptive whitening: normalize each bin by its decaying peak.
-        # Floor the peaks at a fraction of the global maximum so empty bands
-        # don't amplify numerical noise into phantom onsets.
-        self._global_max = max(float(np.max(mag)), self._global_max * self.WHITEN_DECAY, 1e-6)
-        floor = 0.01 * self._global_max
-        self._peak = np.maximum.reduce([mag, self._peak * self.WHITEN_DECAY,
-                                        np.full_like(mag, floor)])
-        white = mag / self._peak
-        flux = np.maximum(0.0, white - self._prev_white)
-        self._prev_white = white
-
-        out = {}
-        for name, mask in self._masks.items():
-            # mean (not sum) over the band's bins: every band's ODF lives on
-            # the same 0..~1 scale regardless of how many bins it spans
-            odf = float(np.mean(flux[mask]))
-            hist = self._odf_hist[name]
-            mean = float(np.mean(hist)) if hist else 0.0
-            hist.append(odf)
-            if len(hist) > self.HISTORY:
-                hist.pop(0)
-
-            floor = self.FLOORS[name]
-            fire = (
-                odf > max(floor, mean * self.THRESH)
-                and (now - self._last_onset[name]) > self.MIN_IOI
-            )
-            strength = 0.0
-            if fire:
-                self._last_onset[name] = now
-                strength = float(np.clip((odf - floor) / (3.0 * floor), 0.0, 1.0))
-            out[name] = (fire, strength, odf)
-        return out
-
-
-class LoudnessMeter:
-    """K-weighted loudness with AGC normalization.
-
-    BS.1770 momentary loudness uses a 400 ms window, but that lags visibly
-    on a display; 150 ms keeps the K-weighting while feeling immediate.
+    See ADR 0005. All state updates are incremental; cost is ~0.1-0.3 ms
+    per 5.8 ms hop in numpy.
     """
 
-    WINDOW_S = 0.15
-    GATE_LUFS = -60.0
-    AGC_DECAY = 0.999
+    HOP = 256
+    WIN_LOW = 2048
+    WIN_HIGH = 512
+    SPLIT_HZ = 500.0
+    F = 40                  # bands
+    K = 10                  # NMF components
+    NMF_ITERS = 3
+    W_SWEEP_EVERY = 32      # hops (~0.19 s)
+    REFRESH_HOPS = 86       # cluster refresh (~0.5 s)
+    HIST_HOPS = 172         # ~1 s of activation history for envelope stats
+    WHITEN_DECAY = 0.9996   # per hop (~10 s half-life at 172 hops/s)
+    STAT_GAMMA = 0.9998     # sufficient-statistics forgetting (~30 s)
+    MET_GAMMA = 0.9995      # metrical histogram forgetting
+    VOLUME_GATE = 0.005     # freeze learning below this RMS
 
-    def __init__(self, sample_rate: int, hop_size: int):
-        self._sos = np.vstack([
-            self._high_shelf(sample_rate, 1681.97, 3.99984, 0.7071752),
-            self._high_pass(sample_rate, 38.13547, 0.5003270),
-        ])
-        self._zi = sps.sosfilt_zi(self._sos) * 0.0
-        n = max(1, int(self.WINDOW_S * sample_rate / hop_size))
-        self._ring = np.zeros(n)
-        self._i = 0
-        self._max_lufs = -30.0
-        self._min_lufs = -55.0
+    # Kick onset detection (beat-tracker evidence)
+    KICK_MAX_HZ = 130.0
+    KICK_FLOOR = 0.15
+    KICK_THRESH = 1.5
+    KICK_MIN_IOI = 0.09
 
-    @staticmethod
-    def _high_shelf(fs, f0, gain_db, Q):
-        A = 10 ** (gain_db / 40)
-        w0 = 2 * np.pi * f0 / fs
-        alpha = np.sin(w0) / (2 * Q)
-        cw = np.cos(w0)
-        b = [A * ((A + 1) + (A - 1) * cw + 2 * np.sqrt(A) * alpha),
-             -2 * A * ((A - 1) + (A + 1) * cw),
-             A * ((A + 1) + (A - 1) * cw - 2 * np.sqrt(A) * alpha)]
-        a = [(A + 1) - (A - 1) * cw + 2 * np.sqrt(A) * alpha,
-             2 * ((A - 1) - (A + 1) * cw),
-             (A + 1) - (A - 1) * cw - 2 * np.sqrt(A) * alpha]
-        return np.array([b[0] / a[0], b[1] / a[0], b[2] / a[0], 1.0, a[1] / a[0], a[2] / a[0]]).reshape(1, 6)
+    # Descriptor block weights (ADR 0005 knob 3)
+    W_ENV = 0.5
+    W_MET = 0.3
 
-    @staticmethod
-    def _high_pass(fs, f0, Q):
-        w0 = 2 * np.pi * f0 / fs
-        alpha = np.sin(w0) / (2 * Q)
-        cw = np.cos(w0)
-        b = [(1 + cw) / 2, -(1 + cw), (1 + cw) / 2]
-        a = [1 + alpha, -2 * cw, 1 - alpha]
-        return np.array([b[0] / a[0], b[1] / a[0], b[2] / a[0], 1.0, a[1] / a[0], a[2] / a[0]]).reshape(1, 6)
+    def __init__(self, sample_rate: int = 44100, n_slots: int = 5,
+                 dp_lambda: float = 0.45):
+        self.sample_rate = sample_rate
+        self.n_slots = n_slots
+        self.dp_lambda = dp_lambda
+        self.hop_dt = self.HOP / sample_rate
 
-    def process(self, samples: np.ndarray) -> tuple[float, float]:
-        """Return (lufs, normalized_loudness 0-1)."""
-        weighted, self._zi = sps.sosfilt(self._sos, samples, zi=self._zi)
-        self._ring[self._i % len(self._ring)] = float(np.mean(weighted ** 2))
-        self._i += 1
-        ms = float(np.mean(self._ring)) if self._i >= len(self._ring) else float(
-            np.mean(self._ring[: self._i])
+        # --- frontend ---
+        self._ring = np.zeros(self.WIN_LOW, dtype=np.float32)
+        self._pending = np.zeros(0, dtype=np.float32)
+        self._win_low = np.hanning(self.WIN_LOW)
+        self._win_high = np.hanning(self.WIN_HIGH)
+        freqs_low = np.fft.rfftfreq(self.WIN_LOW, 1.0 / sample_rate)
+        freqs_high = np.fft.rfftfreq(self.WIN_HIGH, 1.0 / sample_rate)
+        edges = np.logspace(np.log10(40), np.log10(16000), self.F + 1)
+        # Band folding as two matrices (vectorized: bands = M_lo@mag_lo + M_hi@mag_hi)
+        self._band_center = np.sqrt(edges[:-1] * edges[1:])
+        self._fold_low = np.zeros((self.F, len(freqs_low)))
+        self._fold_high = np.zeros((self.F, len(freqs_high)))
+        for i in range(self.F):
+            lo, hi = edges[i], edges[i + 1]
+            use_low = self._band_center[i] < self.SPLIT_HZ
+            freqs = freqs_low if use_low else freqs_high
+            idx = np.where((freqs >= lo) & (freqs < hi))[0]
+            if len(idx) == 0:
+                idx = np.array([min(np.searchsorted(freqs, lo), len(freqs) - 1)])
+            target = self._fold_low if use_low else self._fold_high
+            target[i, idx] = 1.0 / len(idx)
+        self._kick_bands = np.where(self._band_center <= self.KICK_MAX_HZ)[0]
+
+        # whitening state
+        self._peak = np.full(self.F, 1e-6)
+        self._global_max = 1e-6
+        self._prev_white = np.zeros(self.F)
+        self.frame = np.zeros(self.F, dtype=np.float32)  # latest whitened v
+
+        # --- kick onset state ---
+        self._kick_hist: list[float] = []
+        self._last_kick = 0.0
+
+        # --- NMF ---
+        self.W = self._seed_dictionary()
+        self.h = np.full(self.K, 0.1)
+        self._A = np.eye(self.K) * 1e-3
+        self._B = self.W * 1e-3
+        self._hop_count = 0
+
+        # --- descriptors ---
+        self._h_hist = np.zeros((self.HIST_HOPS, self.K), dtype=np.float32)
+        self._met_hist = np.zeros((self.K, 16), dtype=np.float32)
+
+        # --- clusters / slots ---
+        self._clusters: list[dict] = []   # {id, centroid, members, activity}
+        self._next_id = 0
+        self._slots: list[dict] = []      # ordered display slots
+        self._slot_agc: dict[int, float] = {}
+        self._prev_act: dict[int, float] = {}
+
+    # ------------------------------------------------------------------
+    # Dictionary seeding (ADR 0005: low bumps, harmonic combs, noise)
+    # ------------------------------------------------------------------
+    def _seed_dictionary(self) -> np.ndarray:
+        rng = np.random.default_rng(7)
+        W = np.zeros((self.F, self.K))
+        x = np.arange(self.F)
+        # 3 low-frequency bumps (kick/bass register)
+        for j, center in enumerate((2.0, 5.0, 8.0)):
+            W[:, j] = np.exp(-0.5 * ((x - center) / 2.0) ** 2)
+        # 4 harmonic combs: bands are log-spaced, so harmonics of a note at
+        # band b land near b + const*log2(n); approximate with spaced bumps
+        octave = self.F / np.log2(16000 / 40)  # bands per octave (~4.6)
+        for j, base in enumerate((10.0, 14.0, 18.0, 22.0)):
+            for n in range(1, 6):
+                pos = base + octave * np.log2(n)
+                W[:, 3 + j] += np.exp(-0.5 * ((x - pos) / 1.0) ** 2) / n
+        # 3 broadband/high-noise shapes
+        W[:, 7] = np.linspace(0.2, 1.0, self.F)            # bright noise
+        W[:, 8] = np.concatenate([np.zeros(self.F - 12), np.ones(12)])  # hats
+        W[:, 9] = np.ones(self.F) * 0.5                    # flat
+        W += rng.uniform(0.0, 0.02, W.shape)               # break symmetry
+        return W / np.linalg.norm(W, axis=0, keepdims=True)
+
+    # ------------------------------------------------------------------
+    # Per-chunk processing
+    # ------------------------------------------------------------------
+    def process_chunk(self, chunk: np.ndarray, t_end: float, slot16: int,
+                      volume: float) -> list[tuple[float, float, bool, float]]:
+        """Run all complete hops in `chunk`.
+
+        Returns kick events: [(hop_time, kick_odf, fired, strength), ...]
+        """
+        samples = np.concatenate([self._pending, chunk.astype(np.float32)])
+        n_hops = len(samples) // self.HOP
+        self._pending = samples[n_hops * self.HOP:]
+        events = []
+        for i in range(n_hops):
+            hop = samples[i * self.HOP:(i + 1) * self.HOP]
+            t_hop = t_end - (n_hops - 1 - i) * self.hop_dt
+            events.append(self._process_hop(hop, t_hop, slot16, volume))
+        return events
+
+    def _process_hop(self, hop: np.ndarray, t_hop: float, slot16: int,
+                     volume: float) -> tuple[float, float, bool, float]:
+        self._ring = np.roll(self._ring, -self.HOP)
+        self._ring[-self.HOP:] = hop
+
+        mag_low = np.abs(np.fft.rfft(self._ring * self._win_low))
+        mag_high = np.abs(np.fft.rfft(self._ring[-self.WIN_HIGH:] * self._win_high))
+        raw = np.log1p(self._fold_low @ mag_low + self._fold_high @ mag_high)
+
+        # adaptive whitening (floor vs global max kills phantom flux)
+        self._global_max = max(float(raw.max()), self._global_max * self.WHITEN_DECAY, 1e-6)
+        floor = 0.01 * self._global_max
+        self._peak = np.maximum.reduce([raw, self._peak * self.WHITEN_DECAY,
+                                        np.full(self.F, floor)])
+        v = (raw / self._peak).astype(np.float32)
+        flux = np.maximum(0.0, v - self._prev_white)
+        self._prev_white = v
+        self.frame = v
+
+        # --- kick onset (beat evidence) ---
+        kick_odf = float(np.mean(flux[self._kick_bands]))
+        mean = float(np.mean(self._kick_hist)) if self._kick_hist else 0.0
+        self._kick_hist.append(kick_odf)
+        if len(self._kick_hist) > self.HIST_HOPS:
+            self._kick_hist.pop(0)
+        fired = (
+            kick_odf > max(self.KICK_FLOOR, mean * self.KICK_THRESH)
+            and (t_hop - self._last_kick) > self.KICK_MIN_IOI
         )
-        lufs = -0.691 + 10 * np.log10(max(ms, 1e-12))
+        strength = 0.0
+        if fired:
+            self._last_kick = t_hop
+            strength = float(np.clip((kick_odf - self.KICK_FLOOR) / (3 * self.KICK_FLOOR), 0, 1))
 
-        if lufs > self.GATE_LUFS:
-            # slowly forget extremes so the mapping adapts to the material
-            self._max_lufs = max(lufs, self._max_lufs - 0.005)
-            self._min_lufs = min(lufs, self._min_lufs + 0.005)
-        span = max(self._max_lufs - self._min_lufs, 6.0)
-        norm = float(np.clip((lufs - self._min_lufs) / span, 0.0, 1.0))
-        if lufs <= self.GATE_LUFS:
-            norm = 0.0
-        return float(lufs), norm
+        # --- NMF: solve h (always), learn W (when not silent) ---
+        h = self.h
+        for _ in range(self.NMF_ITERS):
+            wh = self.W @ h + 1e-9
+            h = h * (self.W.T @ (v / wh)) / (self.W.T.sum(axis=1) + 1e-9)
+        self.h = np.maximum(h, 1e-6)
+
+        if volume > self.VOLUME_GATE:
+            self._A = self.STAT_GAMMA * self._A + np.outer(self.h, self.h)
+            self._B = self.STAT_GAMMA * self._B + np.outer(v, self.h)
+            if self._hop_count % self.W_SWEEP_EVERY == 0:
+                self.W = self.W * (self._B + 1e-9) / (self.W @ self._A + 1e-9)
+                norms = np.linalg.norm(self.W, axis=0, keepdims=True)
+                self.W = self.W / np.maximum(norms, 1e-9)
+
+        # --- descriptor state ---
+        self._h_hist = np.roll(self._h_hist, -1, axis=0)
+        self._h_hist[-1] = self.h
+        self._met_hist *= self.MET_GAMMA
+        self._met_hist[:, slot16 % 16] += self.h
+
+        self._hop_count += 1
+        if self._hop_count % self.REFRESH_HOPS == 0:
+            self._refresh_clusters()
+
+        return (t_hop, kick_odf, fired, strength)
+
+    # ------------------------------------------------------------------
+    # Clustering (DP-means over component descriptors, ADR 0005)
+    # ------------------------------------------------------------------
+    def _descriptors(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return (descriptors (K, D), activity (K,))."""
+        hist = self._h_hist
+        mean = hist.mean(axis=0)
+        p90 = np.percentile(hist, 90, axis=0)
+        pos_diff = np.maximum(0.0, np.diff(hist, axis=0)).mean(axis=0)
+        burst = np.clip(p90 / (mean + 1e-6) / 10.0, 0.0, 1.0)
+        rise = np.clip(pos_diff / (mean + 1e-6), 0.0, 1.0)
+        duty = (hist > 0.3 * p90[None, :]).mean(axis=0)
+        met = self._met_hist / (self._met_hist.sum(axis=1, keepdims=True) + 1e-9)
+
+        timbre = self.W / np.maximum(np.linalg.norm(self.W, axis=0, keepdims=True), 1e-9)
+        desc = np.concatenate([
+            timbre.T,                                   # (K, F)
+            self.W_ENV * np.stack([burst, rise, duty], axis=1),
+            self.W_MET * met * 4.0,                     # x4: unit-sum hist is tiny
+        ], axis=1)
+        desc = desc / np.maximum(np.linalg.norm(desc, axis=1, keepdims=True), 1e-9)
+        return desc, mean
+
+    def _refresh_clusters(self) -> None:
+        desc, activity = self._descriptors()
+        order = np.argsort(-activity)
+
+        # DP-means: greedy, most-active components first
+        new: list[dict] = []
+        for k in order:
+            d = desc[k]
+            best, best_sim = None, -1.0
+            for cl in new:
+                sim = float(d @ cl["centroid"])
+                if sim > best_sim:
+                    best, best_sim = cl, sim
+            if best is not None and (1.0 - best_sim) < self.dp_lambda:
+                w_old = best["weight"]
+                w_new = w_old + activity[k] + 1e-9
+                best["centroid"] = (best["centroid"] * w_old + d * (activity[k] + 1e-9)) / w_new
+                best["centroid"] /= max(np.linalg.norm(best["centroid"]), 1e-9)
+                best["weight"] = w_new
+                best["members"].append(int(k))
+            else:
+                new.append({"centroid": d.copy(), "weight": activity[k] + 1e-9,
+                            "members": [int(k)]})
+
+        # identity continuity: greedy-match to previous clusters
+        prev = list(self._clusters)
+        for cl in sorted(new, key=lambda c: -c["weight"]):
+            best, best_sim = None, 0.6  # minimum similarity to inherit an id
+            for p in prev:
+                sim = float(cl["centroid"] @ p["centroid"])
+                if sim > best_sim:
+                    best, best_sim = p, sim
+            if best is not None:
+                cl["id"] = best["id"]
+                prev = [p for p in prev if p is not best]
+            else:
+                cl["id"] = self._next_id
+                self._next_id += 1
+
+        for cl in new:
+            cl["activity"] = float(sum(activity[m] for m in cl["members"]))
+            spec = np.zeros(self.F)
+            for m in cl["members"]:
+                spec += self.W[:, m] * (activity[m] + 1e-9)
+            total = spec.sum()
+            cl["centroid_x"] = float((np.arange(self.F) @ spec) / (total * (self.F - 1))) \
+                if total > 1e-9 else 0.5
+        self._clusters = new
+
+        top = sorted(new, key=lambda c: -c["activity"])[: self.n_slots]
+        self._slots = sorted(top, key=lambda c: c["centroid_x"])
+
+    # ------------------------------------------------------------------
+    # Display snapshot
+    # ------------------------------------------------------------------
+    def snapshot(self) -> tuple[np.ndarray | None, np.ndarray | None, tuple]:
+        """Return (sources, centroids, active) for the current hop."""
+        if not self._slots:
+            return None, None, ()
+        n = self.n_slots
+        sources = np.zeros(n, dtype=np.float32)
+        # unused slots pad at the high end so centroids stay sorted
+        centroids = np.ones(n, dtype=np.float32)
+        active = []
+        for i, cl in enumerate(self._slots[:n]):
+            act_raw = float(sum(self.h[m] for m in cl["members"]))
+            cid = cl["id"]
+            agc = max(act_raw, self._slot_agc.get(cid, 1e-3) * 0.9995)
+            self._slot_agc[cid] = agc
+            a = float(np.clip(act_raw / max(agc, 1e-6), 0.0, 1.0))
+            rising = a > self._prev_act.get(cid, 0.0) + 0.25
+            self._prev_act[cid] = a
+            sources[i] = a
+            centroids[i] = cl["centroid_x"]
+            active.append(bool(rising))
+        return sources, centroids, tuple(active)
 
 
 class PredictiveBeatOscillator:
     """Phase-locked oscillator that schedules beats ahead of time.
 
     A backend supplies (bpm, detected beat timestamps). The oscillator keeps
-    its own clock-based schedule and applies slew-limited corrections, so
-    `beat_now` fires ON the beat instead of after detection latency.
+    its own clock-based schedule; corrections accumulate during the bar and
+    apply only at bar boundaries, so beats stay metronome-steady within a
+    measure.
     """
 
     # Corrections apply once per BAR (not per detection), so the gains are
@@ -293,8 +386,6 @@ class PredictiveBeatOscillator:
         self._downbeat_offset = 0
         # accent histogram for the downbeat heuristic
         self._accents = np.zeros(4)
-        # Corrections are accumulated here and applied only at bar
-        # boundaries, so the beat stays metronome-steady within a measure.
         self._pending_bpm: float | None = None
         self._pending_errs: list[float] = []
 
@@ -303,14 +394,9 @@ class PredictiveBeatOscillator:
         return 60.0 / self.bpm if self.bpm else None
 
     def on_detection(self, t: float, bpm: float | None) -> None:
-        """Register a detected beat at capture time t (latency compensated).
-
-        Detections do not move the schedule immediately — they accumulate
-        and are applied at the next bar boundary (see tick()).
-        """
+        """Register a detected beat at capture time t (latency compensated)."""
         t -= self.latency_s
         if self.bpm is None:
-            # initial lock: take the first plausible tempo immediately
             if bpm and bpm > 0:
                 self.bpm = bpm
                 self._pending_bpm = bpm
@@ -319,14 +405,12 @@ class PredictiveBeatOscillator:
         if bpm and bpm > 0:
             target = self._pending_bpm if self._pending_bpm is not None else self.bpm
             self._pending_bpm = target + self.BPM_BLEND * (bpm - target)
-        # phase error to the NEAREST scheduled beat
         period = self.period
         err = t - self._next_beat
         err -= round(err / period) * period
         self._pending_errs.append(err)
 
     def _apply_bar_correction(self) -> None:
-        """Apply accumulated tempo/phase corrections (called at bar start)."""
         period = self.period
         if self._pending_bpm is not None:
             self.bpm = self._pending_bpm
@@ -348,13 +432,11 @@ class PredictiveBeatOscillator:
         """Advance to `now`. Returns (beat_now, beat_phase, beat_in_bar, downbeat_now)."""
         if self.bpm is None or self._next_beat is None:
             return False, 0.0, 1, False
-        period = self.period
         beat_now = False
         while now >= self._next_beat:
             beat_now = True
             self._beat_index = (self._beat_index + 1) % 4
             if (self._beat_index - self._downbeat_offset) % 4 == 0:
-                # bar boundary: the only place tempo/phase may change
                 self._apply_bar_correction()
             self._next_beat += self.period
         phase = float(np.clip(1.0 - (self._next_beat - now) / self.period, 0.0, 1.0))
@@ -370,7 +452,7 @@ class _AubioTempoBackend:
         self._tempo = aubio.tempo("default", hop_size * 4, hop_size, sample_rate)
 
     def process(self, chunk: np.ndarray, now: float) -> tuple[float | None, float | None]:
-        """Return (bpm, detection_time or None) for this hop."""
+        """Return (bpm, detection_time or None) for this chunk."""
         is_beat = self._tempo(chunk.astype(np.float32))
         bpm = float(self._tempo.get_bpm()) or None
         if bpm and not (40 <= bpm <= 220):
@@ -379,7 +461,7 @@ class _AubioTempoBackend:
 
 
 class _InternalTempoBackend:
-    """Pure-numpy fallback: autocorrelation of the onset-strength envelope."""
+    """Pure-numpy fallback: autocorrelation of the kick onset envelope."""
 
     BUF_S = 6.0
 
@@ -398,7 +480,9 @@ class _InternalTempoBackend:
 
     def process(self, kick_fired: bool, now: float) -> tuple[float | None, float | None]:
         self._count += 1
-        if self._count % 21 == 0 and len(self._env) >= self._maxlen // 2:  # ~every 0.5 s
+        # recompute tempo every ~0.5 s of envelope samples
+        if self._count % max(1, int(0.5 / self._hop_dt)) == 0 \
+                and len(self._env) >= self._maxlen // 2:
             env = np.array(self._env) - np.mean(self._env)
             ac = np.correlate(env, env, mode="full")[len(env) - 1:]
             lag_min = max(1, int(0.25 / self._hop_dt))   # 240 BPM
@@ -408,17 +492,15 @@ class _InternalTempoBackend:
                 # mild preference for ~120 BPM
                 prior = np.exp(-0.5 * ((60.0 / (lags * self._hop_dt) - 120) / 80) ** 2)
                 best = int(lags[int(np.argmax(ac[lag_min:lag_max] * prior))])
-                # parabolic interpolation for sub-hop lag precision: whole-hop
-                # quantization (~2.3% at 120 BPM) otherwise forces a visible
-                # phase repair every bar
+                # parabolic interpolation for sub-hop lag precision
                 lag = float(best)
                 if 1 <= best < len(ac) - 1:
                     a, b_, c_ = ac[best - 1], ac[best], ac[best + 1]
                     denom = a - 2 * b_ + c_
                     if abs(denom) > 1e-12:
                         lag = best + float(np.clip(0.5 * (a - c_) / denom, -0.5, 0.5))
-                # median over recent estimates: individual autocorrelations
-                # oscillate between adjacent peaks as the window slides
+                # median over recent estimates damps oscillation between
+                # adjacent autocorrelation peaks
                 self._bpm_history.append(60.0 / (lag * self._hop_dt))
                 if len(self._bpm_history) > 9:
                     self._bpm_history.pop(0)
@@ -426,180 +508,24 @@ class _InternalTempoBackend:
         return self._bpm, (now if kick_fired else None)
 
 
-class PitchTracker:
-    """Monophonic f0 + note events; aubio yinfft with numpy fallback."""
-
-    def __init__(self, sample_rate: int, hop_size: int):
-        self.sample_rate = sample_rate
-        self.hop_size = hop_size
-        self._pitch = None
-        self._notes = None
-        if HAVE_AUBIO:
-            try:
-                # "yin" rather than "yinfft": yinfft's get_confidence() returns
-                # 0.0 even on clean tones in aubio-ledfx 0.4.11
-                self._pitch = aubio.pitch("yin", hop_size * 2, hop_size, sample_rate)
-                self._pitch.set_unit("Hz")
-                self._pitch.set_tolerance(0.8)
-                self._notes = aubio.notes("default", hop_size * 2, hop_size, sample_rate)
-            except Exception:
-                self._pitch = None
-        self._prev_f0 = 0.0
-
-    def process(self, chunk: np.ndarray) -> tuple[float, float, bool]:
-        """Return (f0_hz, confidence, note_on)."""
-        chunk32 = chunk.astype(np.float32)
-        if self._pitch is not None:
-            f0 = float(self._pitch(chunk32)[0])
-            conf = float(self._pitch.get_confidence())
-            note_on = False
-            if self._notes is not None:
-                ev = self._notes(chunk32)
-                note_on = ev[0] > 0
-            if not (30 <= f0 <= 4000):
-                f0, conf = 0.0, 0.0
-            return f0, conf, note_on
-
-        # numpy fallback: autocorrelation pitch
-        x = chunk - np.mean(chunk)
-        if float(np.sqrt(np.mean(x ** 2))) < 1e-3:
-            return 0.0, 0.0, False
-        ac = np.correlate(x, x, mode="full")[len(x) - 1:]
-        lag_min = int(self.sample_rate / 2000)
-        lag_max = min(len(ac) - 1, int(self.sample_rate / 50))
-        if lag_max <= lag_min:
-            return 0.0, 0.0, False
-        lag = lag_min + int(np.argmax(ac[lag_min:lag_max]))
-        conf = float(np.clip(ac[lag] / (ac[0] + 1e-9), 0.0, 1.0))
-        f0 = self.sample_rate / lag if conf > 0.3 else 0.0
-        note_on = f0 > 0 and abs(f0 - self._prev_f0) > 0.06 * max(f0, 1.0)
-        self._prev_f0 = f0
-        return float(f0), conf, note_on
-
-
-class ExpressiveFeatures:
-    """Vibrato, tremolo, bends, and ADSR envelope state from f0/volume streams."""
-
-    def __init__(self, hop_rate: float):
-        self.hop_rate = hop_rate
-        nyq = hop_rate / 2
-        self._vib_sos = sps.butter(2, [min(4 / nyq, 0.9), min(8 / nyq, 0.95)], "bandpass", output="sos")
-        self._vib_zi = sps.sosfilt_zi(self._vib_sos) * 0.0
-        self._trem_sos = sps.butter(2, [min(4 / nyq, 0.9), min(10 / nyq, 0.95)], "bandpass", output="sos")
-        self._trem_zi = sps.sosfilt_zi(self._trem_sos) * 0.0
-        self._cents_hist: list[float] = []
-        self._bp_hist: list[float] = []
-        self._env = 0.0
-        self._env_peak = 1e-6
-        self.state = "idle"
-        self._attack_flat_hops = 0
-        self._last_cents = 0.0
-
-    ATTACK_COEF = 0.9
-    RELEASE_COEF = 0.05
-    WIN = 43  # ~1 s
-
-    def process(self, f0_hz: float, confidence: float, volume: float,
-                note_on: bool, dt: float) -> dict:
-        # --- f0 in cents (hold last value when unvoiced) ---
-        if f0_hz > 0 and confidence > 0.4:
-            cents = 1200.0 * np.log2(f0_hz / 55.0)
-        else:
-            cents = self._last_cents
-        d_cents = (cents - self._last_cents) / max(dt, 1e-4)
-        self._last_cents = cents
-
-        # --- vibrato: 4-8 Hz modulation of the cents track ---
-        bp, self._vib_zi = sps.sosfilt(self._vib_sos, [cents], zi=self._vib_zi)
-        self._bp_hist.append(float(bp[0]))
-        self._cents_hist.append(cents)
-        if len(self._bp_hist) > self.WIN:
-            self._bp_hist.pop(0)
-            self._cents_hist.pop(0)
-        bp_arr = np.array(self._bp_hist)
-        vib_rms = float(np.sqrt(np.mean(bp_arr ** 2))) if len(bp_arr) > 8 else 0.0
-        vibrato_amount = float(np.clip(vib_rms / 35.0, 0.0, 1.0))
-        # rate from zero crossings of the bandpassed signal
-        zc = int(np.sum(np.abs(np.diff(np.sign(bp_arr))) > 0)) if len(bp_arr) > 8 else 0
-        vibrato_rate = zc / 2.0 / (len(bp_arr) / self.hop_rate) if len(bp_arr) > 8 else 0.0
-        if vibrato_amount < 0.1:
-            vibrato_rate = 0.0
-
-        # --- tremolo: 4-10 Hz modulation of the volume envelope ---
-        tp, self._trem_zi = sps.sosfilt(self._trem_sos, [volume], zi=self._trem_zi)
-        trem_mod = abs(float(tp[0]))
-        tremolo_amount = float(np.clip(trem_mod / (volume + 1e-3) * 4.0, 0.0, 1.0))
-
-        # --- bend: sustained moderate f0 slope, no new note ---
-        slope = float(np.clip(d_cents / 400.0, -1.0, 1.0))
-        bend_amount = slope if (50.0 < abs(d_cents) < 800.0 and not note_on
-                                and vibrato_amount < 0.3) else 0.0
-
-        # --- ADSR envelope follower + state machine ---
-        coef = self.ATTACK_COEF if volume > self._env else self.RELEASE_COEF
-        self._env += coef * (volume - self._env)
-        if note_on or (self.state in ("idle", "release") and volume > 0.02 and volume > self._env * 1.5):
-            self.state = "attack"
-            self._env_peak = max(volume, 1e-6)
-            self._attack_flat_hops = 0
-        elif self.state == "attack":
-            if self._env > self._env_peak:
-                self._env_peak = self._env
-                self._attack_flat_hops = 0
-            else:
-                self._attack_flat_hops += 1
-            if self._env < self._env_peak * 0.95:
-                self.state = "decay"
-            elif self._attack_flat_hops > 6:  # env stopped rising (~150 ms): held note
-                self.state = "sustain"
-        elif self.state == "decay":
-            if self._env < self._env_peak * 0.1:
-                self.state = "release"
-            elif abs(volume - self._env) < 0.1 * self._env:
-                self.state = "sustain"
-        elif self.state == "sustain":
-            if self._env < self._env_peak * 0.1:
-                self.state = "release"
-        elif self.state == "release":
-            if self._env < 0.005:
-                self.state = "idle"
-        sustain_level = float(np.clip(self._env / max(self._env_peak, 1e-6), 0.0, 1.0))
-        if self.state == "idle":
-            sustain_level = 0.0
-
-        return {
-            "vibrato_amount": vibrato_amount,
-            "vibrato_rate": float(vibrato_rate),
-            "tremolo_amount": tremolo_amount,
-            "bend_amount": float(bend_amount),
-            "envelope_state": self.state,
-            "sustain_level": sustain_level,
-        }
-
-
 class MusicAnalyzer:
     """Full analysis pipeline: PCM chunks in, MusicFeatures out."""
 
-    FFT_SIZE = 2048
-
     def __init__(self, sample_rate: int = 44100, hop_size: int = 1024,
-                 beat_tracker: str = "aubio", latency_ms: float = 60.0,
+                 beat_tracker: str = "internal", latency_ms: float = 60.0,
+                 n_sources: int = 5, source_lambda: float = 0.45,
                  clock=time.time):
         self.sample_rate = sample_rate
         self.hop_size = hop_size
         self._clock = clock
-        hop_rate = sample_rate / hop_size
 
-        self.bands = BandEnergies(sample_rate, self.FFT_SIZE)
-        self.onsets = MultiBandOnsets(sample_rate, self.FFT_SIZE)
-        self.loudness = LoudnessMeter(sample_rate, hop_size)
-        self.pitch = PitchTracker(sample_rate, hop_size)
-        self.expressive = ExpressiveFeatures(hop_rate)
+        self.discovery = SourceDiscovery(sample_rate, n_slots=n_sources,
+                                         dp_lambda=source_lambda)
         self.oscillator = PredictiveBeatOscillator(latency_s=latency_ms / 1000.0)
 
         self.backend_name = beat_tracker
         self._aubio_backend = None
-        self._internal_backend = _InternalTempoBackend(sample_rate, hop_size)
+        self._internal_backend = _InternalTempoBackend(sample_rate, SourceDiscovery.HOP)
         if beat_tracker in ("aubio", "beatnet") and HAVE_AUBIO:
             try:
                 self._aubio_backend = _AubioTempoBackend(sample_rate, hop_size)
@@ -610,9 +536,8 @@ class MusicAnalyzer:
         self._external_beat: tuple[float, float | None, bool] | None = None
         self._external_active = False
 
-        self._window = np.hanning(self.FFT_SIZE)
-        self._fft_buf = np.zeros(self.FFT_SIZE, dtype=np.float32)
         self._kick_times: list[float] = []
+        self._bands16_split = None
         self.features = MusicFeatures()
 
     def inject_beat(self, t: float, bpm: float | None, is_downbeat: bool) -> None:
@@ -621,14 +546,7 @@ class MusicAnalyzer:
         self._external_active = True
 
     def _fix_tempo_octave(self) -> None:
-        """Refine tempo using the kick-onset rate.
-
-        Kick inter-onset intervals are the most direct tempo evidence:
-        - if the tracked period is ~2x the kick spacing, the tracker locked
-          to half tempo: double it
-        - if it is within ~15% of the kick spacing, snap to the kick spacing
-          (autocorrelation backends quantize/oscillate; kicks don't)
-        """
+        """Correct half-tempo octave errors using the kick-onset rate."""
         osc = self.oscillator
         if osc.bpm is None or len(self._kick_times) < 6:
             return
@@ -642,54 +560,47 @@ class MusicAnalyzer:
             osc.bpm *= 2
 
     def process(self, chunk: np.ndarray) -> MusicFeatures:
-        """Analyze one hop of mono float32 samples in [-1, 1]."""
+        """Analyze one capture chunk of mono float32 samples in [-1, 1]."""
         now = self._clock()
         f = MusicFeatures(timestamp=now)
-
-        # Rolling FFT buffer (2048 window, hop-sized advance)
-        n = len(chunk)
-        self._fft_buf = np.roll(self._fft_buf, -n)
-        self._fft_buf[-n:] = chunk
-        mag = np.abs(np.fft.rfft(self._fft_buf * self._window))
-
-        # Levels
         f.volume = float(np.sqrt(np.mean(chunk ** 2)))
-        f.lufs, f.loudness = self.loudness.process(chunk)
 
-        # Texture
-        f.bands = self.bands.process(mag)
-        f.bass = float(np.mean(f.bands[:3]))
-        f.mids = float(np.mean(f.bands[3:10]))
-        f.highs = float(np.mean(f.bands[10:]))
-        f.brightness, f.noisiness = self.bands.spectral_stats(mag)
+        # 16th-note slot from the PREVIOUS frame's bar state (≤23 ms stale)
+        slot16 = int(self.features.bar_phase * 16) % 16
 
-        # Onsets
-        onsets = self.onsets.process(mag, now)
-        f.onset_kick, f.kick_strength, kick_odf = onsets["kick"]
-        f.onset_snare, f.snare_strength, _ = onsets["snare"]
-        f.onset_hat, f.hat_strength, _ = onsets["hat"]
+        # --- source discovery (4 hops) + kick events ---
+        events = self.discovery.process_chunk(chunk, now, slot16, f.volume)
+        kick_fired = False
+        kick_strength = 0.0
+        kick_time = now
+        for t_hop, odf, fired, strength in events:
+            self._internal_backend.add_onset_strength(odf)
+            if fired:
+                kick_fired = True
+                kick_strength = max(kick_strength, strength)
+                kick_time = t_hop
+        f.onset_kick = kick_fired
+        f.kick_strength = kick_strength
 
-        # Beat tracking -> predictive oscillator
-        self._internal_backend.add_onset_strength(kick_odf)
+        # --- beat tracking -> predictive oscillator ---
         bpm = detection = None
         if self._external_beat is not None:
             t, ext_bpm, is_down = self._external_beat
             self._external_beat = None
             bpm, detection = ext_bpm, t
             if is_down:
-                # external tracker says this beat is the downbeat: align
                 self.oscillator._downbeat_offset = (self.oscillator._beat_index + 1) % 4
         elif self._external_active:
-            pass  # external tracker owns beat detection now
+            pass  # external tracker owns beat detection
         elif self._aubio_backend is not None:
             bpm, detection = self._aubio_backend.process(chunk, now)
         else:
-            bpm, detection = self._internal_backend.process(f.onset_kick, now)
+            bpm, detection = self._internal_backend.process(kick_fired, kick_time)
         if detection is not None:
             self.oscillator.on_detection(detection, bpm)
-        if f.onset_kick:
-            self.oscillator.on_kick(f.kick_strength)
-            self._kick_times.append(now)
+        if kick_fired:
+            self.oscillator.on_kick(kick_strength)
+            self._kick_times.append(kick_time)
             if len(self._kick_times) > 12:
                 self._kick_times.pop(0)
             self._fix_tempo_octave()
@@ -697,21 +608,18 @@ class MusicAnalyzer:
         f.bpm = self.oscillator.bpm
         f.bar_phase = ((f.beat_in_bar - 1) + f.beat_phase) / 4.0
 
-        # Pitch + expressive
-        f.f0_hz, f.pitch_confidence, f.note_on = self.pitch.process(chunk)
-        if f.f0_hz > 0:
-            midi = 69 + 12 * np.log2(f.f0_hz / 440.0)
-            f.pitch_class = int(round(midi)) % 12
-        expr = self.expressive.process(
-            f.f0_hz, f.pitch_confidence, f.volume, f.note_on,
-            dt=self.hop_size / self.sample_rate,
-        )
-        f.vibrato_amount = expr["vibrato_amount"]
-        f.vibrato_rate = expr["vibrato_rate"]
-        f.tremolo_amount = expr["tremolo_amount"]
-        f.bend_amount = expr["bend_amount"]
-        f.envelope_state = expr["envelope_state"]
-        f.sustain_level = expr["sustain_level"]
+        # --- texture back-compat: fold the 40 whitened bands to 16 ---
+        if self._bands16_split is None:
+            self._bands16_split = np.array_split(np.arange(SourceDiscovery.F), 16)
+        v = self.discovery.frame
+        f.bands = np.array([float(np.mean(v[idx])) for idx in self._bands16_split],
+                           dtype=np.float32)
+        f.bass = float(np.mean(f.bands[:3]))
+        f.mids = float(np.mean(f.bands[3:10]))
+        f.highs = float(np.mean(f.bands[10:]))
+
+        # --- discovered sources ---
+        f.sources, f.source_centroid, f.source_active = self.discovery.snapshot()
 
         self.features = f
         return f

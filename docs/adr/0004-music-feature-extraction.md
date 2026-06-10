@@ -1,6 +1,9 @@
 # ADR 0004: Music Feature Extraction and Visualization
 
-**Status:** Accepted
+**Status:** Accepted (feature extractors partially superseded by ADR 0005 —
+beat tracking and kick-onset evidence remain; snare/hat onsets, loudness
+meter, pitch tracker, expressive heuristics, and the SignalGrid layout
+described here were replaced by unsupervised source discovery)
 **Date:** 2026-06-09
 
 ## Context

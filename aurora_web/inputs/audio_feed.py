@@ -35,6 +35,7 @@ class AudioFeed:
         buffer_size: int = 1024,
         beat_tracker: str = "internal",
         latency_ms: float = 60.0,
+        source_lambda: float = 0.45,
     ):
         """Initialize audio feed.
 
@@ -46,6 +47,7 @@ class AudioFeed:
             beat_tracker: "beatnet", "aubio", or "internal" (see ADR 0004)
             latency_ms: Capture-to-display latency compensated by the
                 predictive beat oscillator
+            source_lambda: DP-means cluster granularity (ADR 0005 knob 2)
         """
         self.source = source
         self.sample_rate = sample_rate
@@ -56,6 +58,7 @@ class AudioFeed:
             hop_size=buffer_size,
             beat_tracker=beat_tracker,
             latency_ms=latency_ms,
+            source_lambda=source_lambda,
         )
 
         # Optional BeatNet subprocess (started in start(), ADR 0004)
