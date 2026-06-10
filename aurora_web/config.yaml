@@ -22,7 +22,7 @@ matrix:
 canvas:
   decay_rate: 0.0  # 0 = permanent paint, >0 = fade rate per second
 
-default_drawer: "AudioViz"  # drawer selected on startup; falls back to random if unavailable
+default_drawer: "SignalGrid"  # drawer selected on startup; falls back to random if unavailable
 
 inputs:
   beats:
