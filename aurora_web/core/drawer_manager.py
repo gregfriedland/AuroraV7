@@ -302,6 +302,10 @@ class DrawerManager:
         if self.mode != "pattern":
             return None
 
+        # Never rotate pattern/palette away from audio-reactive drawers
+        if self.active_drawer and getattr(self.active_drawer, "reacts_to_audio", False):
+            return None
+
         # Check for time-based rotation
         time_since_rotation = time.time() - self.last_rotation_time
         if time_since_rotation >= self.AUTO_ROTATE_INTERVAL:
