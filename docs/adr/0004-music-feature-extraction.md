@@ -175,19 +175,23 @@ PCM (1024 samples ≈ 23 ms) ─→ rfft once
 
 ## SignalGrid Layout (32×18)
 
+Rows are organized by **instrument class**, each with a visualization
+matched to how that class behaves:
+
 | Rows | Section | What it shows |
 |------|---------|---------------|
-| 0–5 | Band energy | 16 GEQ columns, 40 Hz (left) → 16 kHz (right). Height = per-band auto-gained energy, so quiet bands get full visual range and the display is volume-independent. Fast attack / slow release. |
-| 7–8 | Drum onsets | Three cells — kick \| snare \| hat. Flash on a spectral-flux onset in that band, brightness = hit strength, decay rate set by the `decay` setting. *Reactive*: lights when the hit happened. |
-| 10–12 | Note box | One box per note, alive for the note's whole life. Onset: appears at the note's frequency (log x, A1 55 Hz → A6 1760 Hz). Sustain: holds, brightness tracking the envelope. Bend/vibrato: slides/wobbles in x following the live f0 (deviation from the onset pitch, magnified ~18 cents/px so a 50-cent vibrato is visible). Release or short note: fades at the decay rate. Expression is shown *in the note's behavior*, not as separate indicators. |
-| 14–15 | Beat / bar | *Predictive*: four full-width boxes = beats 1–4 of the bar. The current beat lights when the oscillator's scheduled beat lands (on the beat, not after detection) and fades; downbeat (beat 1) uses the brightest palette slot. |
-| 17 | Loudness | K-weighted loudness (BS.1770 weighting, 150 ms window — shortened from the 400 ms broadcast standard to avoid visible display lag), auto-gained 0–1. |
+| 0–4 | Smooth (harmonica / voice) | A wide soft-edged ribbon that appears when pitch emerges *without* an attack — sustained tonal content. x = frequency (log, A1 55 Hz → A6 1760 Hz); brightness tracks the envelope; vibrato wobbles it and slides follow the live f0 (deviation from segment start magnified ~18 cents/px). |
+| 6–10 | Plucked (guitar / bass) | Onset-spawned note boxes: a box appears at the note's frequency the moment an attack lands, holds while sustained, slides with bends, fades at the decay rate for short notes. |
+| 12–14 | Percussion (drums) | Three cells — kick \| snare \| hat. Flash on per-band spectral-flux onsets with a fast fixed ~60 ms decay so rapid-fire hits read as separate flashes. |
+| 16 | Beat / bar | *Predictive*: four boxes = beats 1–4. The current beat lights when the bar-locked oscillator's scheduled beat lands; downbeat (beat 1) uses the brightest palette slot. Tempo/phase corrections apply only at bar boundaries. |
+| 17 | Loudness | K-weighted loudness (BS.1770 weighting, 150 ms window), auto-gained 0–1, ~80 ms display EMA. |
 
-Reading tip: the onset row shows what *just happened*; the beat row shows
-what is *about to happen*. Disagreement between them is usually syncopation,
-not a bug. All sections consume the same `MusicFeatures` snapshot available
-to every drawer — SignalGrid is the reference for which signals are worth
-building richer visualizations on.
+Smooth-vs-plucked routing: when a voiced pitch segment starts, it goes to
+the plucked row if an attack (note event or snare-band onset) occurred
+within the previous ~120 ms; otherwise to the smooth row. The percussion
+row shows what *just happened*; the beat row shows what is *about to
+happen* — disagreement is usually syncopation, not a bug. All sections
+consume the same `MusicFeatures` snapshot available to every drawer.
 
 ## CPU budget (Pi 5, 4×A76, measured/estimated per 23 ms hop)
 
