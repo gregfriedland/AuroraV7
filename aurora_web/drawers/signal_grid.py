@@ -145,28 +145,21 @@ class SignalGridDrawer(Drawer):
         self._pitch_flash *= fade
 
     def _draw_beat(self, indices, ctx, audio, c, fade):
+        """Four full-width beat-in-bar boxes; current beat lit, downbeat distinct."""
         r0, r1 = self._beat_rows
-        sweep_w = ctx.width * 3 // 4
         if getattr(audio, "beat_now", False) or getattr(audio, "beat_onset", False):
             self._beat_flash = 1.0
         bpm = getattr(audio, "bpm", None)
         if bpm:
-            # phase sweep
-            phase = float(getattr(audio, "beat_phase", 0.0))
-            pos = int(np.clip(phase, 0.0, 0.999) * sweep_w)
-            indices[r0:r1, :pos + 1] = self._scaled(c["beat"], 0.35)
-            indices[r0:r1, pos] = self._scaled(c["beat"], 1.0)
-            if self._beat_flash > 0.05:
-                indices[r0:r1, :sweep_w] = self._scaled(c["beat"], self._beat_flash)
-            # beat-in-bar boxes
-            box_w = max(1, (ctx.width - sweep_w) // 4)
+            box_w = max(1, ctx.width // 4)
             beat_in_bar = int(getattr(audio, "beat_in_bar", 1))
             for b in range(4):
-                x0 = sweep_w + b * box_w
+                x0 = b * box_w
                 x1 = min(ctx.width, x0 + box_w - 1) if b < 3 else ctx.width
                 if b + 1 == beat_in_bar:
                     color = c["downbeat"] if b == 0 else c["bar"]
-                    indices[r0:r1, x0:x1] = self._scaled(color, 1.0)
+                    brightness = max(0.5, self._beat_flash)
+                    indices[r0:r1, x0:x1] = self._scaled(color, brightness)
                 else:
                     indices[r0:r1, x0:x1] = self._scaled(c["bar"], 0.15)
         self._beat_flash *= fade

@@ -180,8 +180,8 @@ PCM (1024 samples ≈ 23 ms) ─→ rfft once
 | 0–5 | Band energy | 16 GEQ columns, 40 Hz (left) → 16 kHz (right). Height = per-band auto-gained energy, so quiet bands get full visual range and the display is volume-independent. Fast attack / slow release. |
 | 7–8 | Drum onsets | Three cells — kick \| snare \| hat. Flash on a spectral-flux onset in that band, brightness = hit strength, decay rate set by the `decay` setting. *Reactive*: lights when the hit happened. |
 | 10–11 | Pitch | Dot at the dominant note's frequency, log scale A1 (55 Hz) → A6 (1760 Hz), ~6.4 px per octave. Brightness = confidence; note-on flashes it; detected vibrato physically oscillates the dot at the measured rate. |
-| 13–14 | Beat / bar | *Predictive*: left ¾ is a `beat_phase` sweep cursor traveling once per beat; the strip flashes when the oscillator's scheduled beat lands (on the beat, not after detection). Right four boxes = beats 1–4 of the bar; current beat lit, downbeat (beat 1) in the brightest palette slot. |
-| 16 | Loudness | K-weighted momentary loudness (BS.1770, ~400 ms window — perceptual, not raw RMS), auto-gained 0–1. |
+| 13–14 | Beat / bar | *Predictive*: four full-width boxes = beats 1–4 of the bar. The current beat lights when the oscillator's scheduled beat lands (on the beat, not after detection) and fades; downbeat (beat 1) uses the brightest palette slot. |
+| 16 | Loudness | K-weighted loudness (BS.1770 weighting, 150 ms window — shortened from the 400 ms broadcast standard to avoid visible display lag), auto-gained 0–1. |
 | 17 | Expressive | Six cells, brightness = amount: vibrato (4–8 Hz pitch wobble), tremolo (4–10 Hz amplitude wobble), sustain (ADSR envelope level), bend (sustained pitch glide), noisiness (spectral flatness), brightness (spectral centroid). |
 
 Reading tip: the onset row shows what *just happened*; the beat row shows

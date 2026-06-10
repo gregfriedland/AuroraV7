@@ -81,8 +81,8 @@ class TestSignalGrid:
         f2.beat_in_bar = 2
         f2.downbeat_now = False
         frame_2 = d2.draw(make_ctx(audio=f2))
-        box_region = frame_down[13:15, 24:]
-        box_region_2 = frame_2[13:15, 24:]
+        box_region = frame_down[13:15, :8]
+        box_region_2 = frame_2[13:15, :8]
         assert box_region.max() > box_region_2.max(), \
             "downbeat box should use the brightest palette slot"
 

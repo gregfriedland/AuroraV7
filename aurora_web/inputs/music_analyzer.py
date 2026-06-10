@@ -208,9 +208,13 @@ class MultiBandOnsets:
 
 
 class LoudnessMeter:
-    """BS.1770 K-weighted momentary loudness with AGC normalization."""
+    """K-weighted loudness with AGC normalization.
 
-    WINDOW_S = 0.4
+    BS.1770 momentary loudness uses a 400 ms window, but that lags visibly
+    on a display; 150 ms keeps the K-weighting while feeling immediate.
+    """
+
+    WINDOW_S = 0.15
     GATE_LUFS = -60.0
     AGC_DECAY = 0.999
 
