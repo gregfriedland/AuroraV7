@@ -1,18 +1,18 @@
 """SignalGrid drawer — discovered instrument sources (ADR 0005).
 
+Renders RGB directly (returns_rgb) instead of palette indices: every source
+row has ONE fixed hue, and brightness scales that color's value. Scaling
+palette indices (the index-drawer idiom) slides along the palette gradient,
+so "dimmer" meant "different color" — no stable visual identity per source.
+
 Layout on a 32x18 matrix (rows scale with matrix height):
 
-    rows 0-14  five source rows (3 px each): one row per instrument source
-               discovered by the online NMF + clustering pipeline. Lowest-
-               frequency source on the BOTTOM row. Each row shows a box at
-               x = the source's spectral centroid; brightness = its live
-               activation, with a flash boost on rising edges. Percussive
-               sources naturally flash; sustained sources naturally hold.
-    rows 16-17 predictive beat-in-bar boxes (current beat lit, downbeat
-               in the brightest palette slot)
-
-Cold start (first ~0.5 s, before the first cluster refresh): dim band bars
-are shown across the source rows.
+    rows 0-14  five source rows (3 px each), lowest-frequency source on the
+               BOTTOM row. Each row: a crisp fixed-width box at x = the
+               source's spectral centroid whose brightness follows the
+               source's live activation — a hit is always the same box, same
+               place, same color, flashing bright and decaying.
+    rows 16-17 beat-in-bar boxes (current beat white, downbeat gold)
 """
 
 import numpy as np
@@ -25,19 +25,34 @@ class SignalGridDrawer(Drawer):
 
     # Silence legitimately renders black; exempt from stuck detection
     reacts_to_audio = True
+    # Draw RGB directly; DrawerManager skips palette conversion
+    returns_rgb = True
 
     N_ROWS = 5
-    BOX_HALF_W = 2          # box half-width in pixels
+    BOX_W = 6               # box width in pixels (crisp, no soft edges)
+
+    # one fixed color per source row (top -> bottom)
+    ROW_COLORS = np.array([
+        [180, 60, 255],     # violet  (highest frequency)
+        [40, 120, 255],     # blue
+        [0, 220, 130],      # green
+        [255, 180, 0],      # amber
+        [255, 60, 60],      # red     (lowest frequency)
+    ], dtype=np.float32)
+
+    BAR_DIM = np.array([60, 60, 70], dtype=np.float32)
+    BAR_LIT = np.array([240, 240, 255], dtype=np.float32)
+    BAR_DOWN = np.array([255, 200, 40], dtype=np.float32)
 
     def __init__(self, width: int, height: int, palette_size: int = 4096):
         super().__init__("SignalGrid", width, height, palette_size)
         self.settings = {
-            "decay": 50,        # flash decay speed
+            "decay": 50,        # release speed of the box brightness
         }
         self.settings_ranges = {
             "decay": (10, 100),
         }
-        self._flash = np.zeros(self.N_ROWS, dtype=np.float32)
+        self._level = np.zeros(self.N_ROWS, dtype=np.float32)
         self._beat_flash = 0.0
 
         h = height
@@ -49,90 +64,41 @@ class SignalGridDrawer(Drawer):
         self._beat_rows = (h * 16 // 18, h)
 
     def reset(self) -> None:
-        self._flash[:] = 0.0
+        self._level[:] = 0.0
         self._beat_flash = 0.0
 
-    # Palette color slots: one distinct color per source row
-    def _colors(self, ps: int) -> dict:
-        return {
-            "rows": [ps * 1 // 6, ps * 2 // 6, ps * 3 // 6, ps * 4 // 6, ps * 5 // 6],
-            "bar": ps * 3 // 5,
-            "downbeat": ps - 1,
-            "bands": ps * 2 // 5,
-        }
-
-    @staticmethod
-    def _scaled(color: int, brightness: float) -> int:
-        return max(1, int(color * float(np.clip(brightness, 0.0, 1.0))))
-
     def draw(self, ctx: DrawerContext) -> np.ndarray:
-        indices = np.zeros((ctx.height, ctx.width), dtype=np.int32)
+        frame = np.zeros((ctx.height, ctx.width, 3), dtype=np.float32)
         audio = ctx.audio
         if audio is None:
-            return indices
-        c = self._colors(ctx.palette_size)
-        decay_tau = 0.3 - 0.25 * (self.settings["decay"] / 100.0)  # 0.05-0.3 s
+            return frame.astype(np.uint8)
+        decay_tau = 0.45 - 0.4 * (self.settings["decay"] / 100.0)  # 0.05-0.45 s
         fade = float(np.exp(-ctx.delta_time / max(decay_tau, 0.01)))
 
         sources = getattr(audio, "sources", None)
         if sources is not None:
-            self._draw_sources(indices, ctx, audio, c, fade)
-        else:
-            self._draw_fallback_bands(indices, ctx, audio, c)
-        self._draw_beat(indices, ctx, audio, c, fade)
-        return indices
+            self._draw_sources(frame, ctx, audio, fade)
+        self._draw_beat(frame, ctx, audio, fade)
+        return np.clip(frame, 0, 255).astype(np.uint8)
 
-    def _draw_sources(self, indices, ctx, audio, c, fade):
+    def _draw_sources(self, frame, ctx, audio, fade):
         sources = audio.sources
         centroids = audio.source_centroid
-        active = getattr(audio, "source_active", ())
         n = min(self.N_ROWS, len(sources))
         for i in range(n):
             act = float(sources[i])
-            if i < len(active) and active[i]:
-                self._flash[i] = 1.0
-            self._flash[i] *= fade
-            level = max(act, self._flash[i])
-            if level < 0.04:
+            # instant attack, decay-set release: a hit snaps the box bright
+            # and it fades at one consistent rate
+            self._level[i] = max(act, self._level[i] * fade)
+            level = self._level[i]
+            if level < 0.05:
                 continue
             r0, r1 = self._row_bounds[i]
             col = int(np.clip(centroids[i], 0.0, 1.0) * (ctx.width - 1))
-            x0 = max(0, col - self.BOX_HALF_W)
-            x1 = min(ctx.width, col + self.BOX_HALF_W + 1)
-            color = c["rows"][i]
-            # a hit lights the WHOLE row (dimmer), collapsing back to the box
-            # as the flash decays — makes percussive hits unmissable
-            if self._flash[i] > 0.1:
-                indices[r0:r1, :] = self._scaled(color, self._flash[i] * 0.45)
-            indices[r0:r1, x0:x1] = self._scaled(color, level)
-            # soft edges
-            if x0 > 0:
-                indices[r0:r1, x0 - 1] = self._scaled(color, level * 0.35)
-            if x1 < ctx.width:
-                indices[r0:r1, x1] = self._scaled(color, level * 0.35)
+            x0 = max(0, min(col - self.BOX_W // 2, ctx.width - self.BOX_W))
+            frame[r0:r1, x0:x0 + self.BOX_W] = self.ROW_COLORS[4 - i] * level
 
-    def _draw_fallback_bands(self, indices, ctx, audio, c):
-        """Cold start: dim band bars until source clusters mature."""
-        bands = getattr(audio, "bands", None)
-        if bands is None:
-            bands = getattr(audio, "spectrum", None)
-        if bands is None:
-            return
-        r1 = self._row_bounds[0][1]  # bottom of the source block
-        rows = r1
-        nb = len(bands)
-        col_w = max(1, ctx.width // nb)
-        for i in range(min(nb, ctx.width // col_w)):
-            level = float(np.clip(bands[i], 0.0, 1.0))
-            filled = int(round(level * rows))
-            if filled == 0:
-                continue
-            x0 = i * col_w
-            indices[rows - filled:rows, x0:x0 + col_w] = self._scaled(
-                c["bands"], 0.25 + 0.35 * level)
-
-    def _draw_beat(self, indices, ctx, audio, c, fade):
-        """Four beat-in-bar boxes; current beat lit, downbeat distinct."""
+    def _draw_beat(self, frame, ctx, audio, fade):
         r0, r1 = self._beat_rows
         if getattr(audio, "beat_now", False) or getattr(audio, "beat_onset", False):
             self._beat_flash = 1.0
@@ -144,8 +110,8 @@ class SignalGridDrawer(Drawer):
                 x0 = b * box_w
                 x1 = min(ctx.width, x0 + box_w - 1) if b < 3 else ctx.width
                 if b + 1 == beat_in_bar:
-                    color = c["downbeat"] if b == 0 else c["bar"]
-                    indices[r0:r1, x0:x1] = self._scaled(color, max(0.5, self._beat_flash))
+                    color = self.BAR_DOWN if b == 0 else self.BAR_LIT
+                    frame[r0:r1, x0:x1] = color * max(0.5, self._beat_flash)
                 else:
-                    indices[r0:r1, x0:x1] = self._scaled(c["bar"], 0.15)
+                    frame[r0:r1, x0:x1] = self.BAR_DIM
         self._beat_flash *= fade

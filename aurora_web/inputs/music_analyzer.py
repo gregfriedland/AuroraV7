@@ -149,6 +149,7 @@ class SourceDiscovery:
         self._A = np.eye(self.K) * 1e-3
         self._B = self.W * 1e-3
         self._hop_count = 0
+        self._learn_hops = 0   # annealing clock (only advances while learning)
 
         # --- descriptors ---
         self._h_hist = np.zeros((self.HIST_HOPS, self.K), dtype=np.float32)
@@ -251,7 +252,16 @@ class SourceDiscovery:
             self._A = self.STAT_GAMMA * self._A + np.outer(self.h, self.h)
             self._B = self.STAT_GAMMA * self._B + np.outer(v, self.h)
             if self._hop_count % self.W_SWEEP_EVERY == 0:
-                self.W = self.W * (self._B + 1e-9) / (self.W @ self._A + 1e-9)
+                W_new = self.W * (self._B + 1e-9) / (self.W @ self._A + 1e-9)
+                norms = np.linalg.norm(W_new, axis=0, keepdims=True)
+                W_new = W_new / np.maximum(norms, 1e-9)
+                # Semi-adaptive bases (Dittmar & Gartner): anneal dictionary
+                # learning. Full adaptation for the first ~15 s, then settle —
+                # endless drift reshuffles component roles under a stationary
+                # signal, destabilizing cluster identity and display rows.
+                self._learn_hops += self.W_SWEEP_EVERY
+                alpha = max(0.05, float(np.exp(-self._learn_hops / (172.0 * 15))))
+                self.W = (1 - alpha) * self.W + alpha * W_new
                 norms = np.linalg.norm(self.W, axis=0, keepdims=True)
                 self.W = self.W / np.maximum(norms, 1e-9)
 
@@ -310,7 +320,7 @@ class SourceDiscovery:
         desc = desc / np.maximum(np.linalg.norm(desc, axis=1, keepdims=True), 1e-9)
         return desc, mean
 
-    MERGE_CORR = 0.6        # cluster-envelope correlation that forces a merge
+    MERGE_CORR = 0.45       # cluster-envelope correlation that forces a merge
 
     def _merge_correlated_clusters(self, clusters: list[dict]) -> list[dict]:
         if len(clusters) < 2:
