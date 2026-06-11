@@ -159,6 +159,7 @@ class SourceDiscovery:
         self._next_id = 0
         self._slots: list[dict | None] = []   # display slots (sticky by id)
         self._slot_ids: list[int | None] = [None] * n_slots
+        self._slot_last_cx: dict[int, float] = {}  # slot index -> last centroid
         self._slot_agc: dict[int, float] = {}
         self._prev_act: dict[int, float] = {}
 
@@ -282,9 +283,15 @@ class SourceDiscovery:
         """
         hist = self._h_hist
         mean = hist.mean(axis=0)
-        hc = hist - mean
+        # Smooth envelopes to the EVENT timescale (~100 ms max-filter)
+        # before correlating: NMF components compete to explain each frame
+        # (explaining-away), which anti-correlates same-source components at
+        # the hop level even though they respond to the same hits.
+        from scipy.ndimage import maximum_filter1d
+        env = maximum_filter1d(hist, size=17, axis=0, mode="nearest")
+        hc = env - env.mean(axis=0)
         std = hc.std(axis=0)
-        T = hist.shape[0]
+        T = env.shape[0]
         corr = (hc.T @ hc) / (T * np.outer(std, std) + 1e-9)
         # components with no envelope evidence get a self-only profile so
         # they never merge on noise
@@ -327,15 +334,20 @@ class SourceDiscovery:
                 new.append({"centroid": d.copy(), "weight": activity[k] + 1e-9,
                             "members": [int(k)]})
 
-        # identity continuity: greedy-match to previous clusters
+        # Identity continuity by MEMBER OVERLAP: component indices are
+        # stable across refreshes while descriptor centroids drift as the
+        # dictionary learns. Centroid-similarity matching spawned spurious
+        # "new" clusters that hopped between display slots (visible jitter).
         prev = list(self._clusters)
         for cl in sorted(new, key=lambda c: -c["weight"]):
-            best, best_sim = None, 0.6  # minimum similarity to inherit an id
+            best, best_ov = None, 0.0
+            cm = set(cl["members"])
             for p in prev:
-                sim = float(cl["centroid"] @ p["centroid"])
-                if sim > best_sim:
-                    best, best_sim = p, sim
-            if best is not None:
+                pm = set(p["members"])
+                ov = len(cm & pm) / max(len(cm | pm), 1)
+                if ov > best_ov:
+                    best, best_ov = p, ov
+            if best is not None and best_ov >= 0.3:
                 cl["id"] = best["id"]
                 prev = [p for p in prev if p is not best]
             else:
@@ -365,16 +377,27 @@ class SourceDiscovery:
             self._slot_ids = [c["id"] for c in ordered] + \
                              [None] * (self.n_slots - len(ordered))
         else:
+            # remember where each slot's occupant sat in frequency before
+            # clearing, so replacements can land in the same place
+            for i, cid in enumerate(self._slot_ids):
+                if cid is not None and cid in by_id:
+                    self._slot_last_cx[i] = by_id[cid]["centroid_x"]
             # keep survivors in place; clear vacated slots
             self._slot_ids = [cid if cid in top_ids else None
                               for cid in self._slot_ids]
-            # place new clusters in free slots, low-frequency first toward
-            # the bottom (lowest free slot index)
-            new_ids = [c["id"] for c in sorted(top, key=lambda c: c["centroid_x"])
-                       if c["id"] not in self._slot_ids]
+            # place new clusters in free slots, preferring the slot whose
+            # previous occupant was spectrally closest — when a cluster's id
+            # churns (membership reshuffle), its successor lands on the SAME
+            # row instead of hopping
+            new_cls = [c for c in top if c["id"] not in self._slot_ids]
             free = [i for i, cid in enumerate(self._slot_ids) if cid is None]
-            for slot_i, cid in zip(free, new_ids):
-                self._slot_ids[slot_i] = cid
+            for cl in sorted(new_cls, key=lambda c: -c["activity"]):
+                if not free:
+                    break
+                best = min(free, key=lambda i: abs(
+                    self._slot_last_cx.get(i, 0.5) - cl["centroid_x"]))
+                self._slot_ids[best] = cl["id"]
+                free.remove(best)
         self._slots = [by_id.get(cid) for cid in self._slot_ids]
 
     # ------------------------------------------------------------------
@@ -388,18 +411,30 @@ class SourceDiscovery:
         sources = np.zeros(n, dtype=np.float32)
         centroids = np.ones(n, dtype=np.float32)
         active = []
+        # raw activation per occupied slot (for relative gating)
+        raw = np.zeros(n)
+        for i in range(n):
+            cl = self._slots[i] if i < len(self._slots) else None
+            if cl is not None:
+                raw[i] = float(sum(self.h[m] for m in cl["members"]))
+        total = float(raw.sum())
         for i in range(n):
             cl = self._slots[i] if i < len(self._slots) else None
             if cl is None:
                 active.append(False)
                 continue
-            act_raw = float(sum(self.h[m] for m in cl["members"]))
             cid = cl["id"]
             # faster AGC (~half-life 8 s at 43 snapshots/s) keeps pulse
             # heights near full scale despite dictionary drift
-            agc = max(act_raw, self._slot_agc.get(cid, 1e-3) * 0.998)
+            agc = max(raw[i], self._slot_agc.get(cid, 1e-3) * 0.998)
             self._slot_agc[cid] = agc
-            a = float(np.clip(act_raw / max(agc, 1e-6), 0.0, 1.0))
+            a = float(np.clip(raw[i] / max(agc, 1e-6), 0.0, 1.0))
+            # relative-strength gate: per-slot AGC alone normalizes even a
+            # near-silent noise cluster to full brightness; scale by the
+            # slot's share of total activation so only sources carrying a
+            # real share of the music light up
+            rel = raw[i] / max(total, 1e-9)
+            a *= float(np.clip(3.0 * rel, 0.0, 1.0))
             rising = a > self._prev_act.get(cid, 0.0) + 0.25
             self._prev_act[cid] = a
             sources[i] = a
