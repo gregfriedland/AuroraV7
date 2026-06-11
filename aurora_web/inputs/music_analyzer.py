@@ -310,6 +310,39 @@ class SourceDiscovery:
         desc = desc / np.maximum(np.linalg.norm(desc, axis=1, keepdims=True), 1e-9)
         return desc, mean
 
+    MERGE_CORR = 0.6        # cluster-envelope correlation that forces a merge
+
+    def _merge_correlated_clusters(self, clusters: list[dict]) -> list[dict]:
+        if len(clusters) < 2:
+            return clusters
+        from scipy.ndimage import maximum_filter1d
+        smoothed = maximum_filter1d(self._h_hist, size=17, axis=0, mode="nearest")
+        env = np.stack([smoothed[:, cl["members"]].sum(axis=1) for cl in clusters])
+        env = env - env.mean(axis=1, keepdims=True)
+        norms = np.linalg.norm(env, axis=1)
+        valid = norms > 1e-4
+        env = env / np.maximum(norms, 1e-9)[:, None]
+        corr = env @ env.T
+
+        merged = [False] * len(clusters)
+        order = sorted(range(len(clusters)), key=lambda i: -clusters[i]["weight"])
+        for a_i in order:
+            if merged[a_i]:
+                continue
+            for b_i in order:
+                if b_i == a_i or merged[b_i]:
+                    continue
+                if valid[a_i] and valid[b_i] and corr[a_i, b_i] > self.MERGE_CORR:
+                    a, b = clusters[a_i], clusters[b_i]
+                    a["members"].extend(b["members"])
+                    w = a["weight"] + b["weight"]
+                    a["centroid"] = (a["centroid"] * a["weight"]
+                                     + b["centroid"] * b["weight"]) / w
+                    a["centroid"] /= max(np.linalg.norm(a["centroid"]), 1e-9)
+                    a["weight"] = w
+                    merged[b_i] = True
+        return [cl for i, cl in enumerate(clusters) if not merged[i]]
+
     def _refresh_clusters(self) -> None:
         desc, activity = self._descriptors()
         order = np.argsort(-activity)
@@ -333,6 +366,12 @@ class SourceDiscovery:
             else:
                 new.append({"centroid": d.copy(), "weight": activity[k] + 1e-9,
                             "members": [int(k)]})
+
+        # Cluster-level common-fate merge: if two clusters' summed envelopes
+        # (event-scale, max-filtered — see _descriptors) still correlate
+        # strongly, they are strata of one source that the descriptor
+        # clustering failed to bind. Guarantees one-source-one-row.
+        new = self._merge_correlated_clusters(new)
 
         # Identity continuity by MEMBER OVERLAP: component indices are
         # stable across refreshes while descriptor centroids drift as the
@@ -418,6 +457,11 @@ class SourceDiscovery:
             if cl is not None:
                 raw[i] = float(sum(self.h[m] for m in cl["members"]))
         total = float(raw.sum())
+        # absolute reference: decaying peak of total activation. Between
+        # hits the noise-floor cluster holds ~100% of a TINY total, so a
+        # purely relative gate lights it up; gating against the recent peak
+        # keeps near-silence dark.
+        self._act_peak = max(total, getattr(self, "_act_peak", 1e-3) * 0.999)
         for i in range(n):
             cl = self._slots[i] if i < len(self._slots) else None
             if cl is None:
@@ -429,12 +473,12 @@ class SourceDiscovery:
             agc = max(raw[i], self._slot_agc.get(cid, 1e-3) * 0.998)
             self._slot_agc[cid] = agc
             a = float(np.clip(raw[i] / max(agc, 1e-6), 0.0, 1.0))
-            # relative-strength gate: per-slot AGC alone normalizes even a
-            # near-silent noise cluster to full brightness; scale by the
-            # slot's share of total activation so only sources carrying a
-            # real share of the music light up
+            # relative-strength gate: only sources carrying a real share of
+            # the current music light up
             rel = raw[i] / max(total, 1e-9)
             a *= float(np.clip(3.0 * rel, 0.0, 1.0))
+            # absolute gate vs the recent activation peak
+            a *= float(np.clip(raw[i] / (0.15 * self._act_peak), 0.0, 1.0))
             rising = a > self._prev_act.get(cid, 0.0) + 0.25
             self._prev_act[cid] = a
             sources[i] = a
