@@ -53,6 +53,8 @@ class SignalGridDrawer(Drawer):
             "decay": (10, 100),
         }
         self._level = np.zeros(self.N_ROWS, dtype=np.float32)
+        self._sustain = np.zeros(self.N_ROWS, dtype=np.float32)
+        self._last_hit = np.full(self.N_ROWS, -1e9, dtype=np.float64)
         self._beat_flash = 0.0
 
         h = height
@@ -63,8 +65,13 @@ class SignalGridDrawer(Drawer):
                             for i in range(self.N_ROWS)][::-1]
         self._beat_rows = (h * 16 // 18, h)
 
+    HIT_THR = 0.35          # activation crossing that triggers a flash
+    HIT_REFRACTORY = 0.12   # s; one flash per hit
+
     def reset(self) -> None:
         self._level[:] = 0.0
+        self._sustain[:] = 0.0
+        self._last_hit[:] = -1e9
         self._beat_flash = 0.0
 
     def draw(self, ctx: DrawerContext) -> np.ndarray:
@@ -87,10 +94,17 @@ class SignalGridDrawer(Drawer):
         n = min(self.N_ROWS, len(sources))
         for i in range(n):
             act = float(sources[i])
-            # instant attack, decay-set release: a hit snaps the box bright
-            # and it fades at one consistent rate
-            self._level[i] = max(act, self._level[i] * fade)
-            level = self._level[i]
+            # STEREOTYPED hit flash: every hit renders identically — full
+            # brightness, fixed decay — instead of tracking the raw
+            # activation, whose magnitude/shape varies hit to hit
+            self._level[i] *= fade
+            if act > self.HIT_THR and (ctx.time - self._last_hit[i]) > self.HIT_REFRACTORY:
+                self._level[i] = 1.0
+                self._last_hit[i] = ctx.time
+            # sustained sources keep a smoothed glow under the flashes
+            a_s = 1.0 - float(np.exp(-ctx.delta_time / 0.25))
+            self._sustain[i] += a_s * (act * 0.7 - self._sustain[i])
+            level = max(self._level[i], self._sustain[i])
             if level < 0.05:
                 continue
             r0, r1 = self._row_bounds[i]
