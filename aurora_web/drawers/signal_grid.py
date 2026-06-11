@@ -53,7 +53,7 @@ class SignalGridDrawer(Drawer):
             "decay": (10, 100),
         }
         self._level = np.zeros(self.N_ROWS, dtype=np.float32)
-        self._sustain = np.zeros(self.N_ROWS, dtype=np.float32)
+        self._act_hist = np.zeros((16, self.N_ROWS), dtype=np.float32)  # ~0.4 s
         self._last_hit = np.full(self.N_ROWS, -1e9, dtype=np.float64)
         self._beat_flash = 0.0
         self._vol_ema = 0.0
@@ -71,7 +71,7 @@ class SignalGridDrawer(Drawer):
 
     def reset(self) -> None:
         self._level[:] = 0.0
-        self._sustain[:] = 0.0
+        self._act_hist[:] = 0.0
         self._last_hit[:] = -1e9
         self._beat_flash = 0.0
 
@@ -80,7 +80,9 @@ class SignalGridDrawer(Drawer):
         audio = ctx.audio
         if audio is None:
             return frame.astype(np.uint8)
-        decay_tau = 0.45 - 0.4 * (self.settings["decay"] / 100.0)  # 0.05-0.45 s
+        # short flash: at 1-2 hits/s the tail must clear well before the
+        # next event (incl. the OTHER instrument's offbeat 0.25s later)
+        decay_tau = 0.18 - 0.15 * (self.settings["decay"] / 100.0)  # 0.03-0.18 s
         fade = float(np.exp(-ctx.delta_time / max(decay_tau, 0.01)))
 
         sources = getattr(audio, "sources", None)
@@ -93,6 +95,8 @@ class SignalGridDrawer(Drawer):
         sources = audio.sources
         centroids = audio.source_centroid
         n = min(self.N_ROWS, len(sources))
+        self._act_hist = np.roll(self._act_hist, -1, axis=0)
+        self._act_hist[0, :n] = [float(sources[i]) for i in range(n)]
         for i in range(n):
             act = float(sources[i])
             # STEREOTYPED hit flash: every hit renders identically — full
@@ -102,11 +106,12 @@ class SignalGridDrawer(Drawer):
             if act > self.HIT_THR and (ctx.time - self._last_hit[i]) > self.HIT_REFRACTORY:
                 self._level[i] = 1.0
                 self._last_hit[i] = ctx.time
-            # sustained sources keep a smoothed glow under the flashes
-            a_s = 1.0 - float(np.exp(-ctx.delta_time / 0.25))
-            self._sustain[i] += a_s * (act * 0.7 - self._sustain[i])
-            level = max(self._level[i], self._sustain[i])
-            if level < 0.05:
+            # sustain glow only for GENUINELY held sources: rolling minimum
+            # over ~0.4 s, so a percussive decay tail never counts
+            sustain = float(self._act_hist[:, i].min()) * 0.8
+            level = max(self._level[i], sustain)
+            # hard visual cutoff: kill the long dim tail
+            if level < 0.12:
                 continue
             r0, r1 = self._row_bounds[i]
             col = int(np.clip(centroids[i], 0.0, 1.0) * (ctx.width - 1))
