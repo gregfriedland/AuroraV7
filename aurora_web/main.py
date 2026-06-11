@@ -291,7 +291,7 @@ async def lifespan(app: FastAPI):
                 source=audio_cfg.get("source", "pulse"),
                 beat_tracker=str(audio_cfg.get("beat_tracker", "internal")),
                 latency_ms=float(audio_cfg.get("latency_ms", 60.0)),
-                source_lambda=float(audio_cfg.get("source_lambda", 0.45)),
+                source_lambda=float(audio_cfg.get("source_lambda", 0.35)),
             )
             await audio_feed.start()
             if not audio_feed.is_running:

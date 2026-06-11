@@ -35,7 +35,7 @@ class AudioFeed:
         buffer_size: int = 1024,
         beat_tracker: str = "internal",
         latency_ms: float = 60.0,
-        source_lambda: float = 0.45,
+        source_lambda: float = 0.35,
     ):
         """Initialize audio feed.
 

@@ -101,7 +101,7 @@ class SourceDiscovery:
     W_MET = 0.3
 
     def __init__(self, sample_rate: int = 44100, n_slots: int = 5,
-                 dp_lambda: float = 0.45):
+                 dp_lambda: float = 0.35):
         self.sample_rate = sample_rate
         self.n_slots = n_slots
         self.dp_lambda = dp_lambda
@@ -154,7 +154,8 @@ class SourceDiscovery:
         # --- clusters / slots ---
         self._clusters: list[dict] = []   # {id, centroid, members, activity}
         self._next_id = 0
-        self._slots: list[dict] = []      # ordered display slots
+        self._slots: list[dict | None] = []   # display slots (sticky by id)
+        self._slot_ids: list[int | None] = [None] * n_slots
         self._slot_agc: dict[int, float] = {}
         self._prev_act: dict[int, float] = {}
 
@@ -334,25 +335,52 @@ class SourceDiscovery:
                 if total > 1e-9 else 0.5
         self._clusters = new
 
+        # Sticky slot assignment: a cluster id keeps its display slot for as
+        # long as it stays in the top-N. Re-sorting every refresh made rows
+        # reshuffle whenever clusters appeared/vanished, destroying the
+        # visual correlation between a row and "its" instrument.
         top = sorted(new, key=lambda c: -c["activity"])[: self.n_slots]
-        self._slots = sorted(top, key=lambda c: c["centroid_x"])
+        top_ids = {c["id"] for c in top}
+        by_id = {c["id"]: c for c in top}
+        if not any(cid in top_ids for cid in self._slot_ids):
+            # initial assignment (or full turnover): order by frequency
+            ordered = sorted(top, key=lambda c: c["centroid_x"])
+            self._slot_ids = [c["id"] for c in ordered] + \
+                             [None] * (self.n_slots - len(ordered))
+        else:
+            # keep survivors in place; clear vacated slots
+            self._slot_ids = [cid if cid in top_ids else None
+                              for cid in self._slot_ids]
+            # place new clusters in free slots, low-frequency first toward
+            # the bottom (lowest free slot index)
+            new_ids = [c["id"] for c in sorted(top, key=lambda c: c["centroid_x"])
+                       if c["id"] not in self._slot_ids]
+            free = [i for i, cid in enumerate(self._slot_ids) if cid is None]
+            for slot_i, cid in zip(free, new_ids):
+                self._slot_ids[slot_i] = cid
+        self._slots = [by_id.get(cid) for cid in self._slot_ids]
 
     # ------------------------------------------------------------------
     # Display snapshot
     # ------------------------------------------------------------------
     def snapshot(self) -> tuple[np.ndarray | None, np.ndarray | None, tuple]:
         """Return (sources, centroids, active) for the current hop."""
-        if not self._slots:
+        if not any(cl is not None for cl in self._slots):
             return None, None, ()
         n = self.n_slots
         sources = np.zeros(n, dtype=np.float32)
-        # unused slots pad at the high end so centroids stay sorted
         centroids = np.ones(n, dtype=np.float32)
         active = []
-        for i, cl in enumerate(self._slots[:n]):
+        for i in range(n):
+            cl = self._slots[i] if i < len(self._slots) else None
+            if cl is None:
+                active.append(False)
+                continue
             act_raw = float(sum(self.h[m] for m in cl["members"]))
             cid = cl["id"]
-            agc = max(act_raw, self._slot_agc.get(cid, 1e-3) * 0.9995)
+            # faster AGC (~half-life 8 s at 43 snapshots/s) keeps pulse
+            # heights near full scale despite dictionary drift
+            agc = max(act_raw, self._slot_agc.get(cid, 1e-3) * 0.998)
             self._slot_agc[cid] = agc
             a = float(np.clip(act_raw / max(agc, 1e-6), 0.0, 1.0))
             rising = a > self._prev_act.get(cid, 0.0) + 0.25
@@ -513,7 +541,7 @@ class MusicAnalyzer:
 
     def __init__(self, sample_rate: int = 44100, hop_size: int = 1024,
                  beat_tracker: str = "internal", latency_ms: float = 60.0,
-                 n_sources: int = 5, source_lambda: float = 0.45,
+                 n_sources: int = 5, source_lambda: float = 0.35,
                  clock=time.time):
         self.sample_rate = sample_rate
         self.hop_size = hop_size

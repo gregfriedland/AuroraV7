@@ -33,7 +33,7 @@ inputs:
     source: "mac:BlackHole 2ch"  # pulse, alsa:hw:0, mac:<device>, pipe:/path, file:/path
     beat_tracker: "internal"  # beatnet | aubio | internal (ADR 0004); internal syncs best
     latency_ms: 60  # capture-to-display latency compensated by beat prediction
-    source_lambda: 0.45  # instrument cluster granularity (ADR 0005): lower = finer
+    source_lambda: 0.35  # instrument cluster granularity (ADR 0005): lower = finer
   video:
     device: 0
     enable_face_detection: false

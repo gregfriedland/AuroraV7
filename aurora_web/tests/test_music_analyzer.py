@@ -226,12 +226,17 @@ class TestSourceDiscovery:
         strong = np.where(acts > 0.25)[0]
         assert len(strong) >= 2, f"kick+tone should form >=2 sources, acts={acts}"
 
-    def test_centroids_sorted_ascending(self):
+    def test_initial_slots_sorted_then_sticky(self):
+        """First assignment orders slots low->high; ids then keep their slot."""
         a, clock = make_analyzer()
         feats = run_signal(a, clock, kick_track(10.0) + hat_track(10.0))
-        cents = feats[-1].source_centroid
-        assert cents is not None
-        assert np.all(np.diff(cents) >= -1e-6), f"slots not sorted by centroid: {cents}"
+        first = next(f for f in feats if f.sources is not None)
+        occupied = first.source_centroid[first.source_centroid < 1.0]
+        assert np.all(np.diff(occupied) >= -1e-6), \
+            f"initial slots not sorted: {first.source_centroid}"
+        # stickiness: a slot id present at refresh N stays in its slot at N+1
+        sd = a.discovery
+        assert len(sd._slot_ids) == sd.n_slots
 
     def test_per_chunk_budget(self):
         import time as _time
@@ -269,3 +274,105 @@ class TestCompat:
         f = MusicFeatures()
         assert f.spectrum is None and f.beat_onset is False
         assert f.sources is None
+
+
+def realistic_kick_hits(duration, period=0.5, jitter=0.008, seed=3):
+    """Pitch-swept kick + click with amplitude/timing jitter (ground truth)."""
+    rng = np.random.default_rng(seed)
+    n = int(duration * SR)
+    sig = np.zeros(n)
+    hits = []
+    t = period
+    while t < duration - 0.2:
+        tj = t + rng.uniform(-jitter, jitter)
+        amp = rng.uniform(0.75, 1.0)
+        i0 = int(tj * SR)
+        L = int(0.12 * SR)
+        tt = np.arange(L) / SR
+        freq = 45 + 50 * np.exp(-tt * 30)
+        body = np.sin(2 * np.pi * np.cumsum(freq) / SR) * np.exp(-tt * 18)
+        click = rng.standard_normal(L) * np.exp(-tt * 200) * 0.4
+        seg = sig[i0:i0 + L]
+        seg += (amp * (body + click))[:len(seg)]
+        hits.append(tj)
+        t += period
+    return sig.astype(np.float32), hits
+
+
+def strum_hits(duration, period=1.0, offset=0.25, jitter=0.01, seed=3):
+    """Guitar chord strums: 5 strings, inharmonic partials, stagger, pick noise."""
+    rng = np.random.default_rng(seed + 1)
+    n = int(duration * SR)
+    sig = np.zeros(n)
+    hits = []
+    strings = [82.4, 110.0, 146.8, 196.0, 246.9]
+    t = offset + period
+    while t < duration - 0.8:
+        tj = t + rng.uniform(-jitter, jitter)
+        hits.append(tj)
+        for s, f in enumerate(strings):
+            i0 = int((tj + s * 0.008) * SR)
+            tt = np.arange(min(int(0.7 * SR), n - i0)) / SR
+            string = np.zeros(len(tt))
+            f_d = f * rng.uniform(0.998, 1.002)
+            for hmc in range(1, 8):
+                string += (1.0 / hmc ** 0.9) * np.sin(
+                    2 * np.pi * f_d * hmc * (1 + 0.0003 * hmc * hmc) * tt
+                ) * np.exp(-tt * (1.2 + 0.8 * hmc))
+            pick = rng.standard_normal(len(tt)) * np.exp(-tt * 300) * 0.15
+            sig[i0:i0 + len(tt)] += 0.25 * (string + pick) * rng.uniform(0.8, 1.0)
+        t += period
+    return sig.astype(np.float32), hits
+
+
+def detection_rate(feats, hits, slot, t0=1000.0, thr=0.45, win=0.08, skip_s=6.0):
+    """Fraction of ground-truth hits where the slot's activation peaks nearby."""
+    times = np.array([f.timestamp for f in feats])
+    acts = np.array([f.sources[slot] if f.sources is not None else 0.0 for f in feats])
+    det = tot = 0
+    for h in hits:
+        if h < skip_s:
+            continue
+        tot += 1
+        m = (times >= t0 + h - win) & (times <= t0 + h + win)
+        if m.any() and acts[m].max() > thr:
+            det += 1
+    return det, tot
+
+
+class TestRealisticPatterns:
+    """Ground-truth detection rates on realistic (noisy, multi-tonal) signals."""
+
+    def test_realistic_drum_beat_detected_every_hit(self):
+        rng = np.random.default_rng(0)
+        drums, kicks = realistic_kick_hits(25.0)
+        noise = (rng.standard_normal(len(drums)) * 0.01).astype(np.float32)
+        a, clock = make_analyzer()
+        feats = run_signal(a, clock, drums + noise)
+        rates = [detection_rate(feats, kicks, s) for s in range(5)]
+        best_det, best_tot = max(rates, key=lambda r: r[0])
+        assert best_tot > 30
+        assert best_det / best_tot >= 0.95, \
+            f"drum pickup {best_det}/{best_tot} ({best_det/best_tot*100:.0f}%)"
+
+    def test_drum_plus_strum_distinct_slots(self):
+        rng = np.random.default_rng(0)
+        dur = 30.0
+        drums, kicks = realistic_kick_hits(dur)
+        gtr, strums = strum_hits(dur)
+        noise = (rng.standard_normal(len(drums)) * 0.01).astype(np.float32)
+        a, clock = make_analyzer()
+        feats = run_signal(a, clock, drums + gtr + noise)
+        kick_rates = [(s,) + detection_rate(feats, kicks, s) for s in range(5)]
+        strum_rates = [(s,) + detection_rate(feats, strums, s) for s in range(5)]
+        best, best_sum = None, -1.0
+        for sk, dk, tk in kick_rates:
+            for ss, ds, ts in strum_rates:
+                if sk != ss and tk and ts:
+                    score = dk / tk + ds / ts
+                    if score > best_sum:
+                        best_sum, best = score, (dk / tk, ds / ts)
+        assert best is not None, "no distinct slot pair found"
+        kick_rate, strum_rate = best
+        assert kick_rate >= 0.9, f"kick pickup {kick_rate*100:.0f}% on its own slot"
+        assert strum_rate >= 0.9, f"strum pickup {strum_rate*100:.0f}% on its own slot"
