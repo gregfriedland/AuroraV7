@@ -462,14 +462,28 @@ class SourceDiscovery:
     # ------------------------------------------------------------------
     # Display snapshot
     # ------------------------------------------------------------------
-    def snapshot(self) -> tuple[np.ndarray | None, np.ndarray | None, tuple]:
-        """Return (sources, centroids, active) for the current hop."""
+    def snapshot(self, silent: bool = False) -> tuple[np.ndarray | None, np.ndarray | None, tuple]:
+        """Return (sources, centroids, active) for the current hop.
+
+        With `silent` (input below the volume gate) all activations are
+        forced to zero and AGC/peak references are frozen — otherwise the
+        references decay toward the noise floor during silence and ambient
+        noise eventually flashes the channels.
+        """
         if not any(cl is not None for cl in self._slots):
             return None, None, ()
         n = self.n_slots
         sources = np.zeros(n, dtype=np.float32)
         centroids = np.ones(n, dtype=np.float32)
         active = []
+        if silent:
+            for i in range(n):
+                cl = self._slots[i] if i < len(self._slots) else None
+                centroids[i] = cl["centroid_x"] if cl is not None else 1.0
+                if cl is not None:
+                    self._prev_act[cl["id"]] = 0.0
+                active.append(False)
+            return sources, centroids, tuple(active)
         # raw activation per occupied slot (for relative gating)
         raw = np.zeros(n)
         for i in range(n):
@@ -763,7 +777,8 @@ class MusicAnalyzer:
         f.highs = float(np.mean(f.bands[10:]))
 
         # --- discovered sources ---
-        f.sources, f.source_centroid, f.source_active = self.discovery.snapshot()
+        f.sources, f.source_centroid, f.source_active = self.discovery.snapshot(
+            silent=f.volume < SourceDiscovery.VOLUME_GATE)
 
         self.features = f
         return f

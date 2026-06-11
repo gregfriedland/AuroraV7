@@ -422,3 +422,23 @@ class TestRealisticPatterns:
         top, count = Counter(winners).most_common(1)[0]
         assert count / len(winners) >= 0.9, \
             f"hits alternate between channels: {Counter(winners)}"
+
+    def test_silence_shows_no_channels(self):
+        """Zero/near-zero input must never flash channels, even after the
+        AGC references would otherwise have decayed toward the noise floor."""
+        rng = np.random.default_rng(1)
+        drums, _ = realistic_kick_hits(8.0)
+        # learn sources first, then 20 s of near-silence (tiny noise floor)
+        sig = np.concatenate([
+            drums,
+            (rng.standard_normal(SR * 20) * 1e-4).astype(np.float32),
+        ])
+        a, clock = make_analyzer()
+        feats = run_signal(a, clock, sig)
+        silent_feats = [f for f in feats if f.timestamp > 1000.0 + 10.0]
+        assert len(silent_feats) > 500
+        for f in silent_feats:
+            if f.sources is not None:
+                assert float(np.max(f.sources)) == 0.0, \
+                    f"channel lit during silence at t={f.timestamp}"
+                assert not any(f.source_active)
