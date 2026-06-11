@@ -352,7 +352,11 @@ async def lifespan(app: FastAPI):
     default_drawer = config.get("default_drawer", "AudioViz")
     if default_drawer in drawer_manager.drawers:
         drawer_manager.set_active_drawer(default_drawer)
-        print(f"[Aurora Web] Auto-started with: {default_drawer}")
+        # dark-background palette so source boxes have contrast
+        palette_idx = int(config.get("default_palette", 11))
+        drawer_manager.palette.set_curated(palette_idx)
+        drawer_manager.current_palette_index = palette_idx
+        print(f"[Aurora Web] Auto-started with: {default_drawer}, palette #{palette_idx}")
     else:
         result = drawer_manager.randomize_all()
         print(f"[Aurora Web] Auto-started with: {result.get('drawer')}, palette #{result.get('palette_index')}")

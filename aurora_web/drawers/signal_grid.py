@@ -100,6 +100,10 @@ class SignalGridDrawer(Drawer):
             x0 = max(0, col - self.BOX_HALF_W)
             x1 = min(ctx.width, col + self.BOX_HALF_W + 1)
             color = c["rows"][i]
+            # a hit lights the WHOLE row (dimmer), collapsing back to the box
+            # as the flash decays — makes percussive hits unmissable
+            if self._flash[i] > 0.1:
+                indices[r0:r1, :] = self._scaled(color, self._flash[i] * 0.45)
             indices[r0:r1, x0:x1] = self._scaled(color, level)
             # soft edges
             if x0 > 0:
