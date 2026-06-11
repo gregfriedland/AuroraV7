@@ -38,6 +38,10 @@ include = ["aurora_web*"]
 
 [tool.pytest.ini_options]
 testpaths = ["aurora_web/tests"]
+markers = [
+    "battery: randomized instrument-combination battery (opt-in: pytest -m battery)",
+]
+addopts = "-m 'not battery'"
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

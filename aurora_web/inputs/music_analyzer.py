@@ -80,12 +80,14 @@ class SourceDiscovery:
     WIN_HIGH = 512
     SPLIT_HZ = 500.0
     F = 40                  # bands
-    K = 10                  # NMF components
+    K = 20                  # NMF components
     NMF_ITERS = 6
+    SPARSITY = 0.06         # L1-ish penalty in the h update
     W_SWEEP_EVERY = 32      # hops (~0.19 s)
     REFRESH_HOPS = 86       # cluster refresh (~0.5 s)
-    HIST_HOPS = 688         # ~4 s of activation history (envelope stats +
-                            # common-fate correlation need several hits)
+    HIST_HOPS = 1376        # ~8 s of activation history: common-fate
+                            # correlation needs several events per source
+                            # even when each plays 1-2 slots per 2 s bar
     WHITEN_DECAY = 0.9996   # per hop (~10 s half-life at 172 hops/s)
     STAT_GAMMA = 0.9998     # sufficient-statistics forgetting (~30 s)
     MET_GAMMA = 0.9995      # metrical histogram forgetting
@@ -168,24 +170,35 @@ class SourceDiscovery:
     # Dictionary seeding (ADR 0005: low bumps, harmonic combs, noise)
     # ------------------------------------------------------------------
     def _seed_dictionary(self) -> np.ndarray:
+        """Build K seed templates from an ordered pool of generic shapes."""
         rng = np.random.default_rng(7)
-        W = np.zeros((self.F, self.K))
         x = np.arange(self.F)
-        # 3 low-frequency bumps (kick/bass register)
-        for j, center in enumerate((2.0, 5.0, 8.0)):
-            W[:, j] = np.exp(-0.5 * ((x - center) / 2.0) ** 2)
-        # 4 harmonic combs: bands are log-spaced, so harmonics of a note at
-        # band b land near b + const*log2(n); approximate with spaced bumps
         octave = self.F / np.log2(16000 / 40)  # bands per octave (~4.6)
-        for j, base in enumerate((10.0, 14.0, 18.0, 22.0)):
-            for n in range(1, 6):
-                pos = base + octave * np.log2(n)
-                W[:, 3 + j] += np.exp(-0.5 * ((x - pos) / 1.0) ** 2) / n
-        # 3 broadband/high-noise shapes
-        W[:, 7] = np.linspace(0.2, 1.0, self.F)            # bright noise
-        W[:, 8] = np.concatenate([np.zeros(self.F - 12), np.ones(12)])  # hats
-        W[:, 9] = np.ones(self.F) * 0.5                    # flat
-        W += rng.uniform(0.0, 0.02, W.shape)               # break symmetry
+
+        def bump(center, width=2.0):
+            return np.exp(-0.5 * ((x - center) / width) ** 2)
+
+        def comb(base, n_harm=5):
+            out = np.zeros(self.F)
+            for n in range(1, n_harm + 1):
+                out += bump(base + octave * np.log2(n), 1.0) / n
+            return out
+
+        pool = [
+            bump(2.0), bump(5.0), bump(8.0),                # low thumps
+            comb(10.0), comb(14.0), comb(18.0), comb(22.0),  # combs, low->mid
+            np.linspace(0.2, 1.0, self.F),                  # bright tilt
+            np.concatenate([np.zeros(self.F - 12), np.ones(12)]),  # hats
+            np.ones(self.F) * 0.5,                          # flat
+            comb(12.0), comb(16.0), comb(20.0), comb(24.0),
+            bump(16.0, 4.0), bump(28.0, 4.0),               # broad bumps
+            comb(26.0), comb(28.0), comb(30.0), comb(32.0),
+            bump(12.0, 3.0), bump(22.0, 3.0), bump(34.0, 3.0),
+        ]
+        W = np.stack(pool[: self.K], axis=1) if self.K <= len(pool) else \
+            np.stack(pool + [bump(rng.uniform(2, 38), 2.0)
+                             for _ in range(self.K - len(pool))], axis=1)
+        W = W + rng.uniform(0.0, 0.02, W.shape)             # break symmetry
         return W / np.linalg.norm(W, axis=0, keepdims=True)
 
     # ------------------------------------------------------------------
@@ -251,7 +264,11 @@ class SourceDiscovery:
         h = 0.6 * self.h + 0.4 * 0.1
         for _ in range(self.NMF_ITERS):
             wh = self.W @ h + 1e-9
-            h = h * (self.W.T @ (v / wh)) / (self.W.T.sum(axis=1) + 1e-9)
+            # +SPARSITY in the denominator (sparse NMF): discourages
+            # components from smearing across sources — a component shared
+            # between two instruments correlates with both and chains their
+            # clusters together
+            h = h * (self.W.T @ (v / wh)) / (self.W.T.sum(axis=1) + self.SPARSITY)
         self.h = np.maximum(h, 1e-6)
 
         if volume > self.VOLUME_GATE:
@@ -363,28 +380,42 @@ class SourceDiscovery:
                     merged[b_i] = True
         return [cl for i, cl in enumerate(clusters) if not merged[i]]
 
+    CORR_JOIN = 0.55        # min direct leader correlation to join a cluster
+
     def _refresh_clusters(self) -> None:
         desc, activity = self._descriptors()
         order = np.argsort(-activity)
 
-        # DP-means: greedy, most-active components first
+        # event-scale envelope correlation between components (for the
+        # leader test below)
+        env = self._event_envelopes(self._h_hist)
+        hc = env - env.mean(axis=0)
+        std = hc.std(axis=0)
+        ccorr = (hc.T @ hc) / (env.shape[0] * np.outer(std, std) + 1e-9)
+
+        # LEADER clustering: a component joins a cluster only if it
+        # correlates strongly with the cluster's LEADER (its most active
+        # member) DIRECTLY. Components shared between two instruments
+        # correlate moderately with both; centroid methods (DP-means)
+        # let them chain the instruments into one cluster.
         new: list[dict] = []
         for k in order:
-            d = desc[k]
-            best, best_sim = None, -1.0
+            best, best_score = None, 0.0
             for cl in new:
-                sim = float(d @ cl["centroid"])
-                if sim > best_sim:
-                    best, best_sim = cl, sim
-            if best is not None and (1.0 - best_sim) < self.dp_lambda:
-                w_old = best["weight"]
-                w_new = w_old + activity[k] + 1e-9
-                best["centroid"] = (best["centroid"] * w_old + d * (activity[k] + 1e-9)) / w_new
-                best["centroid"] /= max(np.linalg.norm(best["centroid"]), 1e-9)
-                best["weight"] = w_new
+                leader = cl["members"][0]
+                c = float(ccorr[k, leader]) if std[k] > 1e-5 and std[leader] > 1e-5 else 0.0
+                score = c + 0.15 * float(desc[k] @ desc[leader])
+                if score > best_score:
+                    best, best_score = cl, score
+            if best is not None and best_score >= self.CORR_JOIN:
                 best["members"].append(int(k))
+                best["weight"] += activity[k] + 1e-9
+                w = best["weight"]
+                best["centroid"] = (best["centroid"] * (w - activity[k] - 1e-9)
+                                    + desc[k] * (activity[k] + 1e-9)) / w
+                best["centroid"] /= max(np.linalg.norm(best["centroid"]), 1e-9)
             else:
-                new.append({"centroid": d.copy(), "weight": activity[k] + 1e-9,
+                new.append({"centroid": desc[k].copy(), "weight": activity[k] + 1e-9,
                             "members": [int(k)]})
 
         # Cluster-level common-fate merge: if two clusters' summed envelopes
