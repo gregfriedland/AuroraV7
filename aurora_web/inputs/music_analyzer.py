@@ -81,7 +81,7 @@ class SourceDiscovery:
     SPLIT_HZ = 500.0
     F = 40                  # bands
     K = 10                  # NMF components
-    NMF_ITERS = 3
+    NMF_ITERS = 6
     W_SWEEP_EVERY = 32      # hops (~0.19 s)
     REFRESH_HOPS = 86       # cluster refresh (~0.5 s)
     HIST_HOPS = 688         # ~4 s of activation history (envelope stats +
@@ -242,7 +242,13 @@ class SourceDiscovery:
             strength = float(np.clip((kick_odf - self.KICK_FLOOR) / (3 * self.KICK_FLOOR), 0, 1))
 
         # --- NMF: solve h (always), learn W (when not silent) ---
-        h = self.h
+        # PARTIAL warm start: pure warm-starting locks the solver onto
+        # whichever explanation won the previous hit, so identical hits get
+        # explained by alternating component sets (bistability) and the same
+        # drum flickers between display rows; pure cold-starting loses the
+        # sustain context that separates held notes from hits. Blending
+        # toward neutral keeps continuity without the lock-in.
+        h = 0.6 * self.h + 0.4 * 0.1
         for _ in range(self.NMF_ITERS):
             wh = self.W @ h + 1e-9
             h = h * (self.W.T @ (v / wh)) / (self.W.T.sum(axis=1) + 1e-9)
@@ -293,12 +299,7 @@ class SourceDiscovery:
         """
         hist = self._h_hist
         mean = hist.mean(axis=0)
-        # Smooth envelopes to the EVENT timescale (~100 ms max-filter)
-        # before correlating: NMF components compete to explain each frame
-        # (explaining-away), which anti-correlates same-source components at
-        # the hop level even though they respond to the same hits.
-        from scipy.ndimage import maximum_filter1d
-        env = maximum_filter1d(hist, size=17, axis=0, mode="nearest")
+        env = self._event_envelopes(hist)
         hc = env - env.mean(axis=0)
         std = hc.std(axis=0)
         T = env.shape[0]
@@ -322,11 +323,20 @@ class SourceDiscovery:
 
     MERGE_CORR = 0.45       # cluster-envelope correlation that forces a merge
 
+    @staticmethod
+    def _event_envelopes(hist: np.ndarray) -> np.ndarray:
+        """Event-timescale envelopes for common-fate correlation.
+
+        The ~100 ms max-filter absorbs NMF explaining-away, where
+        same-source components trade energy hop-to-hop.
+        """
+        from scipy.ndimage import maximum_filter1d
+        return maximum_filter1d(hist, size=17, axis=0, mode="nearest")
+
     def _merge_correlated_clusters(self, clusters: list[dict]) -> list[dict]:
         if len(clusters) < 2:
             return clusters
-        from scipy.ndimage import maximum_filter1d
-        smoothed = maximum_filter1d(self._h_hist, size=17, axis=0, mode="nearest")
+        smoothed = self._event_envelopes(self._h_hist)
         env = np.stack([smoothed[:, cl["members"]].sum(axis=1) for cl in clusters])
         env = env - env.mean(axis=1, keepdims=True)
         norms = np.linalg.norm(env, axis=1)

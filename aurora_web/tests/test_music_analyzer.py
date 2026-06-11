@@ -399,3 +399,26 @@ class TestRealisticPatterns:
         s = pulsing[0]
         assert rates[s][0] / rates[s][1] >= 0.95, \
             f"single channel pickup {rates[s][0]}/{rates[s][1]}"
+
+    def test_solo_drum_hits_stay_on_same_channel(self):
+        """Consecutive hits must not alternate between channels (bistability)."""
+        rng = np.random.default_rng(0)
+        drums, kicks = realistic_kick_hits(25.0)
+        noise = (rng.standard_normal(len(drums)) * 0.01).astype(np.float32)
+        a, clock = make_analyzer()
+        feats = run_signal(a, clock, drums + noise)
+        times = np.array([f.timestamp for f in feats])
+        acts = np.array([f.sources if f.sources is not None else np.zeros(5)
+                         for f in feats])
+        winners = []
+        for h in kicks:
+            if h < 8.0:
+                continue
+            m = (times >= 1000.0 + h - 0.08) & (times <= 1000.0 + h + 0.08)
+            if m.any() and acts[m].max() > 0.3:
+                winners.append(int(np.argmax(acts[m].max(axis=0))))
+        assert len(winners) >= 25
+        from collections import Counter
+        top, count = Counter(winners).most_common(1)[0]
+        assert count / len(winners) >= 0.9, \
+            f"hits alternate between channels: {Counter(winners)}"
