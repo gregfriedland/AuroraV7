@@ -84,7 +84,8 @@ class SourceDiscovery:
     NMF_ITERS = 3
     W_SWEEP_EVERY = 32      # hops (~0.19 s)
     REFRESH_HOPS = 86       # cluster refresh (~0.5 s)
-    HIST_HOPS = 172         # ~1 s of activation history for envelope stats
+    HIST_HOPS = 688         # ~4 s of activation history (envelope stats +
+                            # common-fate correlation need several hits)
     WHITEN_DECAY = 0.9996   # per hop (~10 s half-life at 172 hops/s)
     STAT_GAMMA = 0.9998     # sufficient-statistics forgetting (~30 s)
     MET_GAMMA = 0.9995      # metrical histogram forgetting
@@ -96,8 +97,10 @@ class SourceDiscovery:
     KICK_THRESH = 1.5
     KICK_MIN_IOI = 0.09
 
-    # Descriptor block weights (ADR 0005 knob 3)
-    W_ENV = 0.5
+    # Descriptor block weights (ADR 0005 knob 3): common-fate correlation
+    # dominates identity; timbre breaks ties between rhythm-locked sources
+    W_CORR = 1.0
+    W_TIMBRE = 0.3
     W_MET = 0.3
 
     def __init__(self, sample_rate: int = 44100, n_slots: int = 5,
@@ -267,20 +270,34 @@ class SourceDiscovery:
     # Clustering (DP-means over component descriptors, ADR 0005)
     # ------------------------------------------------------------------
     def _descriptors(self) -> tuple[np.ndarray, np.ndarray]:
-        """Return (descriptors (K, D), activity (K,))."""
+        """Return (descriptors (K, D), activity (K,)).
+
+        Identity is dominated by COMMON FATE: each component's descriptor is
+        primarily its correlation profile against all other components'
+        activation envelopes. All frequency strata of one physical source
+        (kick thump + kick click) co-activate hit after hit, so their
+        profiles are nearly identical and they cluster together immediately
+        — regardless of how different their spectra are. Timbre is demoted
+        to a tie-breaker for sources playing locked rhythms.
+        """
         hist = self._h_hist
         mean = hist.mean(axis=0)
-        p90 = np.percentile(hist, 90, axis=0)
-        pos_diff = np.maximum(0.0, np.diff(hist, axis=0)).mean(axis=0)
-        burst = np.clip(p90 / (mean + 1e-6) / 10.0, 0.0, 1.0)
-        rise = np.clip(pos_diff / (mean + 1e-6), 0.0, 1.0)
-        duty = (hist > 0.3 * p90[None, :]).mean(axis=0)
-        met = self._met_hist / (self._met_hist.sum(axis=1, keepdims=True) + 1e-9)
+        hc = hist - mean
+        std = hc.std(axis=0)
+        T = hist.shape[0]
+        corr = (hc.T @ hc) / (T * np.outer(std, std) + 1e-9)
+        # components with no envelope evidence get a self-only profile so
+        # they never merge on noise
+        silent = std < 1e-5
+        corr[silent, :] = 0.0
+        corr[:, silent] = 0.0
+        np.fill_diagonal(corr, 1.0)
 
+        met = self._met_hist / (self._met_hist.sum(axis=1, keepdims=True) + 1e-9)
         timbre = self.W / np.maximum(np.linalg.norm(self.W, axis=0, keepdims=True), 1e-9)
         desc = np.concatenate([
-            timbre.T,                                   # (K, F)
-            self.W_ENV * np.stack([burst, rise, duty], axis=1),
+            self.W_CORR * corr,                         # (K, K) common fate
+            self.W_TIMBRE * timbre.T,                   # (K, F) tie-breaker
             self.W_MET * met * 4.0,                     # x4: unit-sum hist is tiny
         ], axis=1)
         desc = desc / np.maximum(np.linalg.norm(desc, axis=1, keepdims=True), 1e-9)

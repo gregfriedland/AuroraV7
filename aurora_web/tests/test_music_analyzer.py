@@ -206,7 +206,10 @@ class TestSourceDiscovery:
 
     def test_kick_vs_hat_distinct_sources(self):
         a, clock = make_analyzer()
-        sig = kick_track(15.0) + hat_track(15.0)
+        # hats on the OFF-beats: perfectly unison kick+hat would (correctly)
+        # fuse under common-fate clustering, like it does to the human ear
+        hats = np.roll(hat_track(15.0), int(0.25 * SR))
+        sig = kick_track(15.0) + hats
         feats = run_signal(a, clock, sig)
         valid = [g for g in feats[-170:] if g.sources is not None]
         acts = np.percentile([g.sources for g in valid], 95, axis=0)
@@ -376,3 +379,23 @@ class TestRealisticPatterns:
         kick_rate, strum_rate = best
         assert kick_rate >= 0.9, f"kick pickup {kick_rate*100:.0f}% on its own slot"
         assert strum_rate >= 0.9, f"strum pickup {strum_rate*100:.0f}% on its own slot"
+
+    def test_solo_drum_displays_on_single_channel(self):
+        """One repeated drum must light exactly ONE display row.
+
+        Common-fate clustering: all frequency strata of the kick co-activate,
+        so they belong to one cluster/slot. No other slot may pulse with it.
+        """
+        rng = np.random.default_rng(0)
+        drums, kicks = realistic_kick_hits(25.0)
+        noise = (rng.standard_normal(len(drums)) * 0.01).astype(np.float32)
+        a, clock = make_analyzer()
+        feats = run_signal(a, clock, drums + noise)
+        rates = [detection_rate(feats, kicks, s) for s in range(5)]
+        pulsing = [s for s in range(5)
+                   if rates[s][1] and rates[s][0] / rates[s][1] > 0.5]
+        assert len(pulsing) == 1, \
+            f"drum should pulse exactly one channel, got slots {pulsing}: {rates}"
+        s = pulsing[0]
+        assert rates[s][0] / rates[s][1] >= 0.95, \
+            f"single channel pickup {rates[s][0]}/{rates[s][1]}"
