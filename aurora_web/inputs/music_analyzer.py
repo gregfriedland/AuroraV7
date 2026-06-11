@@ -92,7 +92,7 @@ class SourceDiscovery:
     WHITEN_DECAY = 0.9996   # per hop (~10 s half-life at 172 hops/s)
     STAT_GAMMA = 0.9998     # sufficient-statistics forgetting (~30 s)
     MET_GAMMA = 0.9995      # metrical histogram forgetting
-    VOLUME_GATE = 0.005     # freeze learning below this RMS
+    VOLUME_GATE = 0.008     # freeze learning below this RMS (-42 dBFS)
 
     # Kick onset detection (beat-tracker evidence)
     KICK_MAX_HZ = 130.0
@@ -233,7 +233,9 @@ class SourceDiscovery:
 
         # adaptive whitening (floor vs global max kills phantom flux)
         self._global_max = max(float(raw.max()), self._global_max * self.WHITEN_DECAY, 1e-6)
-        floor = 0.01 * self._global_max
+        # floor at 5% of the global peak: empty bands' references otherwise
+        # decay to the noise floor and whiten background noise to full scale
+        floor = 0.05 * self._global_max
         self._peak = np.maximum.reduce([raw, self._peak * self.WHITEN_DECAY,
                                         np.full(self.F, floor)])
         v = (raw / self._peak).astype(np.float32)
@@ -285,7 +287,7 @@ class SourceDiscovery:
                 # endless drift reshuffles component roles under a stationary
                 # signal, destabilizing cluster identity and display rows.
                 self._learn_hops += self.W_SWEEP_EVERY
-                alpha = max(0.05, float(np.exp(-self._learn_hops / (172.0 * 15))))
+                alpha = max(0.005, float(np.exp(-self._learn_hops / (172.0 * 15))))
                 self.W = (1 - alpha) * self.W + alpha * W_new
                 norms = np.linalg.norm(self.W, axis=0, keepdims=True)
                 self.W = self.W / np.maximum(norms, 1e-9)
@@ -352,6 +354,8 @@ class SourceDiscovery:
         from scipy.ndimage import maximum_filter1d
         return maximum_filter1d(hist, size=17, axis=0, mode="nearest")
 
+    MET_MERGE = 0.92        # cluster metrical-profile cosine that forces a merge
+
     def _merge_correlated_clusters(self, clusters: list[dict]) -> list[dict]:
         if len(clusters) < 2:
             return clusters
@@ -362,6 +366,13 @@ class SourceDiscovery:
         valid = norms > 1e-4
         env = env / np.maximum(norms, 1e-9)[:, None]
         corr = env @ env.T
+        # metrical merge evidence: a pitched instrument changing notes forms
+        # a NEW cluster (new components, no envelope overlap with the old
+        # pitch) — but both clusters inherit the instrument's bar slots
+        cmet = np.stack([self._met_hist[cl["members"]].sum(axis=0)
+                         for cl in clusters])
+        cmet = cmet / np.maximum(np.linalg.norm(cmet, axis=1, keepdims=True), 1e-9)
+        metsim = cmet @ cmet.T
 
         merged = [False] * len(clusters)
         order = sorted(range(len(clusters)), key=lambda i: -clusters[i]["weight"])
@@ -371,6 +382,10 @@ class SourceDiscovery:
             for b_i in order:
                 if b_i == a_i or merged[b_i]:
                     continue
+                # NOTE: metrical-profile merging was tried and reverted:
+                # components shared between instruments blend both
+                # instruments' slots into their histograms, which merged
+                # clusters ACROSS instruments in duos.
                 if valid[a_i] and valid[b_i] and corr[a_i, b_i] > self.MERGE_CORR:
                     a, b = clusters[a_i], clusters[b_i]
                     a["members"].extend(b["members"])
@@ -382,7 +397,7 @@ class SourceDiscovery:
                     merged[b_i] = True
         return [cl for i, cl in enumerate(clusters) if not merged[i]]
 
-    CORR_JOIN = 0.55        # min direct leader correlation to join a cluster
+    CORR_JOIN = 0.65        # min leader join score (corr + met + desc terms)
 
     def _refresh_clusters(self) -> None:
         desc, activity = self._descriptors()
@@ -394,6 +409,13 @@ class SourceDiscovery:
         hc = env - env.mean(axis=0)
         std = hc.std(axis=0)
         ccorr = (hc.T @ hc) / (env.shape[0] * np.outer(std, std) + 1e-9)
+        # metrical-position similarity: a pitched instrument playing
+        # DIFFERENT notes excites different components per note (weak
+        # envelope correlation across notes), but all its notes land on the
+        # same bar slots — Greg's 16th-note feature is what binds them
+        met = self._met_hist / np.maximum(
+            np.linalg.norm(self._met_hist, axis=1, keepdims=True), 1e-9)
+        msim = met @ met.T
 
         # LEADER clustering: a component joins a cluster only if it
         # correlates strongly with the cluster's LEADER (its most active
@@ -406,7 +428,8 @@ class SourceDiscovery:
             for cl in new:
                 leader = cl["members"][0]
                 c = float(ccorr[k, leader]) if std[k] > 1e-5 and std[leader] > 1e-5 else 0.0
-                score = c + 0.15 * float(desc[k] @ desc[leader])
+                score = c + 0.4 * float(msim[k, leader]) \
+                    + 0.15 * float(desc[k] @ desc[leader])
                 if score > best_score:
                     best, best_score = cl, score
             if best is not None and best_score >= self.CORR_JOIN:
@@ -426,17 +449,21 @@ class SourceDiscovery:
         # clustering failed to bind. Guarantees one-source-one-row.
         new = self._merge_correlated_clusters(new)
 
-        # Identity continuity by MEMBER OVERLAP: component indices are
-        # stable across refreshes while descriptor centroids drift as the
-        # dictionary learns. Centroid-similarity matching spawned spurious
-        # "new" clusters that hopped between display slots (visible jitter).
+        # Identity continuity by ACTIVITY-WEIGHTED MEMBER OVERLAP: component
+        # indices are stable across refreshes while descriptor centroids
+        # drift as the dictionary learns. Weighting shared members by their
+        # activation means a merged cluster inherits the id (and display
+        # slot) of whichever predecessor carried the dominant energy — raw
+        # Jaccard let a low-energy predecessor with more members steal the
+        # row, visibly migrating the instrument mid-song.
         prev = list(self._clusters)
+        act_of = lambda ms: float(sum(activity[m] for m in ms)) + 1e-9
         for cl in sorted(new, key=lambda c: -c["weight"]):
             best, best_ov = None, 0.0
             cm = set(cl["members"])
             for p in prev:
                 pm = set(p["members"])
-                ov = len(cm & pm) / max(len(cm | pm), 1)
+                ov = act_of(cm & pm) / act_of(cm | pm)
                 if ov > best_ov:
                     best, best_ov = p, ov
             if best is not None and best_ov >= 0.3:

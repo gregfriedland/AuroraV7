@@ -53,7 +53,7 @@ class SignalGridDrawer(Drawer):
             "decay": (10, 100),
         }
         self._level = np.zeros(self.N_ROWS, dtype=np.float32)
-        self._act_hist = np.zeros((16, self.N_ROWS), dtype=np.float32)  # ~0.4 s
+        self._act_hist = np.zeros((10, self.N_ROWS), dtype=np.float32)  # ~0.25 s
         self._last_hit = np.zeros(self.N_ROWS, dtype=np.float64)
         self._beat_flash = 0.0
         self._vol_ema = 0.0
