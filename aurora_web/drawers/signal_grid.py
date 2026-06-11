@@ -56,6 +56,7 @@ class SignalGridDrawer(Drawer):
         self._sustain = np.zeros(self.N_ROWS, dtype=np.float32)
         self._last_hit = np.full(self.N_ROWS, -1e9, dtype=np.float64)
         self._beat_flash = 0.0
+        self._vol_ema = 0.0
 
         h = height
         rows_h = h * 15 // 18
@@ -114,6 +115,12 @@ class SignalGridDrawer(Drawer):
 
     def _draw_beat(self, frame, ctx, audio, fade):
         r0, r1 = self._beat_rows
+        # hide the beat row during sustained silence (slow EMA so the gaps
+        # between hits don't flicker it)
+        a_v = 1.0 - float(np.exp(-ctx.delta_time / 1.5))
+        self._vol_ema += a_v * (float(getattr(audio, "volume", 0.0)) - self._vol_ema)
+        if self._vol_ema < 0.004:
+            return
         if getattr(audio, "beat_now", False) or getattr(audio, "beat_onset", False):
             self._beat_flash = 1.0
         bpm = getattr(audio, "bpm", None)

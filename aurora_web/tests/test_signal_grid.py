@@ -104,11 +104,13 @@ class TestSignalGrid:
     def test_beat_row_and_downbeat_color(self):
         d = SignalGridDrawer(W, H)
         f1 = features(sources=[0, 0, 0, 0, 0], bpm=120.0, beat_now=True, beat_in_bar=1)
-        frame1 = d.draw(make_ctx(audio=f1))
+        for _ in range(30):  # let the silence-gate volume EMA settle
+            frame1 = d.draw(make_ctx(audio=f1))
         assert np.count_nonzero(frame1[BEAT]) > 10
         d2 = SignalGridDrawer(W, H)
         f2 = features(sources=[0, 0, 0, 0, 0], bpm=120.0, beat_now=True, beat_in_bar=2)
-        frame2 = d2.draw(make_ctx(audio=f2))
+        for _ in range(30):
+            frame2 = d2.draw(make_ctx(audio=f2))
         # downbeat box (gold) differs in hue from a normal lit beat (white)
         px1 = frame1[16, 2].astype(int)
         px2 = frame2[16, 10].astype(int)
@@ -130,3 +132,14 @@ class TestSignalGrid:
         d.reset()
         assert np.all(d._level == 0.0)
         assert d._beat_flash == 0.0
+
+    def test_beat_row_hidden_in_silence(self):
+        d = SignalGridDrawer(W, H)
+        playing = features(sources=[0, 0, 0, 0, 0], bpm=120.0, beat_in_bar=2)
+        for _ in range(60):
+            d.draw(make_ctx(audio=playing))
+        silent = features(sources=[0, 0, 0, 0, 0], bpm=120.0, beat_in_bar=2)
+        silent.volume = 0.0
+        for _ in range(600):  # ~10 s of silence (EMA needs ~7 s to cross)
+            frame = d.draw(make_ctx(audio=silent))
+        assert np.count_nonzero(frame[BEAT]) == 0, "beat row must hide in silence"
