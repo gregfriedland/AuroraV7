@@ -54,7 +54,7 @@ class SignalGridDrawer(Drawer):
         }
         self._level = np.zeros(self.N_ROWS, dtype=np.float32)
         self._act_hist = np.zeros((16, self.N_ROWS), dtype=np.float32)  # ~0.4 s
-        self._last_hit = np.full(self.N_ROWS, -1e9, dtype=np.float64)
+        self._last_hit = np.zeros(self.N_ROWS, dtype=np.float64)
         self._beat_flash = 0.0
         self._vol_ema = 0.0
 
@@ -72,7 +72,7 @@ class SignalGridDrawer(Drawer):
     def reset(self) -> None:
         self._level[:] = 0.0
         self._act_hist[:] = 0.0
-        self._last_hit[:] = -1e9
+        self._last_hit[:] = 0.0
         self._beat_flash = 0.0
 
     def draw(self, ctx: DrawerContext) -> np.ndarray:
@@ -95,15 +95,22 @@ class SignalGridDrawer(Drawer):
         sources = audio.sources
         centroids = audio.source_centroid
         n = min(self.N_ROWS, len(sources))
+        hit_times = getattr(audio, "source_hit_time", None)
         self._act_hist = np.roll(self._act_hist, -1, axis=0)
         self._act_hist[0, :n] = [float(sources[i]) for i in range(n)]
         for i in range(n):
             act = float(sources[i])
             # STEREOTYPED hit flash: every hit renders identically — full
-            # brightness, fixed decay — instead of tracking the raw
-            # activation, whose magnitude/shape varies hit to hit
+            # brightness, fixed decay. Hits come from the analyzer's LATCHED
+            # timestamps (sampled activations miss short pulses when the
+            # render loop lags the audio chunks).
             self._level[i] *= fade
-            if act > self.HIT_THR and (ctx.time - self._last_hit[i]) > self.HIT_REFRACTORY:
+            if hit_times is not None:
+                if hit_times[i] > self._last_hit[i]:
+                    self._level[i] = 1.0
+                    self._last_hit[i] = float(hit_times[i])
+            elif act > self.HIT_THR and (ctx.time - self._last_hit[i]) > self.HIT_REFRACTORY:
+                # fallback for feature objects without the latch
                 self._level[i] = 1.0
                 self._last_hit[i] = ctx.time
             # sustain glow only for GENUINELY held sources: rolling minimum

@@ -57,6 +57,7 @@ class MusicFeatures:
     sources: np.ndarray | None = None          # activation 0-1 per slot
     source_centroid: np.ndarray | None = None  # x position 0-1 per slot
     source_active: tuple = ()                  # rising edge per slot
+    source_hit_time: np.ndarray | None = None  # latched last-hit wall time per slot
 
     # ---- Backward compatibility with the old AudioInput ----
     @property
@@ -165,6 +166,7 @@ class SourceDiscovery:
         self._slot_last_cx: dict[int, float] = {}  # slot index -> last centroid
         self._slot_agc: dict[int, float] = {}
         self._prev_act: dict[int, float] = {}
+        self._slot_hit_time: dict[int, float] = {}  # cluster id -> last hit
 
     # ------------------------------------------------------------------
     # Dictionary seeding (ADR 0005: low bumps, harmonic combs, noise)
@@ -493,8 +495,18 @@ class SourceDiscovery:
     # ------------------------------------------------------------------
     # Display snapshot
     # ------------------------------------------------------------------
-    def snapshot(self, silent: bool = False) -> tuple[np.ndarray | None, np.ndarray | None, tuple]:
-        """Return (sources, centroids, active) for the current hop.
+    HIT_THR = 0.35          # gated activation that registers a hit
+    HIT_REFRACTORY = 0.12   # s between hits per slot
+
+    def snapshot(self, silent: bool = False, now: float = 0.0,
+                 ) -> tuple[np.ndarray | None, np.ndarray | None, tuple, np.ndarray | None]:
+        """Return (sources, centroids, active, hit_times) for this chunk.
+
+        hit_times LATCHES the wall-clock time of each slot's most recent
+        hit (activation crossing HIT_THR). The render loop samples the
+        latest snapshot asynchronously, and under load chunks process in
+        bursts — short activation pulses get overwritten before any render
+        frame sees them. A timestamp latch cannot be missed.
 
         With `silent` (input below the volume gate) all activations are
         forced to zero and AGC/peak references are frozen — otherwise the
@@ -502,10 +514,15 @@ class SourceDiscovery:
         noise eventually flashes the channels.
         """
         if not any(cl is not None for cl in self._slots):
-            return None, None, ()
+            return None, None, (), None
         n = self.n_slots
         sources = np.zeros(n, dtype=np.float32)
         centroids = np.ones(n, dtype=np.float32)
+        hit_times = np.zeros(n, dtype=np.float64)
+        for i in range(n):
+            cl = self._slots[i] if i < len(self._slots) else None
+            if cl is not None:
+                hit_times[i] = self._slot_hit_time.get(cl["id"], 0.0)
         active = []
         if silent:
             for i in range(n):
@@ -514,7 +531,7 @@ class SourceDiscovery:
                 if cl is not None:
                     self._prev_act[cl["id"]] = 0.0
                 active.append(False)
-            return sources, centroids, tuple(active)
+            return sources, centroids, tuple(active), hit_times
         # raw activation per occupied slot (for relative gating)
         raw = np.zeros(n)
         for i in range(n):
@@ -549,7 +566,12 @@ class SourceDiscovery:
             sources[i] = a
             centroids[i] = cl["centroid_x"]
             active.append(bool(rising))
-        return sources, centroids, tuple(active)
+            # latch hit timestamps at chunk rate (see docstring)
+            if a > self.HIT_THR and \
+                    now - self._slot_hit_time.get(cid, 0.0) > self.HIT_REFRACTORY:
+                self._slot_hit_time[cid] = now
+                hit_times[i] = now
+        return sources, centroids, tuple(active), hit_times
 
 
 class PredictiveBeatOscillator:
@@ -808,8 +830,9 @@ class MusicAnalyzer:
         f.highs = float(np.mean(f.bands[10:]))
 
         # --- discovered sources ---
-        f.sources, f.source_centroid, f.source_active = self.discovery.snapshot(
-            silent=f.volume < SourceDiscovery.VOLUME_GATE)
+        f.sources, f.source_centroid, f.source_active, f.source_hit_time = \
+            self.discovery.snapshot(
+                silent=f.volume < SourceDiscovery.VOLUME_GATE, now=now)
 
         self.features = f
         return f
