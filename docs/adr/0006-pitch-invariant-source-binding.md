@@ -158,3 +158,28 @@ configuration falsely merged the noise floor into cymbal solo (false-lit
 - The dense repro lives at `aurora_web/tests/dense_solo_repro.py`
   (diagnostic script, not a pytest gate). Promote it into the battery as
   a deterministic dense-solo test once gap 1 lands.
+
+## Next direction: bounded-shift matching, done per-stratum
+
+The most promising refinement of the timbre signature is to revisit
+**bounded-shift template matching** — max centered correlation between two
+templates over log-band shifts limited to a plausible melodic range
+(~±1 octave ≈ ±5 bands). Its appeal is exactly what `|FFT|` magnitude
+throws away: *register*. Unbounded invariance makes a 60 Hz kick thump and
+a 4 kHz ping literally identical (both single blobs), forcing all the
+cross-instrument discrimination onto fragile metrical gates; a
+shift-bounded matcher refuses that pairing natively (they can never align
+within the bound) while still matching true transpositions at the shift
+equal to their interval, which would let the metrical gates relax and
+reduce the dependence on bar-tracking quality (gap 1). The naive version
+failed because a whole template is not a pure translation — voice moves
+its fundamental region while formant and breath-noise strata stay fixed —
+so the fix is to stop treating the template as one rigid shape: split it
+into strata (e.g. contiguous spectral regions, or a learned
+moving/stationary decomposition) and score a pair as "same instrument" when
+the *moving* strata match under a small shift AND the *stationary* strata
+match at zero shift. That composite keeps register awareness, models how
+real instruments actually transpose, and degrades gracefully to today's
+behavior for percussive single-blob sources. Prototype against the dense
+repro plus the kick/ping, kick/bass, and cymbal/noise hard pairs before
+wiring it into the gates.
