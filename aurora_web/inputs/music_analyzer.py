@@ -210,7 +210,8 @@ class SourceDiscovery:
                       volume: float) -> list[tuple[float, float, bool, float]]:
         """Run all complete hops in `chunk`.
 
-        Returns kick events: [(hop_time, kick_odf, fired, strength), ...]
+        Returns kick events: [(hop_time, kick_odf, fired, strength,
+        broad_odf), ...]
         """
         samples = np.concatenate([self._pending, chunk.astype(np.float32)])
         n_hops = len(samples) // self.HOP
@@ -245,6 +246,12 @@ class SourceDiscovery:
 
         # --- kick onset (beat evidence) ---
         kick_odf = float(np.mean(flux[self._kick_bands]))
+        # broadband flux for TEMPO evidence: instruments without kick-band
+        # energy (voice f0 >= 160 Hz, blow >= 330 Hz) leave the kick ODF as
+        # pure noise, the autocorrelation tempo is garbage, and every
+        # metrical feature downstream smears (ADR 0006). Kick ODF still
+        # drives kick detection / downbeat accents.
+        broad_odf = float(np.mean(flux))
         mean = float(np.mean(self._kick_hist)) if self._kick_hist else 0.0
         self._kick_hist.append(kick_odf)
         if len(self._kick_hist) > self.HIST_HOPS:
@@ -296,13 +303,20 @@ class SourceDiscovery:
         self._h_hist = np.roll(self._h_hist, -1, axis=0)
         self._h_hist[-1] = self.h
         self._met_hist *= self.MET_GAMMA
-        self._met_hist[:, slot16 % 16] += self.h
+        # slot16 < 0 = beat tracker not locked yet. Skip accumulation: with
+        # bar_phase stuck at 0 every component piles into slot 0, ALL
+        # metrical profiles come out identical (msim = 1), and anything
+        # gated on metrical agreement binds across instruments — pre-lock
+        # garbage poisoned kick+ping for seconds after lock (MET_GAMMA
+        # fades slowly).
+        if slot16 >= 0:
+            self._met_hist[:, slot16 % 16] += self.h
 
         self._hop_count += 1
         if self._hop_count % self.REFRESH_HOPS == 0:
             self._refresh_clusters()
 
-        return (t_hop, kick_odf, fired, strength)
+        return (t_hop, kick_odf, fired, strength, broad_odf)
 
     # ------------------------------------------------------------------
     # Clustering (DP-means over component descriptors, ADR 0005)
@@ -354,25 +368,106 @@ class SourceDiscovery:
         from scipy.ndimage import maximum_filter1d
         return maximum_filter1d(hist, size=17, axis=0, mode="nearest")
 
-    MET_MERGE = 0.92        # cluster metrical-profile cosine that forces a merge
+    MET_MERGE_STRICT = 0.92  # metrical cosine that merges on timbre alone
+    MET_MERGE = 0.85        # cluster metrical-profile cosine for the gated
+                            # merge. Looser than the join gate: leader
+                            # profiles stay soft without percussion (beat
+                            # PHASE corrections are kick-driven, so the bar
+                            # dead-reckons and slowly precesses through
+                            # slots, smearing every profile a little)
+    INV_ALT_CEIL = 0.05     # cluster-envelope corr above this blocks the
+                            # gated merge: CO-PLAYING instruments measure
+                            # +0.11..+0.28 (they sound together), a melody
+                            # split into note-clusters measures -0.10..-0.66
+                            # (notes alternate). Only valid at CLUSTER
+                            # level — at component level a sustained
+                            # instrument's formant stratum co-occurs with
+                            # every note and the same ceiling kills
+                            # legitimate binding (tried, reverted)
+    EVENTFUL_MAX = 0.25     # max 10th-percentile/max envelope ratio for a
+                            # cluster to take part in the gated merge. The
+                            # noise-floor cluster NEVER goes quiet (ratio
+                            # ~0.5+) and, for broadband instruments like
+                            # cymbal, is indistinguishable by invariant
+                            # timbre (filtered noise vs noise, cinvsim 0.98
+                            # measured) — merging it lights the row between
+                            # hits. Anything event-driven goes near-silent
+                            # between events (ratio ~0), INCLUDING a dense
+                            # sustained melody, whose duty cycle is high
+                            # but which still has gaps — that is why this
+                            # is a low-percentile test, not a median/duty
+                            # test (median blocks dense melodies; tried).
+    INV_MERGE = 0.80        # cluster invariant-timbre cosine for the gated merge
+
+    def _inv_timbre(self) -> np.ndarray:
+        """Per-component transposition-invariant timbre signature.
+
+        |FFT| of the template along the log-spaced band axis: a pitch
+        change TRANSLATES the harmonic pattern along log-frequency without
+        reshaping it, so the FFT magnitude is shared by all notes of one
+        instrument. Mean-centering zeroes the DC bin, which otherwise
+        dominates the cosine for all-positive templates and makes
+        everything look alike. Columns are unit-norm; (F//2+1, K).
+
+        NOTE: bounded-shift template cross-correlation (max centered
+        correlation over band shifts ≤ ~1 octave) was tried as a sharper
+        replacement and REVERTED: real instruments are not pure
+        translations — voice keeps its formant and breath-noise strata
+        fixed while only the fundamental region moves — so strict shape
+        matching scores true note pairs near zero. The loose |FFT|
+        signature also binds a source's non-translating strata; the
+        metrical gate carries the cross-instrument discrimination.
+        """
+        Wc = self.W - self.W.mean(axis=0, keepdims=True)
+        inv = np.abs(np.fft.rfft(Wc, axis=0))
+        return inv / np.maximum(np.linalg.norm(inv, axis=0, keepdims=True), 1e-9)
 
     def _merge_correlated_clusters(self, clusters: list[dict]) -> list[dict]:
         if len(clusters) < 2:
             return clusters
         smoothed = self._event_envelopes(self._h_hist)
-        env = np.stack([smoothed[:, cl["members"]].sum(axis=1) for cl in clusters])
-        env = env - env.mean(axis=1, keepdims=True)
+        env_raw = np.stack([smoothed[:, cl["members"]].sum(axis=1)
+                            for cl in clusters])
+        # episodic vs continuously-active clusters — see EVENTFUL_MAX.
+        # LEADER envelope, not the member sum: a melody cluster legitimately
+        # contains an always-on formant stratum (sum never quiet), but its
+        # leader is a note fundamental that goes silent between recurrences;
+        # the noise cluster's leader never does.
+        lead_env = np.stack([smoothed[:, cl["members"][0]] for cl in clusters])
+        eventful = (np.percentile(lead_env, 10, axis=1)
+                    < self.EVENTFUL_MAX * np.maximum(lead_env.max(axis=1), 1e-9))
+        env = env_raw - env_raw.mean(axis=1, keepdims=True)
         norms = np.linalg.norm(env, axis=1)
         valid = norms > 1e-4
         env = env / np.maximum(norms, 1e-9)[:, None]
         corr = env @ env.T
         # metrical merge evidence: a pitched instrument changing notes forms
         # a NEW cluster (new components, no envelope overlap with the old
-        # pitch) — but both clusters inherit the instrument's bar slots
-        cmet = np.stack([self._met_hist[cl["members"]].sum(axis=0)
+        # pitch) — but both clusters inherit the instrument's bar slots.
+        # LEADER histograms only: summing across members lets components
+        # shared between instruments blur the cluster profile toward
+        # all-slots, which gated a kick cluster onto the ping cluster
+        # (metsim 0.92+) and killed the e2e ping row
+        cmet = np.stack([self._met_hist[cl["members"][0]]
                          for cl in clusters])
-        cmet = cmet / np.maximum(np.linalg.norm(cmet, axis=1, keepdims=True), 1e-9)
+        # leaders must have REAL metrical evidence (same rule as the join
+        # gate): pre-lock the histograms are empty and normalized garbage
+        # would gate merges on noise
+        all_norm = np.linalg.norm(self._met_hist, axis=1)
+        lead_norm = np.linalg.norm(cmet, axis=1)
+        lead_evid = lead_norm > 0.05 * max(float(all_norm.max()), 1e-9)
+        cmet = cmet / np.maximum(lead_norm[:, None], 1e-9)
         metsim = cmet @ cmet.T
+        # cluster invariant timbre: activity-weighted mean of the members'
+        # per-component signatures (NOT the |FFT| of the summed spectrum —
+        # two shifted combs interfere and their sum's magnitude matches
+        # neither note)
+        inv = self._inv_timbre()
+        act = smoothed.mean(axis=0)
+        cinv = np.stack([inv[:, cl["members"]] @ (act[cl["members"]] + 1e-9)
+                         for cl in clusters])
+        cinv = cinv / np.maximum(np.linalg.norm(cinv, axis=1, keepdims=True), 1e-9)
+        cinvsim = cinv @ cinv.T
 
         merged = [False] * len(clusters)
         order = sorted(range(len(clusters)), key=lambda i: -clusters[i]["weight"])
@@ -382,11 +477,35 @@ class SourceDiscovery:
             for b_i in order:
                 if b_i == a_i or merged[b_i]:
                     continue
-                # NOTE: metrical-profile merging was tried and reverted:
-                # components shared between instruments blend both
-                # instruments' slots into their histograms, which merged
-                # clusters ACROSS instruments in duos.
-                if valid[a_i] and valid[b_i] and corr[a_i, b_i] > self.MERGE_CORR:
+                # Gated invariant-timbre merge (ADR 0006): different notes
+                # of one melody share bar slots AND the shift-invariant
+                # harmonic pattern; alternating instruments land on
+                # different slots, slot-locked instruments differ in
+                # timbre, and the noise floor never goes quiet. Two
+                # metrical regimes: near-perfect agreement merges on
+                # timbre alone; moderate agreement (profiles soft from bar
+                # precession) additionally needs the alternation signature
+                # (negative envelope corr — anti-correlation is what a
+                # melody split into note-clusters looks like, NOT evidence
+                # of two instruments). Looser metrical tiers were tried
+                # and reverted — see ADR 0006 for the full graveyard.
+                inv_merge = (valid[a_i] and valid[b_i]
+                             and lead_evid[a_i] and lead_evid[b_i]
+                             and eventful[a_i] and eventful[b_i]
+                             and cinvsim[a_i, b_i] > self.INV_MERGE
+                             and (metsim[a_i, b_i] > self.MET_MERGE_STRICT
+                                  or (metsim[a_i, b_i] > self.MET_MERGE
+                                      and corr[a_i, b_i] < self.INV_ALT_CEIL)))
+                if inv_merge and getattr(self, "_debug_inv", None) is not None:
+                    self._debug_inv.append(
+                        ("merge", self._hop_count,
+                         tuple(clusters[a_i]["members"]),
+                         tuple(clusters[b_i]["members"]),
+                         round(float(metsim[a_i, b_i]), 3),
+                         round(float(cinvsim[a_i, b_i]), 3),
+                         round(float(corr[a_i, b_i]), 3)))
+                if inv_merge or (valid[a_i] and valid[b_i]
+                                 and corr[a_i, b_i] > self.MERGE_CORR):
                     a, b = clusters[a_i], clusters[b_i]
                     a["members"].extend(b["members"])
                     w = a["weight"] + b["weight"]
@@ -398,6 +517,23 @@ class SourceDiscovery:
         return [cl for i, cl in enumerate(clusters) if not merged[i]]
 
     CORR_JOIN = 0.65        # min leader join score (corr + met + desc terms)
+    W_INV = 0.5             # invariant-timbre bonus weight (gated)
+    INV_MET_GATE = 0.95     # metrical agreement required for the bonus.
+                            # STRICT: with broadband tempo evidence a
+                            # melody's notes align nearly perfectly (msim
+                            # median 0.96 measured), while cross-instrument
+                            # confusions during the settling window peak at
+                            # 0.949 — 0.85 admitted them and glued
+                            # kick+strum for seconds
+    # Metrical gating only works when the tempo estimate is sane: a bad
+    # estimate makes events precess through bar phase and ALL profiles
+    # smear toward uniform, where they cosine-match each other (msim -> 1
+    # for everyone). Vetoes tried against that and REVERTED (ADR 0006):
+    # an envelope-corr ceiling ("melody notes never co-occur") — false,
+    # sustained instruments share a formant stratum that co-occurs with
+    # every note; a participation-ratio cap on the profiles — blocks the
+    # legitimate solo merges exactly as often, because smear hits everyone
+    # equally. The durable fix was upstream: broadband tempo evidence.
 
     def _refresh_clusters(self) -> None:
         desc, activity = self._descriptors()
@@ -413,9 +549,28 @@ class SourceDiscovery:
         # DIFFERENT notes excites different components per note (weak
         # envelope correlation across notes), but all its notes land on the
         # same bar slots — Greg's 16th-note feature is what binds them
-        met = self._met_hist / np.maximum(
-            np.linalg.norm(self._met_hist, axis=1, keepdims=True), 1e-9)
+        met_norm = np.linalg.norm(self._met_hist, axis=1)
+        met = self._met_hist / np.maximum(met_norm[:, None], 1e-9)
         msim = met @ met.T
+        # NEUTRAL metrical term while evidence is missing (pre-lock, or a
+        # component that has not fired since lock): scoring those pairs at
+        # msim=0 withholds the 0.4 join term and fragments early clusters —
+        # rows take seconds longer to stabilize. Treat "no evidence" as
+        # agreement-by-default for the BASE term only; the invariant-timbre
+        # paths require REAL evidence on both sides.
+        has_met = met_norm > 0.05 * max(float(met_norm.max()), 1e-9)
+        met_evid = np.outer(has_met, has_met)
+        msim_base = np.where(met_evid, msim, 1.0)
+
+        inv = self._inv_timbre()
+        invsim = inv.T @ inv
+        # GATED (ungated weighting merged unrelated percussion: any two
+        # single-blob spectra match under shift invariance). The bonus only
+        # applies where the components land on the same bar slots — notes
+        # of one melody do, alternating instruments don't. Envelope
+        # anti-correlation needs no separate veto: the corr term in the
+        # join score below already subtracts it.
+        inv_gate = (msim > self.INV_MET_GATE) & met_evid
 
         # LEADER clustering: a component joins a cluster only if it
         # correlates strongly with the cluster's LEADER (its most active
@@ -428,8 +583,17 @@ class SourceDiscovery:
             for cl in new:
                 leader = cl["members"][0]
                 c = float(ccorr[k, leader]) if std[k] > 1e-5 and std[leader] > 1e-5 else 0.0
-                score = c + 0.4 * float(msim[k, leader]) \
+                score = c + 0.4 * float(msim_base[k, leader]) \
                     + 0.15 * float(desc[k] @ desc[leader])
+                if inv_gate[k, leader] and std[k] > 1e-5 and std[leader] > 1e-5:
+                    score += self.W_INV * float(invsim[k, leader])
+                    if score >= self.CORR_JOIN > score - self.W_INV * invsim[k, leader] \
+                            and getattr(self, "_debug_inv", None) is not None:
+                        self._debug_inv.append(
+                            ("join", self._hop_count, int(k), int(leader),
+                             round(float(msim[k, leader]), 3),
+                             round(float(invsim[k, leader]), 3),
+                             round(float(ccorr[k, leader]), 3)))
                 if score > best_score:
                     best, best_score = cl, score
             if best is not None and best_score >= self.CORR_JOIN:
@@ -803,16 +967,20 @@ class MusicAnalyzer:
         f = MusicFeatures(timestamp=now)
         f.volume = float(np.sqrt(np.mean(chunk ** 2)))
 
-        # 16th-note slot from the PREVIOUS frame's bar state (≤23 ms stale)
-        slot16 = int(self.features.bar_phase * 16) % 16
+        # 16th-note slot from the PREVIOUS frame's bar state (≤23 ms stale);
+        # -1 until the beat tracker locks (see _process_hop met accumulation)
+        slot16 = int(self.features.bar_phase * 16) % 16 \
+            if self.oscillator.bpm is not None else -1
 
         # --- source discovery (4 hops) + kick events ---
         events = self.discovery.process_chunk(chunk, now, slot16, f.volume)
         kick_fired = False
         kick_strength = 0.0
         kick_time = now
-        for t_hop, odf, fired, strength in events:
-            self._internal_backend.add_onset_strength(odf)
+        for t_hop, odf, fired, strength, broad_odf in events:
+            # broadband flux, not kick ODF: tempo must lock on instruments
+            # with no kick-band energy (see _process_hop)
+            self._internal_backend.add_onset_strength(broad_odf)
             if fired:
                 kick_fired = True
                 kick_strength = max(kick_strength, strength)
